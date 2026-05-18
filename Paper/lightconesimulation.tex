@@ -1,0 +1,1259 @@
+\documentclass[11pt]{article}
+
+% ── arXiv preprint style ──────────────────────────────────────────────────────
+\usepackage[margin=1in,letterpaper]{geometry}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows.meta,positioning,fit,backgrounds,calc}
+\usepackage[expansion=false]{microtype}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{placeins}   % \FloatBarrier — keeps floats within their subsection
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{url}
+\usepackage{doi}
+\usepackage{parskip}          % space between paragraphs, no indent (arXiv style)
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+% ── Code listing style ────────────────────────────────────────────────────────
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  language=C++,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  tabsize=4
+}
+
+% ── Macros ────────────────────────────────────────────────────────────────────
+\newcommand{\chimax}{\chi_{\mathrm{max}}}
+\newcommand{\Ct}{C(t)}
+\newcommand{\ham}{\mathcal{H}}
+\newcommand{\TODO}[1]{\textcolor{red}{[#1]}}
+
+% ── Hyperref setup (after other packages) ─────────────────────────────────────
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=green!50!black,
+  urlcolor=blue!60!black
+}
+
+% ── Title ─────────────────────────────────────────────────────────────────────
+\title{%
+  \Large\bfseries GPU-First Heisenberg-Picture Tensor Network Dynamics\\
+  for the 2D Transverse-Field Ising Model\\[0.5em]
+  %\normalsize\normalfont\textit{Preprint}
+}
+
+\author{
+  Paolo D'Alberto\thanks{Advanced Micro Devices, Inc. (AMD).
+  \texttt{paolo.dalberto@amd.com}.
+  This work was developed in active collaboration with Claude
+  (Anthropic)}\\
+  \small Advanced Micro Devices, Inc.\\
+  \small\texttt{paolo.dalberto@amd.com}
+}
+
+\date{\today}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\begin{document}
+\maketitle
+\thispagestyle{fancy}
+
+% ── Abstract ──────────────────────────────────────────────────────────────────
+\begin{abstract}
+We present \textsc{CppSim}, a C++/HIP 2D Ising simulator for
+Heisenberg-picture tensor network time evolution on AMD GPUs.  The key
+computational contributions are: First, a zero-malloc GPU workspace
+that pre-allocates all buffers at startup; Second, a custom HIP tensor
+permutation kernel replacing host-side index shuffling with a pure
+device-to-device operation, yielding a 7.6$\times$ trotter speedup;
+Third, a hybrid QR strategy selecting Cholesky-QR for tall-skinny
+matrices and Householder-QR otherwise; Fourth, adaptive Belief
+Propagation with log-space Bethe partition function evaluation and
+explicit sign tracking.  The key validation contributions are: First,
+correctness and demonstration of $\chi$-convergence of the spin
+autocorrelation function $C(t)$ for $\chi \in \{20,\ldots,110\}$ on a
+$4\times4$ grid, identifying $\chi^* \approx 60$ as the practical
+convergence point.  Second, we characterize BP fixed-point
+multiplicity and introduce a four-step trap remediation procedure
+using damped BP updates. Third, we identify operator-placement $C_4$
+symmetry as the root cause of BP fixed-point multiplicity ---
+symmetric grids are entirely trap-free. Fourth, grid scaling from
+$3\times3$ to $10\times10$ demonstrates operator lightcone saturation
+consistent with the Lieb--Robinson bound.  Cross-architecture
+comparison between MI100 and MI60 reveals complementary trap patterns
+and defines portable operating points at $\chi \in \{40, 60\}$.  An
+analytic memory model, validated to within 2\% against hardware
+measurements, projects feasibility for a $10\times10$ grid at
+$\chimax=100$ on AMD MI350 hardware ($\approx109$\,GB HBM).
+\end{abstract}
+
+%\tableofcontents
+%\newpage
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Introduction}
+\label{sec:intro}
+% ══════════════════════════════════════════════════════════════════════════════
+
+Simulating real-time quantum dynamics of strongly correlated many-body systems is
+a central challenge in computational physics. Tensor network (TN) methods provide
+a systematically improvable approximation by representing quantum operators as
+networks of low-rank tensors~\citep{orus2014practical}, with accuracy controlled
+by the bond dimension~$\chi$. While one-dimensional systems are well-served by
+Matrix Product State (MPS) methods~\citep{vidal2003efficient}, two-dimensional
+(2D) tensor networks are increasingly important for studying frustrated magnets,
+quantum circuits, and non-equilibrium dynamics at accessible system sizes.
+
+The broader motivation for this work is the Multi-Product Formula (MPF)
+framework for hybrid quantum-classical computation. In MPF, a quantum computer
+executes Trotter circuits to approximate Hamiltonian time evolution, and a
+classical linear regression over multiple circuit runs at different step sizes
+cancels the leading Trotter error terms. The spin autocorrelation function
+$C(t) = \mathrm{Tr}[Z_c(t)\,Z_c]/2^N$ is the quantitative figure of merit:
+it is what the ideal, error-free circuit would compute, and what the MPF
+post-processing corrects toward. \textsc{CppSim} serves as a simulation sandbox: by computing the
+ideal $C(t)$ alongside the Trotter-approximate trajectory, it enables
+direct measurement of the circuit error and systematic exploration of
+MPF compensation strategies before deployment on quantum hardware.
+Throughout this work, all simulations are \emph{noise-free} ---
+the only approximation is bond-dimension truncation; extension to
+noisy gates and alternative lattice geometries (honeycomb, heavy-hex)
+is left to future work.
+
+The \emph{Heisenberg picture}~\citep{rudolph2025simulating} is the natural
+language for this setting: the observable $Z_c$ is evolved forward in time
+under the Hamiltonian while the infinite-temperature state remains fixed,
+which maps directly to how a quantum circuit acts on an operator.
+The correlation function is then extracted as an inner product with the
+initial operator — no state preparation or measurement of a full density
+matrix is required.
+Computing $C(t)$ exactly would require contracting the full 2D tensor
+network, an exponentially costly operation.
+Belief Propagation (BP)~\citep{tindall2023gauging} makes this tractable:
+each lattice site iteratively sends its neighbors a message summarizing
+everything it sees from its side of the network; after convergence, each
+site holds an approximate picture of the global environment using only
+local information.
+The approximation rests on the Bethe assumption: on a tree, a site's
+dependence on the rest of the network passes entirely through its direct
+neighbors — there are no alternative paths — making BP exact.
+
+Existing implementations of these methods are primarily in Julia~\citep{rudolph2025simulating},
+benefiting from high-level tensor abstractions and just-in-time compilation. However,
+Julia's garbage collector imposes non-trivial overhead for GPU workloads:
+allocation patterns during simulation trigger frequent collection cycles, and GPU
+memory pool management introduces latency spikes. For production-scale computations
+at large bond dimensions and grid sizes, these overheads become significant.
+
+We present \textsc{CppSim}, a C++/HIP implementation that addresses these limitations
+through explicit GPU memory management, GPU-native linear algebra, and a zero-malloc
+simulation loop, eliminating the memory pool and its management overhead entirely.
+The implementation targets AMD GPUs through the HIP portability
+layer and the rocBLAS/rocSOLVER libraries~\citep{rocblas,rocsolver}.
+
+\paragraph{The main computational contributions of this work are:}
+\begin{enumerate}
+  \item A \textbf{zero-malloc GPU workspace} design that pre-allocates
+    all buffers at startup, making peak VRAM usage known exactly
+    before the first layer runs and eliminating all allocator overhead
+    during simulation.
+  \item A \textbf{custom HIP tensor permutation kernel} that replaces
+    host-side index shuffling (requiring D2H+H2D transfers) with a
+    pure device-to-device operation, yielding a 7.6$\times$ trotter
+    speedup.
+  \item An \textbf{adaptive QR strategy} combining Cholesky-QR for
+    tall-thin matrices at saturation with Householder-QR for small
+    bond dimensions, with explicit numerical safeguards.
+  \item A \textbf{sign-correct log-space Bethe partition function}
+    with explicit Bethe edge correction and per-bond sign tracking,
+    resolving systematic C(t) anomalies at late times.
+\end{enumerate}
+
+Because all buffer sizes are determined analytically before the first layer
+runs, the layout pre-allocates exactly the peak working set at $\chimax$:
+the minimum memory consistent with full parallel execution at saturation,
+where every intermediate tensor --- contracted site tensors, QR factors,
+SVD matrices, environment buffers, and solver scratch --- occupies a
+named, fixed slot and no dynamic allocation occurs during the simulation loop.
+This allocation is \emph{asymptotically optimal}: the four large buffers
+(two contracted site tensors and two QR orthogonal factors,
+each of size $O(\chimax^4)$) must coexist during every gate application
+and therefore set an unavoidable lower bound; all remaining buffers are
+$O(\chimax^2)$ or smaller and do not contribute to the leading term.
+Six of the nine named buffers are reused across pipeline stages within a
+single gate, reducing the constant prefactor without sacrificing the
+self-documenting, named-slot layout.
+The resulting closed-form model (\texttt{estimate\_memory.py}) predicts
+VRAM requirements for any grid and bond dimension to within 2\% of hardware
+measurements, enabling deployment decisions across GPU generations before
+a single simulation step is taken.
+
+The remainder of this paper is organized as follows. Section~\ref{sec:physics}
+describes the mathematical formulation. Section~\ref{sec:design} presents the
+software design. Section~\ref{sec:algorithms} details the core algorithms.
+Section~\ref{sec:implementation} describes the implementation.
+Section~\ref{sec:experiments} presents numerical experiments and physics results.
+Section~\ref{sec:performance} reports performance. Section~\ref{sec:portability}
+discusses GPU portability. Section~\ref{sec:conclusion} concludes.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Mathematical Formulation}
+\label{sec:physics}
+% ══════════════════════════════════════════════════════════════════════════════
+
+This section establishes the physical model and the mathematical framework
+underlying the simulation. We work entirely in the Heisenberg picture, where
+the observable rather than the quantum state is evolved in time, and we
+represent it as a tensor network on the lattice graph.
+
+\subsection{Model}
+
+We consider the 2D transverse-field Ising model~\citep{sachdev2011quantum} on a
+$k \times l$ rectangular lattice with open boundary conditions and Hamiltonian:
+\begin{equation}
+  \ham = -J \sum_{\langle ij \rangle} X_i X_j \;-\; h \sum_i Z_i,
+  \label{eq:hamiltonian}
+\end{equation}
+where $X_i, Z_i$ are Pauli operators on site $i$, $J$ is the Ising coupling,
+$h$ is the transverse field strength, and the sum is over nearest-neighbor pairs.
+
+\subsection{Heisenberg Picture and Spin Autocorrelation}
+
+The spin autocorrelation function measures how much the observable $Z_c$
+at the lattice center remembers its initial value after time $t$:
+\begin{equation}
+  C(t) = \mathrm{Tr}\bigl[\rho_0\, Z_c(t)\, Z_c\bigr],
+  \label{eq:autocorr_general}
+\end{equation}
+where $\rho_0$ is the initial state.
+In the Heisenberg picture, the state $\rho_0$ remains fixed while the
+observable evolves under the Hamiltonian:
+\begin{equation}
+  Z_c(t) = e^{i\ham t}\, Z_c\, e^{-i\ham t}.
+  \label{eq:heisenberg}
+\end{equation}
+Choosing $\rho_0$ constant (proportional to the identity), the trace
+simplifies to:
+\begin{equation}
+  C(t) = \frac{1}{2^N} \mathrm{Tr}\bigl[ Z_c(t)\, Z_c \bigr],
+  \label{eq:autocorr}
+\end{equation}
+where $2^N$ is the Hilbert space dimension ($N$ sites),
+which is the quantity computed throughout this work and targeted by the
+MPF post-processing described in Section~\ref{sec:intro}.
+
+\subsection{Pauli Basis Tensor Network}
+
+Each qubit site has a 2-dimensional Hilbert space, but the space of $2\times2$
+Hermitian operators has dimension $D=4$, spanned by the Pauli matrices
+$\{I, X, Y, Z\}$ — orthogonal under the Hilbert-Schmidt inner product
+$\mathrm{Tr}(A^\dagger B)$.
+The operator $Z_c(t)$ is represented as a tensor network on the lattice graph:
+each site $v$ carries a tensor $\psi_v$ whose indices encode both the bond
+entanglement with neighboring sites and the local Pauli component of the operator.
+
+Concretely, $\deg(v)$ denotes the number of nearest-neighbor bonds of site $v$:
+2 at corners, 3 at edge sites, and 4 at interior sites on a rectangular grid.
+The tensor $\psi_v$ is pre-allocated with one bond index of dimension $\chimax$
+per neighbor and one Pauli index of dimension $D=4$, giving a maximum shape of
+$\chimax^{\deg(v)} \times D$. The live bond dimension $\chi_{\mathrm{live}}$
+grows from 1 to $\chimax$ as entanglement builds across the first Trotter layers;
+all computations use the current live dimension, not the pre-allocated maximum.
+The entry $\psi_v[i_1, \ldots, i_{\deg(v)},\, p]$ is the coefficient of the
+$p$-th Pauli matrix ($p{=}0$: $I$,\ $p{=}1$: $X$,\ $p{=}2$: $Y$,\ $p{=}3$: $Z$)
+at site $v$, for bond state $(i_1,\ldots,i_{\deg(v)})$.
+At $t=0$: the center site has $\psi_c[\cdot,3]=1$ (pure $Z$); all others have
+$\psi_v[\cdot,0]=1$ (pure $I$).
+
+The bond entanglement between neighboring sites $a$ and $b$ is captured by a
+$\chi \times \chi$ message matrix $\mu_{a \to b}$, one per directed bond,
+stored in the Vidal canonical gauge~\citep{vidal2004efficient}.
+In this gauge, each $\mu_{a \to b}$ holds the Schmidt singular values of the
+bipartition of the network across bond $(a,b)$, with the site tensors
+orthogonalized so that all entanglement information is encoded in the messages.
+Truncating each bond to rank $\chimax$ then discards only the least significant
+singular values — the locally optimal approximation at fixed bond dimension.
+On a tree this gauge is exact; on the 2D lattice BP finds the approximate
+Vidal gauge, which is why BP runs before every correlation function evaluation.
+
+\subsection{Trotter Decomposition}
+
+Each time step $\delta t$ advances the operator by unitary conjugation:
+\begin{equation}
+  Z_c(t+\delta t) = U^\dagger(\delta t)\; Z_c(t)\; U(\delta t),
+  \qquad U(\delta t) = e^{-i\ham\delta t},
+  \label{eq:heisenberg_step}
+\end{equation}
+where $U^\dagger = e^{+i\ham\delta t}$ acts on the left and $U$ on the right.
+Because the Hamiltonian~\eqref{eq:hamiltonian} contains only real Pauli couplings,
+this conjugation maps Pauli matrices to real linear combinations of Pauli matrices,
+so the gate acting on $\psi_v$ in the Pauli basis is a real orthogonal matrix —
+no complex arithmetic is required.
+
+The unitary $U(\delta t)$ is itself approximated to first order as a
+composition of simpler gates (the Trotter
+decomposition~\citep{suzuki1976generalized}):
+\begin{equation}
+  U(\delta t) \approx R_z(h\,\delta t) \cdot R_{xx}(2J\,\delta t) \cdot R_z(h\,\delta t),
+  \label{eq:trotter}
+\end{equation}
+where $R_z$ is a single-site rotation (diagonal in the Pauli basis) and $R_{xx}$
+is a two-site entangling gate applied to all nearest-neighbor pairs via a
+4-color decomposition: bonds are partitioned into four color classes such that no
+two bonds in the same class share a site, enabling sequential independent updates.
+
+\subsection{Gate Update}
+\label{sec:gate_update}
+
+For each two-site gate on bond $(v_1, v_2)$, let $i \in \{1,2\}$ index the two
+sites. The message matrices $\mu_{a\to b}$ (defined in \S\ref{sec:physics}) are
+diagonal in the Vidal gauge, holding singular values, so $\sqrt{\mu}$ denotes
+the diagonal matrix of their square roots. The update proceeds as follows
+(see Algorithm~\ref{alg:gate}):
+\begin{enumerate}
+  \item \textbf{Environment absorption.} Contract $\psi_{v_i}$ with
+        $\sqrt{\mu_{e \to v_i}}$ on every bond $e$ incident to $v_i$ except the
+        active bond $(v_1,v_2)$. This yields the \emph{contraction vector}
+        $\mathbf{cv}_i$ — so named because it is the site tensor contracted
+        with its environment, ready for QR — which folds the environmental
+        context into each site before the update.
+  \item \textbf{QR decomposition.} Factor each gauged tensor:
+        $\mathbf{cv}_i = \mathbf{Q}_i \mathbf{R}_i$,
+        where $\mathbf{Q}_i$ ($\chimax^3 \times D\chimax$) is isometric and
+        $\mathbf{R}_i$ ($D\chimax \times D\chimax$) is compact.
+        QR reduces the subsequent SVD from the intractable full tensor
+        ($\chimax^3 \times D\chimax$) to a small bond matrix ($D\chimax \times D\chimax$).
+  \item \textbf{Bond matrix.} Form $\mathbf{RR} = \mathbf{R}_1^\top \mathbf{R}_2$
+        ($D\chimax \times D\chimax$), coupling the two sites at the bond interface.
+  \item \textbf{Gate contraction.} The gate $G \in \mathbb{R}^{D^2 \times D^2}$
+        acts on the $D \times D$ physical (Pauli) block of $\mathbf{RR}$,
+        leaving the bond indices unchanged:
+        \[
+          \tilde{R}[d_1',d_2',k,l]
+          = \sum_{d_1,d_2} G[d_1'd_2',\,d_1d_2]\;\mathbf{RR}[d_1,d_2,k,l].
+        \]
+  \item \textbf{SVD and truncation.} Factor
+        $\tilde{\mathbf{R}} = \mathbf{U}\mathbf{S}\mathbf{V}^\top$,
+        truncated to rank $\chimax$ (equation~\eqref{eq:truncation}).
+  \item \textbf{Reconstruction.} Set $\mathbf{cv}_i^{\text{new}} = \mathbf{Q}_i \mathbf{M}_i$,
+        where $\mathbf{M}_1 = \mathbf{U}\sqrt{\mathbf{S}}$ and
+        $\mathbf{M}_2 = \sqrt{\mathbf{S}}\mathbf{V}^\top$.
+  \item \textbf{Deabsorption.} Multiply by $(\sqrt{\mu_{e\to v_i}})^{-1}$ on all
+        environment bonds to restore the Vidal gauge.
+  \item \textbf{Vidal normalization.} Store
+        $\lambda_k \leftarrow s_k/\|\mathbf{s}\|_2$ ($\sum_k \lambda_k^2 = 1$),
+        preventing float32 overflow at large $\chi$.
+\end{enumerate}
+
+\subsection{Correlation Function via Belief Propagation}
+
+$C(t)$~\eqref{eq:autocorr} is the normalized Hilbert-Schmidt inner product of
+the evolved operator $Z_c(t)$ with the initial operator $Z_c$:
+$C(t) = \langle Z_c(t),\, Z_c \rangle_{HS}$, where
+$\langle A, B\rangle_{HS} = \mathrm{Tr}[A^\dagger B]/2^N$.
+Evaluating it requires contracting the full tensor network against the observable —
+a three-step process.
+
+\textbf{Step 1: trace to tensor network contraction.}
+By Pauli orthogonality ($\mathrm{Tr}[P_a P_b] = 2\delta_{ab}$), the trace
+reduces to a single tensor network contraction: the coefficient of the
+configuration ``$Z$ at center $c$, $I$ at all other sites'' in the full network.
+This is computed by inserting the observable into the network and contracting.
+
+\textbf{Step 2: Bethe factorization.}
+Contracting a 2D tensor network exactly is exponentially costly.
+After BP has converged the messages to the approximate Vidal gauge, the
+Bethe approximation (treating the lattice as a tree) factorizes the contraction
+as a product over sites divided by a product over edges:
+\begin{equation}
+  C(t) = \frac{\displaystyle\prod_v vs_v}{\displaystyle\prod_e Z_e},
+  \label{eq:bethe_raw}
+\end{equation}
+where $vs_v$ is the scalar contraction of $\psi_v$ with its BP environment and
+the observable ($Z$ at center $c$, $I$ elsewhere), and
+\begin{equation}
+  Z_e = \sum_i \mu_{a \to b}[i]\, \mu_{b \to a}[i]
+  \label{eq:ze}
+\end{equation}
+is the Bethe edge correction: each bond appears in two site contractions, and
+$Z_e$ removes the double-counting.
+
+\textbf{Step 3: log-space evaluation and sign tracking.}
+The $Z$ operator has eigenvalues $\pm 1$, so the observable-specific BP messages
+can be negative, making $vs_v$ and $Z_e$ real-valued but not necessarily positive.
+Taking absolute values and separating signs before applying logarithms gives the
+numerically stable form:
+\begin{equation}
+  C(t) = \exp\!\Bigl(\sum_v \log|vs_v| \;-\; \sum_e \log|Z_e|\Bigr)
+         \times \underbrace{\prod_v \mathrm{sign}(vs_v)}_{\mathrm{sign\_num}}
+         \times \underbrace{\prod_e \mathrm{sign}(Z_e)}_{\mathrm{sign\_den}},
+  \label{eq:bethe}
+\end{equation}
+Omitting the sign factors would flip the sign of $C(t)$ whenever the product
+of signs across all sites and edges is $-1$ — a catastrophic error at late times
+when the sign structure of the BP messages becomes non-trivial (Fix~I,
+Table~\ref{tab:fixes}).
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Software Design}
+\label{sec:design}
+% ══════════════════════════════════════════════════════════════════════════════
+
+The overarching design principle is that GPU memory allocation is a one-time
+startup cost. Every buffer needed by the simulation --- site tensors, BP messages,
+workspace intermediates --- is allocated at initialization at its worst-case size
+(i.e.\ at $\chimax$) and reused for every gate, layer, and Trotter step.
+The phrasing \emph{maximum size} here is precise but potentially misleading:
+this is not conservative over-provisioning but the \emph{minimum allocation
+that sustains maximum parallelism} --- the four $O(\chimax^4)$ tensors that
+must coexist during every gate application set an irreducible lower bound,
+and no smaller pre-allocation could support full parallel execution at $\chimax$.
+This section describes the two main structures that realize this principle
+and the sizing rules that must be followed exactly.
+
+\subsection{Zero-Malloc Simulation Loop}
+
+The central design principle is that \textbf{no GPU memory is allocated or freed
+during simulation}. All buffers are allocated once at startup in two structures:
+
+\paragraph{Workspace} (grid-independent, reused for every gate):
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Buffers & Size & Purpose \\
+\midrule
+\texttt{cv1, cv2, Q1, Q2} & $\chimax^3 \times D\chimax$ & gauged tensors, QR factors \\
+\texttt{R1, R2, Rinv1, Rinv2,} & \multirow{2}{*}{$(D\chimax)^2$ or $D\chimax$} & \multirow{2}{*}{QR/SVD matrices} \\
+\texttt{RR, U, Vt, gram, S} & & \\
+\texttt{sqrt\_env[4], inv\_sqrt\_env[4]} & $\chimax^2$ & environment absorption \\
+\texttt{svd\_work} & $D^2\chimax$ & GESVD bidiagonal scratch \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{IsingState} (grid-dependent, persistent across all layers):
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Buffers & Size & Purpose \\
+\midrule
+\texttt{psi[}$v$\texttt{]} & $D \cdot \chimax^{\deg(v)}$ & site tensors, pre-allocated at $\chimax$ \\
+\texttt{messages[bond][dir]} & $\chimax^2$ & Vidal gauge, one per directed bond \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Peak VRAM is reached at startup and remains constant throughout the run,
+eliminating GC pressure, fragmentation, and allocator contention.
+
+\subsection{Buffer Sizing and Safety Margins}
+
+The SVD bidiagonal scratch buffer (\texttt{svd\_work}) requires careful sizing.
+The SVD is called on a matrix of dimensions $k_{1D} \times k_{2D}$ where
+$k_{iD} = k_i \times D$ and $k_i = \min(m_i, n_i)$. At bond dimension saturation,
+$m_i = \chimax^3 \gg n_i = \chimax D$, so $k_i = \chimax D$ and
+$k_{iD} = \chimax D^2$. The rocSOLVER \texttt{SGESVD} bidiagonal scratch (\texttt{E})
+must therefore be sized to $\min(k_{1D}, k_{2D}) = \chimax D^2$ elements — a
+factor of $D=4$ larger than the naive estimate $\chimax D$.
+The appendix (Fix~K, Table~\ref{tab:fixes}) records the consequence of
+getting this wrong.
+
+Both psi tensors and messages are allocated at their maximum possible size from
+startup, even when the actual bond dimension is much smaller at early layers.
+This trades $O(\chimax^4)$ memory at early layers for zero reallocation.
+The actual computation uses live \texttt{bond.chi} values, which grow from 1 to
+$\chimax$ over the first few Trotter layers.
+Because leading dimensions are fixed at startup, all buffers can in principle be
+padded to alignment boundaries (multiples of the HBM cache-line width) at
+allocation time; once bond dimensions reach $\chimax$ at saturation, this
+guarantees coalesced memory access at every \textsc{rocBLAS} call ---
+an optimization that is unavailable to allocators that resize buffers
+dynamically per layer.
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Algorithms}
+\label{sec:algorithms}
+% ══════════════════════════════════════════════════════════════════════════════
+
+\textsc{CppSim} was written entirely from scratch in C++/HIP, without reusing
+any code from the Julia reference. The physics, tensor operations, and BP
+were all re-implemented, and each required algorithmic choices that are specific
+to the GPU execution model and not present in the Julia implementation.
+Four components in particular represent original contributions: a GPU-native
+tensor permutation kernel that eliminates PCIe traffic entirely, an adaptive
+QR strategy exploiting the tall-thin structure of the gauged contraction vectors,
+a truncated SVD on the compact bond matrix enabled by that QR, and a
+log-space Bethe partition function with explicit sign tracking that resolves
+systematic late-time errors. We describe each in turn.
+
+\subsection{GPU Tensor Permutation}
+\label{sec:permute}
+
+Site tensors $\psi_v$ are rank-5 objects (for interior sites) stored in canonical
+bond order $[\text{U}, \text{D}, \text{L}, \text{R}, \text{Pauli}]$,
+where the Pauli index (dimension $D=4$) selects one of the four matrices
+$\{I, X, Y, Z\}$ — each a $2\times2$ matrix with entries in $\{0, \pm1\}$ (or
+$\pm i$ for $Y$).
+
+QR decomposition operates on matrices (rank-2 tensors), so $\psi_v$ must first
+be reshaped into one. The natural split is: group the \emph{environment} bond
+indices (all bonds except the one being updated, dimension $\chimax^3$ for an
+interior site) into the rows, and group the \emph{cut bond} together with the
+Pauli index (dimension $\chimax \times D = D\chimax$) into the columns.
+This produces a tall-thin matrix of shape $\chimax^3 \times D\chimax$, from
+which QR extracts an isometric $\mathbf{Q}$ (the environment) and a compact
+$\mathbf{R}$ (the bond interface).
+To enable this grouping, the cut-bond index must be moved adjacent to the Pauli
+index before reshaping — that is the sole purpose of the tensor permutation.
+
+Permuting a rank-5 tensor of $\chimax^4 D$ elements ---
+the complete site tensor $\Psi_v$, carrying the full bond-index state of a
+single lattice site --- on the CPU requires:
+a device-to-host (D2H) transfer ($\sim$100\,MB per interior site at $\chi=50$),
+an index-remapping loop, and a host-to-device (H2D) transfer back ---
+totaling $\sim$9.6\,GB of PCIe traffic per Trotter layer at $\chi=50$.
+
+Our custom HIP kernel eliminates all PCIe traffic. Each thread handles one output
+element by decomposing the input flat index (column-major) into a multi-index,
+applying the permutation, and computing the output flat index:
+
+\begin{lstlisting}[language=C++, basicstyle=\ttfamily\footnotesize,
+  caption={GPU tensor permutation kernel}]
+__global__ void tensor_permute_kernel(
+    const float* __restrict__ src,  // input tensor (column-major flat)
+    float* __restrict__ dst,        // output tensor (permuted flat)
+    PermuteMeta meta, int total)    // shape, strides, rank; passed by value
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x; // one thread per element
+    if (idx >= total) return;
+
+    int in_idx = idx, out_idx = 0;
+    for (int d = 0; d < meta.ndim; d++) {
+        int coord  = in_idx % meta.shape_in[d];   // coordinate along dim d
+        in_idx    /= meta.shape_in[d];            // peel off dim d
+        out_idx   += coord * meta.stride_out[d];  // accumulate permuted offset
+    }
+    dst[out_idx] = src[idx];  // scatter to permuted position
+}
+\end{lstlisting}
+
+The \texttt{PermuteMeta} struct (shape, output strides, permutation, rank) is
+passed by value to avoid a device pointer indirection. This kernel reduced trotter
+time from $\sim$49{,}000\,ms/layer to $\sim$6{,}400\,ms/layer at $\chi=50$
+saturation — a \textbf{7.6$\times$ speedup} from this single change.
+
+\subsection{Adaptive QR Decomposition}
+\label{sec:qr}
+
+At each gate application, a QR decomposition of the gauged tensor
+$\mathbf{cv} \in \mathbb{R}^{m \times n}$ is required, where
+$m = \chimax^3$ and $n = D\chimax$ at saturation. Two paths are used:
+
+\paragraph{Cholesky-QR~\citep{golub2013matrix}} (when $n > 150$ and $m/n > 150$;
+thresholds determined empirically on MI100 and left as tunable parameters,
+since the optimal crossover depends on both matrix dimensions and GPU architecture):
+\begin{equation}
+  \mathbf{C} = \mathbf{cv}^\top \mathbf{cv} + \epsilon \mathbf{I}, \quad
+  \mathbf{R} = \mathrm{chol}(\mathbf{C}), \quad
+  \mathbf{Q} = \mathbf{cv}\, \mathbf{R}^{-1},
+  \label{eq:cholqr}
+\end{equation}
+with $\epsilon = 10^{-8}$ ensuring positive definiteness. This path uses
+rocBLAS \texttt{SGEMM} for $\mathbf{C}$, rocSOLVER \texttt{SPOTRF} for the
+Cholesky factor, and rocBLAS \texttt{STRSM} to solve
+$\mathbf{Q}\,\mathbf{R} = \mathbf{cv}$ entirely on-device.
+The only host transfer is a single integer (\texttt{potrf\_info}, 4 bytes)
+to confirm that $\mathbf{C}$ was positive definite; all matrix operations
+remain on the GPU.
+
+\paragraph{Householder-QR} (primary path at early layers; fallback at saturation):
+\[
+  (\mathbf{Q}, \mathbf{R}) = \mathrm{qr}(\mathbf{cv}),
+\]
+via rocSOLVER \texttt{SGEQRF} + \texttt{SORGQR}. This path is backward stable
+and numerically safe regardless of the condition number of $\mathbf{cv}$,
+since it works directly on the matrix without forming the gram matrix.
+Both paths are communication-free for their matrix operations.
+In the Householder path, \texttt{SGEQRF} stores the result
+in-place: the Householder reflectors occupy the lower triangle and $\mathbf{R}$
+sits in the upper triangle of the same buffer. A custom on-device kernel
+(\texttt{extract\_upper\_triangle}) copies $\mathbf{R}$ into its own buffer
+without any host transfer, after which \texttt{SORGQR} generates $\mathbf{Q}$
+on-device from the reflectors.
+At early layers ($n \leq 150$), $\chi$ is still small so the matrices are tiny.
+When invoked as a fallback at saturation, the same buffer is
+$\chimax^3 \times D\chimax \approx 1.6$\,GB at $\chi=100$ --- a case that
+never arises in practice.\footnote{In the Julia
+reference implementation, we instrumented the equivalent adaptive QR path and
+measured zero fallback invocations across all runs at all bond dimensions.
+Since the fallback would have been triggered by either a Cholesky failure
+or a numerical anomaly in the result, its absence confirms both: the
+Cholesky-QR path is stable in practice for this problem class, with no
+sign of numerical degradation --- neither catastrophic nor mild.}
+
+\paragraph{SVD and Truncation.}
+The bond matrix $\mathbf{RR} \in \mathbb{R}^{k_{1D} \times k_{2D}}$ is factored
+via rocSOLVER \texttt{SGESVD}. The truncation rank is:
+\begin{equation}
+  \chi_{\text{new}} = \min\!\bigl(\#\{i : s_i \geq \epsilon_{\text{cut}}\, s_0\},\;
+                                   \chimax\bigr),
+  \label{eq:truncation}
+\end{equation}
+with default cutoff $\epsilon_{\text{cut}} = 10^{-11}$.
+Singular values are Vidal-normalized before storage:
+\begin{equation}
+  \lambda_i = s_i \,/\, \bigl(\textstyle\sum_j s_j^2\bigr)^{1/2},
+  \qquad \sum_i \lambda_i^2 = 1.
+  \label{eq:vidal_norm}
+\end{equation}
+By construction, $\sum_k \lambda_k^2 = 1$ implies $\lambda_k \in [0,1]$ for
+any $\chi$ — float32 overflow of the message entries is impossible regardless
+of bond dimension. Without this normalization, overflow was observed in practice
+at $\chi \geq 50$ saturation.
+
+\paragraph{BP Message Update.}
+Each BP sweep updates all messages via:
+\begin{equation}
+  \mu_{v \to e}^{\text{new}}[i] \propto
+    \psi_v[i, \ldots] \cdot \prod_{e' \neq e} \mu_{e' \to v}[i],
+  \label{eq:bp}
+\end{equation}
+implemented via rocBLAS strided-batched \texttt{SGEMV}.
+Normalization is entirely on-device: \texttt{rocblas\_sdot} in
+\texttt{POINTER\_MODE\_DEVICE} writes the sum directly to a device scalar
+\texttt{d\_s}, which the \texttt{normalize\_and\_delta} kernel reads to rescale
+the message in the same pass --- no host transfer required.
+The convergence delta is accumulated on-device via \texttt{atomicMax} across
+all bond updates in the sweep, producing a single device float \texttt{d\_delta}.
+One D2H transfer of 4 bytes occurs per sweep (not per message) to read
+\texttt{d\_delta} and make the stop/continue decision --- unavoidable, since
+loop control requires a host-visible value.
+
+Adaptive convergence: the sweep loop exits when
+\begin{equation}
+  \max_i |\mu^{\text{new}}[i,i] - \mu^{\text{old}}[i,i]| < \tau = 10^{-5},
+  \label{eq:bp_tol}
+\end{equation}
+returning the sweep count. Most layers converge in 3--20 sweeps; hard layers
+(typically alternating layers at late times) require the full 100-sweep budget.
+
+\begin{algorithm}
+\caption{Gate update for bond $(v_1, v_2)$}
+\label{alg:gate}
+\begin{algorithmic}[1]
+\Require Site tensors $\psi_{v_1}, \psi_{v_2}$, gate $G$, messages $\mu$, $\chimax$
+\Ensure Updated $\psi_{v_1}, \psi_{v_2}$, updated message $\mu_{v_1 \leftrightarrow v_2}$
+\State Compute $\sqrt{\mu}$, $(\sqrt{\mu})^{-1}$ via \textsc{Syevd} for each env bond
+\State $\mathbf{cv}_i \leftarrow \textsc{AbsorbEnv}(\psi_{v_i},\, \sqrt{\mu})$
+       \quad $i = 1, 2$
+\State $\mathbf{cv}_i \leftarrow \textsc{PermuteCutToLast}(\mathbf{cv}_i)$
+\State $[\mathbf{Q}_i, \mathbf{R}_i] \leftarrow \textsc{AdaptiveQR}(\mathbf{cv}_i)$
+\State $\mathbf{RR} \leftarrow \mathbf{R}_1^\top \mathbf{R}_2$
+       \quad (via \textsc{Sgemm})
+\State $\tilde{\mathbf{R}} \leftarrow G(\mathbf{RR})$
+       \quad (host loop over $D^4$ entries)
+\State $[\mathbf{U}, \mathbf{s}, \mathbf{V}^\top] \leftarrow \textsc{Sgesvd}(\tilde{\mathbf{R}})$
+\State $\chi_{\text{new}} \leftarrow \min(\#\{s_i \geq \epsilon_{\text{cut}} s_0\},\, \chimax)$
+\State $\mathbf{cv}_i^{\text{new}} \leftarrow \mathbf{Q}_i \mathbf{M}_i$
+       \quad (bridge matrix $\mathbf{M}_i$ from $\mathbf{U}/\mathbf{V}^\top$, $\sqrt{\mathbf{s}}$)
+\State $\mathbf{cv}_i^{\text{new}} \leftarrow \textsc{InversePermuteCut}(\mathbf{cv}_i^{\text{new}})$
+\State $\mathbf{cv}_i^{\text{new}} \leftarrow \textsc{DeabsorbEnv}(\mathbf{cv}_i^{\text{new}},\,
+       (\sqrt{\mu})^{-1})$
+\State $\psi_{v_i} \leftarrow \mathbf{cv}_i^{\text{new}}$
+\State $\mu_{v_1 \to v_2} \leftarrow \mu_{v_2 \to v_1}
+       \leftarrow \mathrm{diag}(\lambda)$,
+       \quad $\lambda_i = s_i/\|\mathbf{s}\|_2$
+\end{algorithmic}
+\end{algorithm}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Implementation}
+\label{sec:implementation}
+% ══════════════════════════════════════════════════════════════════════════════
+
+The simulator compiles as a single translation unit (\texttt{main.cpp}) with
+\texttt{hipcc}, with the Pauli dimension fixed at $D=4$ at compile time;
+the only external dependencies are rocBLAS and rocSOLVER.
+All GPU-specific code lives in headers under \texttt{include/}, keeping the
+build a single invocation and enabling link-time optimization across the full
+gate pipeline.
+
+
+\begin{table}[ht]
+\centering
+\caption{Source file organization}
+\label{tab:files}
+\begin{tabular}{ll}
+\toprule
+File & Role \\
+\midrule
+\texttt{main.cpp}           & Driver, argument parsing, timing output table \\
+\texttt{estimate\_memory.py}& GPU memory predictor and FLOP estimator \\
+\texttt{include/types.hpp}  & \texttt{Scalar=float}, \texttt{HIP\_CHECK}, \texttt{D=4} \\
+\texttt{include/grid.hpp}   & Lattice graph, site/bond topology, 4-coloring \\
+\texttt{include/tensor.hpp} & \texttt{IsingState}: pre-allocated $\psi$ and messages \\
+\texttt{include/workspace.hpp} & GPU buffer pool, zero malloc during simulation \\
+\texttt{include/permute\_gpu.hpp} & HIP permutation kernel (\S\ref{sec:permute}) \\
+\texttt{include/gate.hpp}   & \texttt{apply\_binary\_gate}: full gate pipeline \\
+\texttt{include/physics.hpp}& \texttt{IsingSimulator}, Trotter layer, $R_{xx}$ layer \\
+\texttt{include/measures.hpp} & BP update, autocorrelation, Bethe partition fn \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ── Pipeline figure ───────────────────────────────────────────────────────────
+% \sw{calls} formats the software-call row at the bottom of each pipeline box.
+\newcommand{\sw}[1]{\\[1pt]{\color{gray!55}\footnotesize\ttfamily\hspace{1em}#1}}
+\begin{figure}[p]
+\centering
+\resizebox{\textwidth}{0.93\textheight}{%
+\begin{tikzpicture}[
+  font=\small,
+  every node/.style={align=left},
+  outerbox/.style={draw, rounded corners=5pt, thick,
+                   text width=13.8cm, minimum height=0.65cm,
+                   inner xsep=7pt, inner ysep=3pt,
+                   fill=#1!12, draw=#1!70!black},
+  stepbox/.style={draw, rounded corners=3pt,
+                  text width=13.2cm, minimum height=0.56cm,
+                  inner xsep=7pt, inner ysep=3pt,
+                  fill=#1!10, draw=#1!60!black, font=\small},
+  arr/.style={-{Stealth[length=4pt,width=3pt]}, thick, gray!70},
+  groupfit/.style={draw, rounded corners=6pt, dashed, thick,
+                   draw=gray!50, inner sep=7pt},
+  looplabel/.style={font=\footnotesize\itshape, text=gray!70, align=center},
+]
+
+% ── Outer loop header ─────────────────────────────────────────────────────────
+\node[outerbox=gray] (init)
+  {Initialize:\ $\psi_c \!\gets\! Z$,\ $\psi_{v\neq c}\!\gets\! I$,\
+               $\mu \!\gets\! \mathbf{I}_1$\ (all bonds $\chi\!=\!1$)};
+
+\node[looplabel, below=0.14cm of init] (forloop)
+  {for $t = 1,\ldots,T$:};
+
+% ── Phase 1: Trotter ──────────────────────────────────────────────────────────
+\node[outerbox=blue, below=0.14cm of forloop] (rz1)
+  {$R_z(h\,\delta t)$: apply unary phase gate to all sites%
+   \sw{apply\_unary\_gate}};
+
+\node[looplabel, below=0.35cm of rz1] (colorloop)
+  {4-color $R_{xx}$ sweep\ —\ for each gate $(v_1,\,v_2)$:};
+
+% inner gate steps
+\node[stepbox=teal, below=0.14cm of colorloop] (psqrt)
+  {\textbf{1.}\ \textsc{pseudo\_sqrt}\ per env bond of $v_1$ (then $v_2$):\
+   symmetrize $\mu$ $\to$ syevd $\to$ form
+   $\sqrt{\mu}$ and $\mu^{-1/2}$ on-device%
+   \sw{symmetrize\_copy\quad rocsolver\_ssyevd\quad form\_sqrt\_matrices}};
+
+\node[stepbox=teal, below=0.07cm of psqrt] (absorb)
+  {\textbf{2.}\ Absorb env, per site $i\!\in\!\{1,2\}$:\
+   $\mathbf{cv}_i \gets \sqrt{\mu_{e\to v_i}}\cdot\psi_{v_i}$
+   on all non-cut neighbor bonds%
+   \sw{rocblas\_sgemm\_strided\_batched}};
+
+\node[stepbox=blue!70!black, below=0.07cm of absorb] (perm1)
+  {\textbf{3.}\ Permute cut bond to last index, per site\ (no-op if already last)%
+   \sw{gpu\_tensor\_permute}};
+
+\node[stepbox=blue!70!black, below=0.07cm of perm1] (qr)
+  {\textbf{4.}\ QR $\times 2$, per site:\ $\mathbf{cv}_i = \mathbf{Q}_i\mathbf{R}_i$;\quad
+   $n_i = \chi_{\mathrm{cut}}D$,\
+   $m_i = \prod_{e\neq\mathrm{cut}}\chi_e$\ \ (sizes differ: corner $m\!=\!\chi D$,
+   edge $m\!=\!\chi^2 D$, interior $m\!=\!\chi^3 D$)%
+   \sw{rocsolver\_spotrf + rocblas\_strsm\ \ (Cholesky)\ /\ rocsolver\_sgeqrf + rocsolver\_sorgqr\ \ (Householder)}};
+
+\node[stepbox=blue!70!black, below=0.07cm of qr] (rr4)
+  {\textbf{5.}\ Reshape $R_i\!\to\!A_i$: separate $\chi_{\mathrm{cut}}$ and $D$ indices ($\times 2$);\quad
+   form $\mathbf{RR4} = \mathbf{A}_1 \mathbf{A}_2^\top\ \
+   [k_1 D \times k_2 D]$%
+   \sw{reshape\_R\_to\_A\quad (kernel, $\times 2$)\qquad rocblas\_sgemm}};
+
+\node[stepbox=orange!90!black, below=0.07cm of rr4] (gate)
+  {\textbf{6.}\ Contract gate:\ $\mathbf{oR4}_{d_1'd_2'kl}
+   = \sum_{d_1d_2} G_{d_1'd_2',d_1d_2}\,\mathbf{RR4}_{d_1d_2kl}$%
+   \sw{apply\_gate\_to\_RR4\quad (kernel, shared-mem $G$\,[$D^4$ floats])}};
+
+\node[stepbox=orange!90!black, below=0.07cm of gate] (svd)
+  {\textbf{7.}\ SVD:\ $\mathbf{oR4} = \mathbf{U}\mathbf{S}\mathbf{V}^\top$;\quad
+   truncate to $\chi_{\mathrm{new}} \le \chimax$;\quad
+   Vidal normalize: $\lambda_k \gets s_k/\|\mathbf{s}\|_2$\quad
+   [\,only CPU step: D2H of $k_{\mathrm{full}}$ singular values\,]%
+   \sw{rocsolver\_sgesvd}};
+
+\node[stepbox=red!70!black, below=0.07cm of svd] (recon)
+  {\textbf{8.}\ Build $\mathbf{M}_1$ from $\mathbf{U}\cdot\sqrt{S}$
+   and $\mathbf{M}_2$ from $\mathbf{V}^\top\!\cdot\!\sqrt{S}$,
+   per site ($\times 2$);\quad
+   reconstruct $\mathbf{cv}_i = \mathbf{Q}_i\mathbf{M}_i$%
+   \sw{build\_M\_from\_U\quad build\_M\_from\_Vt\quad (kernels, $\times 2$)\qquad
+       rocblas\_sgemm ($\times 2$)}};
+
+\node[stepbox=blue!70!black, below=0.07cm of recon] (perm2)
+  {\textbf{9.}\ Inverse permute: restore canonical bond ordering, per site%
+   \sw{gpu\_tensor\_permute}};
+
+\node[stepbox=teal, below=0.07cm of perm2] (deabs)
+  {\textbf{10.}\ \textsc{pseudo\_sqrt} again (per site, per env bond);\quad
+   deabsorb: $\psi_{v_i} \gets \mu^{-1/2}\!\cdot\!\mathbf{cv}_i$%
+   \sw{symmetrize\_copy\quad rocsolver\_ssyevd\quad form\_sqrt\_matrices\quad
+       rocblas\_sgemm\_strided\_batched}};
+
+\node[stepbox=gray!55!black, below=0.07cm of deabs] (upd)
+  {\textbf{11.}\ Write back:\ $\psi_{v_1},\psi_{v_2}\gets\mathbf{cv}_{1,2}$;\quad
+   update bond $\chi_{\mathrm{new}}$;\quad
+   $\mu \gets \mathrm{diag}(\lambda)$\ (Vidal gauge)%
+   \sw{hipMemcpy D2D ($\times 2$)\qquad hipMemcpy H2D (diagonal message)}};
+
+\node[outerbox=blue, below=0.35cm of upd] (rz2)
+  {$R_z(h\,\delta t)$: apply unary phase gate to all sites%
+   \sw{apply\_unary\_gate}};
+
+% ── Phase 2: BP ───────────────────────────────────────────────────────────────
+\node[outerbox=green!60!black, below=0.40cm of rz2] (bp)
+  {Belief propagation: iterate message updates until
+   $\max_e\delta_e < 10^{-5}$ or 100 sweeps%
+   \sw{bp\_update}};
+
+% ── Phase 3: Measure ──────────────────────────────────────────────────────────
+\node[outerbox=purple!70!black, below=0.30cm of bp] (meas)
+  {Measure $C(t)$: Bethe partition function in log-space with explicit sign tracking%
+   \sw{autocorrelation\_with\_bp}};
+
+% ── Arrows ────────────────────────────────────────────────────────────────────
+\foreach \from/\to in {
+  init/forloop, forloop/rz1, rz1/colorloop, colorloop/psqrt,
+  psqrt/absorb, absorb/perm1, perm1/qr, qr/rr4, rr4/gate,
+  gate/svd, svd/recon, recon/perm2, perm2/deabs, deabs/upd,
+  upd/rz2, rz2/bp, bp/meas}
+  \draw[arr] (\from) -- (\to);
+
+% ── Group box: gate pipeline ──────────────────────────────────────────────────
+\begin{pgfonlayer}{background}
+  \node[groupfit, fit=(colorloop)(psqrt)(absorb)(perm1)(qr)(rr4)
+                     (gate)(svd)(recon)(perm2)(deabs)(upd),
+        label={[font=\scriptsize\itshape,gray,rotate=90,anchor=south]left:
+               \texttt{apply\_binary\_gate}}] (gatebox) {};
+\end{pgfonlayer}
+
+\end{tikzpicture}%
+}
+\caption{%
+  \textbf{CppSim computational pipeline for one time step.}
+  Each box names the mathematical operation and the GPU primitive that executes it.
+  The inner group (dashed) is \texttt{apply\_binary\_gate}, called once per bond per
+  color class ($\leq\!24$ times on a $4\!\times\!4$ grid).
+  Color code: \textcolor{teal!70!black}{teal} = environment conditioning;
+  \textcolor{blue!70!black}{blue} = linear algebra (QR/permute);
+  \textcolor{orange!80!black}{orange} = gate contraction and SVD;
+  \textcolor{red!60!black}{red} = tensor reconstruction;
+  \textcolor{green!50!black}{green} = belief propagation;
+  \textcolor{purple!70!black}{purple} = observable measurement.
+  The only CPU computation in the hot path is the SVD truncation threshold (step~7),
+  requiring a $D\chi$-float D2H transfer; all other steps execute on-device.
+}
+\label{fig:pipeline}
+\end{figure}
+% ── End pipeline figure ───────────────────────────────────────────────────────
+
+\paragraph{Analytic Memory Model.}
+\label{sec:memory_model}
+
+The total GPU memory requirement for a $k \times l$ grid at bond dimension $\chi$ is:
+\begin{align}
+  \text{State:}\quad
+  M_\psi &= \bigl(4\chi^2 + 2(k+l-4)\chi^3 + (k-2)(l-2)\chi^4\bigr)
+             \cdot D \cdot \texttt{sizeof(float)}, \label{eq:mem_psi} \\
+  M_\mu  &= 2\bigl(k(l-1)+(k-1)l\bigr)\,\chi^2 \cdot \texttt{sizeof(float)},
+             \label{eq:mem_msg} \\
+  \text{Workspace:}\quad
+  M_W &= \bigl(4\,\chi^3 \cdot D\chi + 9\,(D\chi)^2 + 8\,\chi^2\bigr)
+          \cdot \texttt{sizeof(float)}.
+  \label{eq:mem_ws}
+\end{align}
+The dominant terms are $M_\psi \sim (k-2)(l-2)\chi^4 \cdot D$ (interior psi tensors)
+and $M_W \sim 4D\chi^4$ (large workspace buffers). For a $4\times4$ grid both terms
+are comparable at $\chi \geq 50$.
+
+% ══════════════════════════════════════════════════════════════════════════════
+% §6 Numerical Experiments — new content in separate file
+\input{experiments_section}
+% ══════════════════════════════════════════════════════════════════════════════
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Performance}
+\label{sec:performance}
+% ══════════════════════════════════════════════════════════════════════════════
+
+We characterize performance along two axes: how Trotter and BP time each scale
+with bond dimension $\chi$, and how CppSim compares to the Julia reference.
+
+At $\chi=50$, $4\times4$ grid, MI100, CppSim achieves a Trotter time of
+$\approx 8{,}300$\,ms/layer (Householder) vs.\ $\approx 20{,}000$\,ms/layer
+for the Julia/AMDGPU reference --- a $\mathbf{2.4\times}$ speedup --- coming
+primarily from the GPU permutation kernel (\S\ref{sec:permute}) and
+strided-batched GEMM for environment absorption.
+BP cost is higher in CppSim ($\approx 1{,}100$\,ms) than in Julia
+($\approx 8$\,ms) because CppSim runs up to 100 sweeps to full convergence
+whereas the Julia reference caps at 10 sweeps.
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\linewidth]{fig_timing_chi.png}
+\vspace{0.5em}
+\includegraphics[width=0.88\linewidth]{fig_breakdown_chi80.png}
+\caption{%
+  Performance at $\chi=80$, $4\times4$ grid, in full detail.
+  \emph{Top}: Trotter and BP time averaged per layer across the full $\chi$ range
+  (log-log), showing how cost scales with bond dimension for MI100 and MI60
+  in both QR modes.
+  \emph{Bottom}: the same two quantities layer by layer at $\chi=80$,
+  revealing the ramp-up phase (blue shading), saturation plateau, and
+  BP spikes at the trapped layers identified in Table~\ref{tab:trap_inventory}.}
+\label{fig:timing_chi}\label{fig:breakdown_chi80}
+\end{figure}
+
+\clearpage
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Portability}
+\label{sec:portability}
+% ══════════════════════════════════════════════════════════════════════════════
+
+CppSim targets AMD GPUs through the HIP portability layer, but performance
+portability across GPU generations requires understanding architecture-specific
+behavior.
+This section compares MI100 and MI60 in absolute timing and examines the
+numerical precision differences that arise from distinct compute architectures.
+
+Both MI100 (GFX908, CDNA1) and MI60 (GFX906, Vega20) have 32\,GB HBM2 and
+differ primarily in compute architecture (Table~\ref{tab:hardware}).
+The dominant operations --- SVD, QR, and environment absorption GEMMs --- are
+\emph{memory-bandwidth-bound} at the matrix shapes arising from $\chi \leq 100$
+on a $4\times4$ grid: the arithmetic intensity falls well below the ridge point
+of both architectures.
+This explains why the observed MI60/MI100 wall-clock ratio ($\approx5\times$,
+Figure~\ref{fig:timing_chi}) tracks the HBM2 bandwidth ratio ($1.2\times$)
+far less than the compute ratio ($6.3\times$): bandwidth, not FLOPS, is the
+bottleneck, and MI100's advantage comes from faster memory subsystem response
+and MFMA-accelerated reduction trees rather than raw compute throughput.
+
+\begin{table}[ht]
+\centering
+\caption{Hardware comparison: AMD MI100 vs.\ MI60.}
+\label{tab:hardware}
+\small
+\begin{tabular}{lrr}
+\toprule
+& MI60 & MI100 \\
+\midrule
+Architecture     & GFX906 (Vega20)  & GFX908 (CDNA1) \\
+FP32 peak        & 29.5\,TFLOPS     & 184.6\,TFLOPS \\
+HBM2 bandwidth   & 1{,}024\,GB/s    & 1{,}229\,GB/s \\
+VRAM             & 32\,GB           & 32\,GB \\
+Compute ratio    & 1$\times$        & 6.3$\times$ \\
+Bandwidth ratio  & 1$\times$        & 1.2$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Numerical precision across architectures.}
+A subtler portability issue is observed in the $\chi$-convergence of $C(t)$:
+at $\chimax=100$, MI60 produces values that drift systematically below MI100
+by $1$--$3\times10^{-3}$ at late times ($t \geq 12$), with the deviation growing
+monotonically across layers.
+This drift is absent at $\chimax \leq 80$ and is not caused by sign anomalies
+in the Bethe partition function (which appear at all $\chi$ values on both GPUs
+and recover within one layer).
+The most likely source is the gram matrix GEMM in the Cholesky-QR path
+(\S\ref{sec:qr}): $\mathbf{C} = \mathbf{cv}^\top \mathbf{cv}$ is a float32
+reduction over $k = \chimax^3$ terms ($k = 10^6$ at $\chi=100$).
+GFX906 (Vega20) implements SGEMM via scalar vector-ALU instructions (no
+native matrix multiply units), while GFX908 (CDNA1) uses dedicated MFMA
+instructions with a different reduction tree.
+Floating-point addition is non-associative, so the two reduction orders
+yield different rounding errors; the effect grows with $k = \chi^3$, consistent
+with the observed $\chi$-dependence of the drift.
+The Julia reference uses the same Cholesky-QR algorithm but in float64
+(\texttt{\_chol} variant), which makes the gram matrix computation essentially
+exact regardless of summation order.
+
+Two experiments would isolate this mechanism.
+First, replacing the float32 gram matrix GEMM with a mixed-precision call
+(\texttt{rocblas\_gemm\_ex} with \texttt{compute\_type = f64}) while keeping
+all other operations in float32 would confirm whether the gram matrix is the
+source: if MI60 and MI100 agree afterward, the reduction order in that single
+GEMM is responsible.
+Second, a complete float64 implementation at $\chimax=50$ would provide an
+architecture-independent reference and enable direct comparison with the Julia
+baseline.
+Since the workload at saturation is memory-bandwidth-bound
+(Section~\ref{sec:portability}), moving to float64 doubles the data traffic but does
+not increase the compute bottleneck; on both MI60 and MI100 the timing penalty
+would be modest and the accuracy gain substantial.
+
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Conclusion}
+\label{sec:conclusion}
+% ══════════════════════════════════════════════════════════════════════════════
+
+We have presented \textsc{CppSim}, a C++/HIP implementation of Heisenberg-picture
+tensor network dynamics for the 2D Ising model on AMD GPU hardware.
+Table~\ref{tab:comparison} summarises the implementation
+result against the Julia reference and the principal experimental findings.
+
+\begin{table}[ht]
+\centering
+\caption{\textsc{CppSim} at a glance.
+  \emph{Top}: implementation comparison vs.\ the Julia reference at $\chi=50$,
+  $4{\times}4$, MI100.
+  \emph{Bottom}: principal experimental findings from
+  Section~\ref{sec:experiments}.
+  $n^{*} = d_{\max}/(|J|\,\delta t)$ is the lightcone saturation depth;
+  $S_e$ is the half-chain entanglement entropy; $X = \chi^2$.}
+\label{tab:comparison}
+\smallskip
+{\small
+\begin{tabular}{lccccc}
+\toprule
+& GC & Trotter/layer & Speedup & Memory & Mean $|\Delta C(t)|$ vs f64 \\
+\midrule
+Julia\textsuperscript{\dag} & \checkmark & ${\sim}20{,}000$\,ms & $1\times$ & $2\times$ (ComplexF32) & ${\sim}9\times10^{-4}$ \\
+\textsc{CppSim}             & $\times$   & ${\sim}8{,}300$\,ms  & ${\sim}2.4\times$ & $1\times$ (real float32) & ${\sim}1.4\times10^{-5}$ \\
+\bottomrule
+\end{tabular}}
+\\[2pt]
+{\footnotesize \textsuperscript{\dag}Index permutation runs on CPU; full GPU offload is future work.}
+\bigskip
+\label{tab:findings}
+\smallskip
+{\small
+\begin{tabular}{p{3.6cm} p{4.2cm} p{4.6cm}}
+\toprule
+\textbf{Finding} & \textbf{Evidence} & \textbf{Implication} \\
+\midrule
+C4 symmetry eliminates BP metastable traps (Type~1)
+  & $5{\times}5$ (centre operator): 0 traps across all $\chi$, both QR modes, both GPUs; $4{\times}4$ (off-centre): multiple traps (Table~\ref{tab:trap_inventory})
+  & Place $Z_c$ at the geometric centre; prefer odd grids \\[4pt]
+
+Two distinct BP failure modes
+  & Type~1: $\delta < \varepsilon_\text{tol}$ (wrong basin, silent); Type~2: $\delta \gg \varepsilon_\text{tol}$ (non-convergence, self-announcing)
+  & Each mode requires different diagnostics and remedies \\[4pt]
+
+Metastable traps are reversible
+  & Alpha retry ($\alpha \leftarrow \alpha/2$) recovers physically consistent $C(t)$ within one or two resets
+  & Runtime retry is sufficient; no re-simulation required \\[4pt]
+
+Portable operating points
+  & $\chi \in \{40,\,60\}$ trap-free on both MI100 and MI60 across all tested grids
+  & Safe defaults for production runs on supported hardware \\[4pt]
+
+Diminishing returns above $\chi^{*} \approx 60$
+  & Gain ${<}0.2\%$ per step for $\chi > 60$ on $4{\times}4$; $C(t)$ curves overlap within line width
+  & $\chi \in [40,60]$ is optimal for $4{\times}4$; increase chi only when capacity boundary is active \\[4pt]
+
+Capacity boundary
+  & $S_e / \log X \geq 0.65$ signals PEPS bond dimension saturation
+  & Increase $\chi$, not $\alpha$, when boundary is reached \\[4pt]
+
+Validated memory model
+  & ${<}2\%$ prediction error at $\chi=110$ using $94\%$ VRAM
+  & Plan GPU memory before running; $10{\times}10$ at $\chi=100$ requires ${\approx}109$\,GB \\[4pt]
+
+Lightcone saturation governs run length
+  & $C(t)$ becomes unreliable beyond $n^{*}$ Trotter layers; verified on $4{\times}4$ and $5{\times}5$
+  & Set step budget to $n^{*}$ before launching long simulations \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\textsc{CppSim} runs bond dimensions up to $\chi=110$ on a single 32\,GB AMD GPU,
+a scale not previously reported for this model.
+The validated memory model projects the primary research target ---
+$10\times10$ at $\chi=100$, requiring $\approx109$\,GB --- within reach of
+AMD MI250X and MI350 hardware, opening a new scale of 2D quantum dynamics simulation.
+
+\paragraph{Outlook.}
+Beyond the immediate results, this work demonstrates that tensor network simulation
+at large bond dimension is a memory-bandwidth problem, not a compute problem:
+efficiency gains come from HBM bandwidth rather than FLOP count; real-number
+representation in the Pauli basis halves VRAM over complex storage; and on-device
+computation eliminates PCIe as the remaining bottleneck.
+Float32 precision itself becomes architecture-dependent at large $\chi$, pointing
+toward mixed-precision accumulation as a necessary step for reproducible results
+across GPU generations.
+These are not \textsc{CppSim}-specific conclusions --- they are design principles
+at the intersection where physicists choose what to simulate and computer scientists
+choose how.
+
+\paragraph{Availability.}
+Source code, build instructions, and experiment scripts are available from
+the corresponding author upon request.
+
+% ── Bibliography ──────────────────────────────────────────────────────────────
+\bibliographystyle{abbrvnat}
+\begin{thebibliography}{99}
+
+\bibitem{orus2014practical}
+R.~Or\'us.
+\newblock A practical introduction to tensor networks: Matrix product states
+  and projected entangled pair states.
+\newblock \emph{Annals of Physics}, 349:117--158, 2014.
+
+\bibitem{vidal2003efficient}
+G.~Vidal.
+\newblock Efficient classical simulation of slightly entangled quantum
+  computations.
+\newblock \emph{Physical Review Letters}, 91(14):147902, 2003.
+
+\bibitem{vidal2004efficient}
+G.~Vidal.
+\newblock Efficient simulation of one-dimensional quantum many-body systems.
+\newblock \emph{Physical Review Letters}, 93(4):040502, 2004.
+\newblock \doi{10.1103/PhysRevLett.93.040502}.
+
+\bibitem{rocblas}
+{AMD ROCm}.
+\newblock rocblas: {AMD ROCm BLAS} library.
+\newblock \url{https://github.com/ROCmSoftwarePlatform/rocBLAS}, 2024.
+
+\bibitem{rocsolver}
+{AMD ROCm}.
+\newblock rocsolver: {AMD ROCm LAPACK-like} library.
+\newblock \url{https://github.com/ROCmSoftwarePlatform/rocSOLVER}, 2024.
+
+\bibitem{sachdev2011quantum}
+S.~Sachdev.
+\newblock \emph{Quantum Phase Transitions}.
+\newblock Cambridge University Press, Cambridge, 2nd edition, 2011.
+\newblock \doi{10.1017/CBO9780511973765}.
+
+\bibitem{suzuki1976generalized}
+M.~Suzuki.
+\newblock Generalized {Trotter}'s formula and systematic approximants of
+  exponential operators.
+\newblock \emph{Communications in Mathematical Physics}, 51(2):183--190, 1976.
+
+\bibitem{golub2013matrix}
+G.~H.~Golub and C.~F.~Van~Loan.
+\newblock \emph{Matrix Computations}.
+\newblock Johns Hopkins University Press, 4th edition, 2013.
+\newblock ISBN 9781421407944.
+
+\bibitem{rudolph2025simulating}
+M.~S.~Rudolph and J.~Tindall.
+\newblock Simulating and sampling from quantum circuits with {2D} tensor
+  networks.
+\newblock \emph{arXiv preprint arXiv:2507.11424}, 2025.
+\newblock \url{https://arxiv.org/abs/2507.11424}.
+
+\bibitem{tindall2023gauging}
+J.~Tindall and M.~Fishman.
+\newblock Gauging tensor networks with belief propagation.
+\newblock \emph{SciPost Physics}, 15:222, 2023.
+\newblock \doi{10.21468/SciPostPhys.15.6.222}.
+
+\bibitem{yedidia2005constructing}
+J.~S.~Yedidia, W.~T.~Freeman, and Y.~Weiss.
+\newblock Constructing free-energy approximations and generalized belief
+  propagation algorithms.
+\newblock \emph{IEEE Transactions on Information Theory}, 51(7):2282--2312,
+  2005.
+\newblock \doi{10.1109/TIT.2005.850085}.
+
+\bibitem{liebrobinson}
+E.~H.~Lieb and D.~W.~Robinson.
+\newblock The finite group velocity of quantum spin systems.
+\newblock \emph{Communications in Mathematical Physics}, \textbf{28}:251--257,
+  1972.
+
+\end{thebibliography}
+
+% ── Appendices ────────────────────────────────────────────────────────────────
+\appendix
+
+\section{Correctness Fix History}
+\label{sec:fixes}
+
+During development, eleven correctness and performance issues were identified.
+Table~\ref{tab:fixes} summarizes the most significant.
+
+\begin{table}[ht]
+\centering
+\caption{Correctness and performance fixes during development.}
+\label{tab:fixes}
+\begin{tabular}{lll}
+\toprule
+Fix & File & Description \\
+\midrule
+A & \texttt{gate.hpp}     & Gate column index: \texttt{d1*D+d2} not \texttt{d1+D*d2} \\
+B/C & \texttt{gate.hpp}   & sv1/sv2 absorb must not interleave (shared workspace slots) \\
+D & \texttt{main.cpp}     & Center site: 0-indexed \texttt{(nx-1)/2, (ny-1)/2} (odd-grid fix) \\
+E & \texttt{measures.hpp} & Observable BP: $d=3$ (Z) at center, $d=0$ (I) elsewhere \\
+F & \texttt{measures.hpp} & BP on a \emph{copy} of messages; in-place corrupts Vidal gauge \\
+G & \texttt{measures.hpp} & Bethe edge: $Z_e = \sum_i \mu_{a\to b}[i]\,\mu_{b\to a}[i]$ \\
+H & \texttt{gate.hpp}     & Vidal normalization $\sum\lambda^2=1$ prevents float32 overflow \\
+I & \texttt{measures.hpp} & Explicit $Z_e$ sign tracking in Bethe partition function \\
+J & \texttt{measures.hpp} & Adaptive BP early exit (tol $= 10^{-5}$) \\
+K & \texttt{workspace.hpp}& \texttt{svd\_work} sized $D^2\chimax$ not $D\chimax$ (4$\times$ undersize) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Fix~D: the center site formula \texttt{nx/2-1} is incorrect for odd grids.
+The correct geometric center is \texttt{(nx-1)/2} (integer division), which
+places the center at the true midpoint for both even and odd grid sizes.
+The bug caused an off-by-one displacement on $5\times5$ and $7\times7$ grids,
+producing asymmetric lightcone patterns and premature Bethe norm explosion
+(see \S\ref{sec:lightcone}).
+
+Fix~K: the \texttt{svd\_work} buffer was sized at $\chimax D$ — a factor of $D=4$
+too small. The correct requirement is $\chimax D^2$ (derived in
+\S\ref{sec:memory_model}). This caused GPU page faults at $\chimax \geq 75$.
+The fault was invisible at $\chimax=70$ because that run never reached chi
+saturation in 20 layers, keeping $k_{1D} < \chimax D^2$ and the overflow landing
+in already-mapped GPU memory.
+
+\section{Memory Estimator}
+\label{app:estimator}
+
+\texttt{estimate\_memory.py} implements the analytic model of
+\S\ref{sec:memory_model} and generates four tables:
+
+\begin{description}
+  \item[Table~1] Total GPU memory (GB) for $k\times l$ grids
+    ($k,l \in [3,12]$) at $\chi \in \{10,20,30,50,70,100,120\}$.
+    Entries exceeding 32\,GB are flagged with \texttt{***}.
+  \item[Table~2] Breakdown (psi/messages/workspace/measures)
+    at $\chi=50$ and $\chi=100$, with maximum $\chi$ for 32\,GB and 80\,GB targets.
+  \item[Table~3] Maximum $\chimax$ for MI60, MI100, MI250X, MI300X,
+    A100 (40/80\,GB), H100 across all grids.
+  \item[Table~4] Per-gate FLOP estimates (QR + SVD + reconstruction GEMM)
+    and per-layer TFLOP totals for representative configurations.
+\end{description}
+
+\end{document}
