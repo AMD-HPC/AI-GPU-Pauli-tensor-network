@@ -49,22 +49,23 @@ def parse_log(path):
     m = re.search(r"Center site: \((\d+),(\d+)\)", text)
     center = (int(m.group(1)), int(m.group(2))) if m else None
 
+    _num = r"(?:[0-9.eE+\-]+|inf|nan)"   # matches finite, inf, nan
     row_pat = re.compile(
         r"^\s*(\d+)\s+"          # layer
         r"\d+\s+"                # chi_min
         r"\d+\s+"                # chi_max
         r"([0-9.eE+\-]+)\s+"    # C(t)
-        r"[0-9.eE+\-]+\s+"      # total(s)
-        r"[0-9.eE+\-]+\s+"      # trotter(ms)
-        r"[0-9.eE+\-]+\s+"      # bp(ms)
-        r"[0-9.eE+\-]+\s+"      # Cfn(ms)
-        r"\d+\s+"                # sweeps
-        r"[0-9.eE+\-]+\s+"      # delta
-        r"[0-9.eE+\-]+\s+"      # gate_err
-        r"([0-9.eE+\-]+)\s+"    # Se/logX
-        r"[0-9.eE+\-]+\s+"      # gap
-        r"[0-9.eE+\-]+\s+"      # norm
-        r"[0-9.eE+\-]+",        # n_off
+        + _num + r"\s+"          # total(s)
+        + _num + r"\s+"          # trotter(ms)
+        + _num + r"\s+"          # bp(ms)
+        + _num + r"\s+"          # Cfn(ms)
+        + r"\d+\s+"              # sweeps
+        + _num + r"\s+"          # delta
+        + _num + r"\s+"          # gate_err
+        + r"([0-9.eE+\-]+)\s+"  # Se/logX
+        + _num + r"\s+"          # gap
+        + _num + r"\s+"          # norm  ← can be 'inf'
+        + _num,                  # n_off
         re.MULTILINE,
     )
 
@@ -87,7 +88,7 @@ def parse_log(path):
         gm  = grid_pat.search(text, pos)
         if gm is None:
             continue
-        numbers = re.findall(r"[0-9]+\.[0-9]+", gm.group(1))
+        numbers = re.findall(r"-?[0-9]+(?:\.[0-9]+)?(?:[eE][+\-]?\d+)?", gm.group(1))
         if len(numbers) != nrows * ncols:
             continue
         grid = np.array([float(x) for x in numbers]).reshape(nrows, ncols)
