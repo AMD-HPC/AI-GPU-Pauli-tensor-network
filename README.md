@@ -4,8 +4,9 @@ A C++/HIP implementation of real-time quantum dynamics for the 2D transverse-fie
 Ising model, using Tensor Network (TN) methods in the Heisenberg picture on AMD GPUs.
 
 Companion to the Julia reference implementation
-`2dIsing_dynamics_Heisenbergpicture_multi.jl`. Achieves **3× faster trotter per layer**
-at chi=50 and runs bond dimensions up to chi=120 on a single 32 GB AMD GPU.
+`2dIsing_dynamics_Heisenbergpicture_multi.jl`. Achieves **2.4× faster trotter per layer**
+at chi=50 and has demonstrated the first tensor-network simulation of a 10×10 and 11×11
+grid at χ=100 on AMD MI355X (309 GB HBM3E).
 
 ---
 
@@ -51,12 +52,11 @@ where `Z_e = Σ_i μ_{a→b}[i] × μ_{b→a}[i]` is the Bethe edge correction.
 
 ### Architecture notes
 
-| GPU | Architecture | chi limit (4×4) | Notes |
-|-----|-------------|-----------------|-------|
-| MI60  | GFX906 (Vega)  | ~110 | rocBLAS Tensile gaps at large GEMM dims |
-| MI100 | GFX908 (CDNA1) | 125  | Full rocBLAS/rocSOLVER coverage |
-| MI250X| GFX90A (CDNA2) | 177  | |
-| MI300X| CDNA3          | 196  | |
+| GPU    | Architecture   | VRAM    | chi limit (4×4) | Notes |
+|--------|---------------|---------|-----------------|-------|
+| MI60   | GFX906 (Vega)  | 32 GB  | ~110 | rocBLAS Tensile gaps at large GEMM dims |
+| MI100  | GFX908 (CDNA1) | 32 GB  | 125  | Primary development target |
+| MI355X | GFX942 (CDNA4) | 309 GB | 200+ | Enables 10×10/11×11 at χ=100 |
 
 Different ROCm Docker images are required per architecture family.
 
@@ -64,16 +64,23 @@ Different ROCm Docker images are required per architecture family.
 
 ## Build
 
+**PHYS_DIM=4 is mandatory** for all physics runs (Pauli basis). The Makefile default
+is 4, but always pass it explicitly to avoid silent mismatches:
+
 ```bash
-hipcc -O2 -std=c++17 -DPHYS_DIM=4 -I./include -o main main.cpp \
+make clean && make main PHYS_DIM=4
+```
+
+This is equivalent to:
+```bash
+hipcc -O3 -std=c++17 -DPHYS_DIM=4 -I./include -o main main.cpp \
       -lrocblas -lrocsolver -lm
 ```
 
-Test binary (3×3 golden values):
+Tests (use PHYS_DIM=2 for unit tests; PHYS_DIM=4 for golden-value test):
 ```bash
-hipcc -O0 -g -std=c++17 -DPHYS_DIM=4 -I./include \
-      -o tests/test_3x3_golden tests/test_3x3_golden.cpp \
-      -lrocblas -lrocsolver -lm
+make tests PHYS_DIM=4       # build and run all tests
+make test_3x3_golden PHYS_DIM=4
 ```
 
 ---
@@ -81,7 +88,7 @@ hipcc -O0 -g -std=c++17 -DPHYS_DIM=4 -I./include \
 ## Usage
 
 ```
-./main [nx] [ny] [chi_max] [n_steps] [dt] [h] [J] [cutoff]
+./main [nx] [ny] [chi_max] [n_steps] [dt] [h] [J] [cutoff] [--qr=MODE] [--bp=MODE]
 ```
 
 | Argument | Default | Description |
@@ -94,32 +101,44 @@ hipcc -O0 -g -std=c++17 -DPHYS_DIM=4 -I./include \
 | `h` | -1.0 | Transverse field strength |
 | `J` | -1.0 | Ising coupling |
 | `cutoff` | 1e-11 | SVD singular value cutoff |
+| `--qr=householder` | **default** | Backward-stable QR; uniform gauge; always safe |
+| `--qr=adaptive` | | Cholesky-QR for large tall-thin matrices, Householder otherwise; 22–35% faster on MI355X |
+| `--qr=cholesky` | | Always attempt Cholesky; for benchmarking only |
+| `--bp=diag` | **default** | Undamped diagonal BP messages |
+| `--bp=damped --alpha=X` | | Damped BP with momentum factor α ∈ (0,1]; helps escape traps |
+
+**Note**: `--qr=adaptive` is faster on MI355X (HBM3E unlocks Cholesky compute advantage)
+but is equivalent to Householder on MI100 (bandwidth-bound). All published results use
+`--qr=householder` for reproducibility across GPU generations.
 
 ### Example runs
 
 ```bash
-# Standard 4×4 benchmark
-./main 4 4 50 20 0.1 -1.0 -1.0 1e-11
+# Standard 4×4 benchmark (all paper results)
+./main 4 4 50 20 0.1 -1.0 -1.0 1e-11 --qr=householder
 
-# High bond dimension
-./main 4 4 100 20 0.1 -1.0 -1.0 1e-11
+# High bond dimension on MI355X
+./main 10 10 100 38 0.1 -1.0 -1.0 1e-11 --qr=householder
 
-# Larger grid (requires more VRAM — check estimate_memory.py first)
-./main 6 6 50 20 0.1 -1.0 -1.0 1e-11
+# Adaptive QR (MI355X recommended)
+./main 4 4 50 20 0.1 -1.0 -1.0 1e-11 --qr=adaptive
+
+# Check memory before running large grids
+python3 estimate_memory.py
 ```
 
 ### Output format
 
 ```
-Layer  chi_min  chi_max  C(t)         total(s)    trotter(ms)  bp(ms)     Cfn(ms)
-------  -------  -------  ------------ ----------  ------------ ---------- ----------
-1       1        2        0.922619     0.756       678.2        75.7       1.5
+Layer  chi_min  chi_max  C(t)         total(s)    trotter(ms)  bp(ms)     Cfn(ms)    sweeps  delta
+------  -------  -------  ------------ ----------  ------------ ---------- ---------- ------- ----------
+1       1        2        0.922619     0.237       191.5        43.1       2.1        3       0.00e+00
 ...
 ```
 
-`chi_min`/`chi_max` are the minimum and maximum bond dimensions across all bonds after
-that layer. `trotter` is the Rxx gate sweep time, `bp` is the BP environment update,
-`Cfn` is the correlation function evaluation.
+`chi_min`/`chi_max`: min and max bond dimension across all bonds after that layer.
+`sweeps`: BP iterations to convergence. `delta`: final max message change — together
+these identify BP traps (sweeps ≥ 30 with delta < 1e-5 = converged to wrong fixed point).
 
 ---
 
@@ -351,17 +370,20 @@ Householder (GEQRF+ORGQR+`extract_upper_triangle` kernel) otherwise.
 
 ---
 
-## Target hardware
+## Hardware requirements and achieved results
 
-The primary research target is a **10×10 grid at chi=100** on the AMD MI350,
-requiring ~109 GB HBM. From `estimate_memory.py`:
+From `estimate_memory.py` (float32, D=4):
 
-| Grid  | chi | Memory  | Fits on          |
-|-------|-----|---------|-----------------|
-| 4×4   | 100 | 12.9 GB | MI100, MI60      |
-| 4×4   | 120 | 26.8 GB | MI100, MI60      |
-| 10×10 | 100 | ~109 GB | MI300X, MI350    |
-| 10×10 | 120 | ~207 GB | MI350            |
+| Grid  | chi | Memory  | Fits on        | Status |
+|-------|-----|---------|----------------|--------|
+| 4×4   | 100 | 12.9 GB | MI100, MI60    | ✓ done |
+| 4×4   | 120 | 26.8 GB | MI100, MI60    | ✓ done |
+| 10×10 | 100 | ~109 GB | MI355X         | ✓ done (38 layers, job 2208) |
+| 11×11 | 100 | ~130 GB | MI355X         | ✓ done (38 layers, job 2208) |
+| 10×10 | 120 | ~207 GB | MI355X         | feasible (not yet run) |
+
+The 10×10 and 11×11 at χ=100 are the first tensor-network simulations of these
+system sizes and are the primary experimental results of the companion paper.
 
 ---
 
