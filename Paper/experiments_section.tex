@@ -6,6 +6,15 @@
 All experiments use $h = J = -1.0$, $\delta t = 0.1$,
 $\epsilon_{\mathrm{cut}} = 10^{-11}$, and float32 precision on AMD MI100
 (GFX908, 32\,GB HBM2), unless MI60 (GFX906) is explicitly noted.
+Although $\epsilon_{\mathrm{cut}} = 10^{-11}$ lies below the float32 noise
+floor ($\varepsilon_{\mathrm{mach}} \approx 10^{-7}$), it is compatible with
+float32 arithmetic because rocSOLVER \texttt{SGESVD} returns singular values
+as float32 scalars representable down to $\sim10^{-38}$, and the threshold is
+applied as a relative comparison $s_i \geq \epsilon_{\mathrm{cut}}\,s_0$.
+In practice, all physically meaningful singular values lie well above
+$10^{-7}\,s_0$; the cutoff acts only to discard subnormal numerical zeros
+produced by rounding, leaving $\chimax$ as the active truncation constraint
+in every experiment.
 The center observable is $Z_c$ at site $(\lfloor(N_x-1)/2\rfloor,\lfloor(N_y-1)/2\rfloor)$,
 the geometric center of the grid.
 
@@ -125,7 +134,7 @@ BP sweeps\,/\,$\delta$ &
   sweeps\,$\geq 30$ \& $\delta < \epsilon_{\mathrm{tol}}$: trapped layer (\S\ref{sec:bp_convergence}) \\
 $S_e / \log\chi$ &
   $-\sum_k \lambda_k^2 \log\lambda_k^2 \,/\, \log\chi$ &
-  $\geq 0.5$: increase $\chi$, not $\alpha$ \\
+  $\geq 0.5$: increase $\chi$, not $\alpha$ (BP damping, \S\ref{sec:bp_convergence}) \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -154,7 +163,7 @@ where $S_e = -\sum_k \lambda_k^2 \log\lambda_k^2$ is the operator-space
 entanglement entropy (OSEE) of the Vidal singular values on bond $e$.
 When $S_e / \log\chi \geq 0.5$, the bond is more than half-saturated and
 the variational manifold at bond dimension $\chi$ is approaching its capacity;
-increasing $\alpha$ cannot compensate, and increasing $\chi$ is the only remedy
+increasing the BP damping factor $\alpha$ cannot compensate, and increasing $\chi$ is the only remedy
 (\S\ref{sec:bp_convergence}, capacity boundary).
 
 % ── Chi convergence figures and trap table ────────────────────────────────────

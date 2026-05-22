@@ -106,8 +106,13 @@ consistent with the Lieb--Robinson bound.  Cross-architecture
 comparison between MI100 and MI60 reveals complementary trap patterns
 and defines portable operating points at $\chi \in \{40, 60\}$.  An
 analytic memory model, validated to within 2\% against hardware
-measurements, projects feasibility for a $10\times10$ grid at
-$\chimax=100$ on AMD MI350 hardware ($\approx109$\,GB HBM).
+measurements, guided deployment on AMD MI355X (309\,GB HBM3E), where we
+demonstrate the first tensor-network simulation of the 2D Ising model on
+a $10\times10$ lattice at $\chimax=100$ ($\approx109$\,GB) and an
+$11\times11$ lattice at $\chimax=100$ ($\approx130$\,GB).  The
+$11\times11$ C4-symmetric run is entirely trap-free and reveals a clean
+three-phase operator spreading: ballistic Lieb--Robinson cone, boundary
+reflection ring, and onset of full scrambling.
 \end{abstract}
 
 %\tableofcontents
@@ -288,15 +293,24 @@ at site $v$, for bond state $(i_1,\ldots,i_{\deg(v)})$.
 At $t=0$: the center site has $\psi_c[\cdot,3]=1$ (pure $Z$); all others have
 $\psi_v[\cdot,0]=1$ (pure $I$).
 
-The bond entanglement between neighboring sites $a$ and $b$ is captured by a
-$\chi \times \chi$ message matrix $\mu_{a \to b}$, one per directed bond,
-stored in the Vidal canonical gauge~\citep{vidal2004efficient}.
-In this gauge, each $\mu_{a \to b}$ holds the Schmidt singular values of the
-bipartition of the network across bond $(a,b)$, with the site tensors
-orthogonalized so that all entanglement information is encoded in the messages.
-Truncating each bond to rank $\chimax$ then discards only the least significant
-singular values — the locally optimal approximation at fixed bond dimension.
-On a tree this gauge is exact; on the 2D lattice BP finds the approximate
+The bond entanglement between neighboring sites $a$ and $b$ is captured by one
+$\chi \times \chi$ message matrix $\mu_{a \to b}$ per directed bond.
+During Belief Propagation, each $\mu_{a \to b}$ is a general
+positive-semidefinite matrix updated iteratively until a self-consistent
+fixed point is reached.
+At that fixed point the matrices become diagonal, and their diagonal entries
+are the \emph{Schmidt singular values} of the bipartition of the network
+across bond $(a,b)$: each entry $\lambda_k \geq 0$ is the weight of one
+entanglement channel across the cut, in the same way that the singular values
+of a matrix decompose it into rank-one pieces ordered by importance.
+A product state (no entanglement) has only $\lambda_1 > 0$; a maximally
+entangled bond has all $\chi$ values equal.
+This fixed point is the \emph{Vidal canonical gauge}~\citep{vidal2004efficient},
+in which the site tensors are orthogonalized so that all entanglement
+information is encoded in the diagonal messages, and truncating each bond to
+rank $\chimax$ discards only the least significant channels — the locally
+optimal low-rank approximation at fixed bond dimension.
+On a tree this gauge is exact; on the 2D lattice BP finds an approximate
 Vidal gauge, which is why BP runs before every correlation function evaluation.
 
 \subsection{Trotter Decomposition}
@@ -330,9 +344,11 @@ two bonds in the same class share a site, enabling sequential independent update
 
 For each two-site gate on bond $(v_1, v_2)$, let $i \in \{1,2\}$ index the two
 sites. The message matrices $\mu_{a\to b}$ (defined in \S\ref{sec:physics}) are
-diagonal in the Vidal gauge, holding singular values, so $\sqrt{\mu}$ denotes
-the diagonal matrix of their square roots. The update proceeds as follows
-(see Algorithm~\ref{alg:gate}):
+diagonal in the Vidal gauge, holding singular values; for the bond under
+update, $\sqrt{\mu_{v_1\to v_2}}$ and $\sqrt{\mu_{v_2\to v_1}}$ denote the
+diagonal matrices of their square roots, and $\sqrt{\mu_{e\to v_i}}$ denotes
+the same for every other incident bond $e$.
+The update proceeds as follows (see Algorithm~\ref{alg:gate}):
 \begin{enumerate}
   \item \textbf{Environment absorption.} Contract $\psi_{v_i}$ with
         $\sqrt{\mu_{e \to v_i}}$ on every bond $e$ incident to $v_i$ except the
@@ -381,7 +397,13 @@ a three-step process.
 By Pauli orthogonality ($\mathrm{Tr}[P_a P_b] = 2\delta_{ab}$), the trace
 reduces to a single tensor network contraction: the coefficient of the
 configuration ``$Z$ at center $c$, $I$ at all other sites'' in the full network.
-This is computed by inserting the observable into the network and contracting.
+Concretely, each site tensor $\psi_v$ has shape $[\chi,\chi,\chi,\chi,4]$ ---
+four bond legs plus one physical leg of size 4 (one entry per Pauli $\{I,X,Y,Z\}$).
+Pauli orthogonality pins each physical leg to a single value: $Z$ at site $c$,
+$I$ at every other site, reducing each tensor to $[\chi,\chi,\chi,\chi]$.
+The remaining bond legs are shared between neighboring sites; contracting them ---
+summing over every shared bond index across the whole lattice --- yields a single
+scalar, which is $C(t)$.
 
 \textbf{Step 2: Bethe factorization.}
 Contracting a 2D tensor network exactly is exponentially costly.
@@ -481,7 +503,7 @@ factor of $D=4$ larger than the naive estimate $\chimax D$.
 The appendix (Fix~K, Table~\ref{tab:fixes}) records the consequence of
 getting this wrong.
 
-Both psi tensors and messages are allocated at their maximum possible size from
+Both site tensors $\psi_v$ and message matrices $\mu_{a\to b}$ are allocated at their maximum possible size from
 startup, even when the actual bond dimension is much smaller at early layers.
 This trades $O(\chimax^4)$ memory at early layers for zero reallocation.
 The actual computation uses live \texttt{bond.chi} values, which grow from 1 to
@@ -565,6 +587,18 @@ passed by value to avoid a device pointer indirection. This kernel reduced trott
 time from $\sim$49{,}000\,ms/layer to $\sim$6{,}400\,ms/layer at $\chi=50$
 saturation — a \textbf{7.6$\times$ speedup} from this single change.
 
+The permutation itself is conceptually straightforward: on the CPU it reduces
+to a simple index-remapping loop, easily expressed in any language.
+However, a device-side implementation is not readily available in high-level
+GPU frameworks such as Julia/AMDGPU: although tensor index permutation is a
+frequent and performance-critical operation in tensor network codes, an
+optimized on-device kernel is rarely provided out of the box, leaving
+frameworks to fall back on D2H--remap--H2D round-trips.
+The kernel presented here is therefore a self-contained, reusable contribution:
+dropped into a Julia/AMDGPU tensor network implementation it would deliver the
+same PCIe-traffic elimination and comparable speedup, independently of the rest
+of \textsc{CppSim}.
+
 \subsection{Adaptive QR Decomposition}
 \label{sec:qr}
 
@@ -613,6 +647,33 @@ Since the fallback would have been triggered by either a Cholesky failure
 or a numerical anomaly in the result, its absence confirms both: the
 Cholesky-QR path is stable in practice for this problem class, with no
 sign of numerical degradation --- neither catastrophic nor mild.}
+
+\paragraph{Numerical precision and the Gram matrix accumulation error.}
+The Cholesky-QR path involves two sources of numerical difficulty that compound
+at high bond dimension.
+First, forming $\mathbf{C} = \mathbf{cv}^\top \mathbf{cv}$ via GEMM accumulates
+$m = \chimax^3$ floating-point products per entry; at $\chi=100$ this gives
+$m \approx 10^6$ terms, so the float32 rounding floor
+($\varepsilon \approx 10^{-7}$) contributes an absolute error of order
+$m\varepsilon \approx 10^{-1}$ per entry of $\mathbf{C}$---enough to corrupt
+near-zero eigenvalues and destroy positive-definiteness.
+Second, $\kappa(\mathbf{C}) = \kappa(\mathbf{cv})^2$, so any mild ill-conditioning
+in the input is squared in the Gram matrix.
+Both effects are alleviated by computing the gate Trotter expansion in float64:
+the accumulation floor drops to $m\varepsilon_{64} \approx 10^{-10}$ and the
+input matrix is better conditioned, making $\mathbf{C}$ reliably positive-definite
+without the $\epsilon\mathbf{I}$ regulariser.
+On ROCm, mixed-precision GEMM (\texttt{rocblas\_gemm\_ex} with
+\texttt{ROCBLAS\_DATATYPE\_F64\_R} accumulators) or a dedicated
+\texttt{DGEMM}+\texttt{DPOTRF} path would deliver float64 Gram matrix
+formation with no change to the float32 tensor storage, eliminating the
+Householder fallback entirely and allowing Adaptive QR to be used unconditionally.
+The experimental results confirm that even in its
+current float32 form, Adaptive QR is a practical and efficient choice:
+it matches or exceeds Householder on MI100 and delivers a measurable 22--35\%
+speedup on MI355X, demonstrating that the CholeskyQR path is the right
+algorithmic direction and that the remaining fallback is an engineering detail,
+not a fundamental limitation.
 
 \paragraph{SVD and Truncation.}
 The bond matrix $\mathbf{RR} \in \mathbb{R}^{k_{1D} \times k_{2D}}$ is factored

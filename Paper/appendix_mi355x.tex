@@ -37,65 +37,74 @@ has a direct consequence for algorithm mode selection explained below.
 
 Table~\ref{tab:grid_scaling_mi355x} reports per-layer Trotter time averaged
 exclusively over \emph{saturated} layers (those where $\chimax^{\min} =
-\chimax^{\max} = 50$), which is the only fair cross-chip comparison.
+\chimax^{\max} = 50$).
 Layers in the growing phase have smaller effective $\chi$ and therefore cheaper
-contractions; including them biases the average toward the faster architecture
-that reaches saturation later.
+contractions; including them would bias any average.
+Because MI100 and MI355X are different GPU generations with different memory
+subsystems, absolute cross-chip timing comparisons are not meaningful;
+instead, each chip's results are expressed as ratios relative to its own
+$3\times3$ Householder baseline, so only within-chip scaling and
+algorithm-mode differences are claimed.
 
 \begin{table}[ht]
 \centering
-\caption{Trotter time per layer (ms) at $\chi=50$, saturated layers only.
-  $n$ = number of saturated layers averaged.
-  ``no\_sat'' = chi never fully saturates within the run length.
-  MI355X Adap/MI100 Adap speedup is $\geq 1.4\times$ across all grids where both
-  architectures saturate; it grows with grid size as HBM3E pressure is relieved.}
+\caption{Trotter time per layer at $\chi=50$, saturated layers only, expressed as
+  ratios relative to the $3\times3$ Householder time on each chip.
+  All four columns share the same reference base within their chip, so
+  cross-chip comparisons of absolute speed are avoided; only the
+  within-chip scaling and Adap/HH ratio are claimed.
+  ``no\_sat'' = $\chimax^{\min} \neq \chimax^{\max}$, not all bonds reached $\chi=50$;
+  ``---'' = run not collected.
+  On MI100, Adap tracks HH closely (bandwidth-bound, algorithm invisible).
+  On MI355X, the Adap column peels away from HH with growing grid size,
+  reflecting the Cholesky compute advantage unlocked by HBM3E.}
 \label{tab:grid_scaling_mi355x}
 \smallskip
 \small
-\begin{tabular}{r r rr rr}
+\begin{tabular}{r r cc cc}
 \toprule
-& & \multicolumn{2}{c}{MI100} & \multicolumn{2}{c}{MI355X} \\
+& & \multicolumn{2}{c}{MI100 (ref = $3\times3$ HH)} & \multicolumn{2}{c}{MI355X (ref = $3\times3$ HH)} \\
 \cmidrule(lr){3-4}\cmidrule(lr){5-6}
-Grid & Bonds & Adap & HH & HH & Adap \\
+Grid & Bonds & HH & Adap & HH & Adap \\
 \midrule
-$3\times3$  & 12  & 3{,}473\,(n=9)  & 3{,}331\,(n=14) & 2{,}644\,(n=24) & 2{,}067\,(n=24) \\
-$4\times4$  & 24  & 11{,}835\,(n=9) & 12{,}398\,(n=9) & 9{,}707\,(n=19) & 7{,}286\,(n=19) \\
-$5\times5$  & 40  & 22{,}850\,(n=2) & 25{,}213\,(n=9) & 20{,}133\,(n=19)& 14{,}683\,(n=19)\\
-$6\times6$  & 60  & 37{,}737\,(n=2) & 41{,}470\,(n=2) & 34{,}331\,(n=12)& 22{,}192\,(n=12)\\
-$7\times7$  & 84  & no\_sat         & 60{,}564\,(n=2) & 51{,}754\,(n=12)& 34{,}895\,(n=12)\\
-$8\times8$  & 112 & no\_sat         & no\_sat         & 73{,}257\,(n=20)& ---            \\
+$3\times3$ & 12  & 1.00  & 1.04    & 1.00  & 0.78  \\
+$4\times4$ & 24  & 3.72  & 3.55    & 3.67  & 2.76  \\
+$5\times5$ & 40  & 7.57  & 6.86    & 7.62  & 5.55  \\
+$6\times6$ & 60  & 12.45 & 11.33   & 12.98 & 8.39  \\
+$7\times7$ & 84  & 18.18 & no\_sat & 19.57 & 13.20 \\
+$8\times8$ & 112 & no\_sat & no\_sat & 27.71 & ---  \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Architecture speedup.}
-The MI355X Householder runs are 15--21\% faster than MI100 Householder across all
-grid sizes ($0.79\times$--$0.85\times$ wall-clock ratio), a modest gain that
-reflects the memory-bandwidth-bound nature of the workload at $\chi=50$: the
-Trotter contraction is $O(\chi^3 D)$ compute on $O(\chi^2 D)$ data, and HBM3E's
-bandwidth advantage over HBM2 only partially compensates for the short arithmetic
-intensity.
+\paragraph{Grid scaling.}
+Both chips show nearly identical HH scaling ratios across grid sizes
+(MI100: 1.00 $\to$ 18.18 at $7\times7$; MI355X: 1.00 $\to$ 19.57),
+confirming that the workload is the same physical problem on both architectures
+and that the normalization is consistent.
+The scaling is super-linear in bond count because the Trotter contraction is
+$O(\chi^3 D)$ per bond: doubling the number of bonds more than doubles the
+cost once saturation is reached on all bonds simultaneously.
+The MI100 ``no\_sat'' entries at $7\times7$ and $8\times8$ reflect a VRAM
+ceiling (32\,GB HBM2 is exhausted before all bonds reach $\chi=50$), not
+a compute or algorithm limitation; the scaling curve itself is unaffected.
 
 \paragraph{Adaptive QR unlocked by HBM3E.}
-A qualitatively different result appears in the Adaptive mode comparison.
-On MI100, Adaptive and Householder run at essentially the same speed (within 5\%,
-both bandwidth-saturated); on MI355X, Adaptive is \textbf{22--35\% faster} than
-Householder on the same chip, and \textbf{36--41\% faster} than MI100 Adaptive.
-The mechanism: Cholesky-QR (Adaptive's primary branch) is an $O(\chi^3)$
-triangular solve versus Householder's $O(\chi^3)$ full QR, but Cholesky has a
-smaller constant and lower memory traffic per contraction.
-On MI100, where HBM2 keeps both modes bandwidth-saturated, this constant factor
-is invisible.
-On MI355X, HBM3E delivers data fast enough that the compute bottleneck is exposed;
+The key result is visible within the MI355X columns: the Adap ratio drops
+progressively below the HH ratio as grid size grows ---
+from $0.78$ vs.\ $1.00$ at $3\times3$ to $8.39$ vs.\ $12.98$ at $6\times6$
+(a \textbf{35\% saving} over HH on the same chip).
+On MI100, the same comparison shows Adap tracking HH within 10\% at all grid
+sizes (e.g.\ $11.33$ vs.\ $12.45$ at $6\times6$, a 9\% difference), consistent
+with both modes being memory-bandwidth-saturated on HBM2.
+The mechanism: Cholesky-QR (Adaptive's primary branch) has a smaller compute
+constant and lower memory traffic per contraction than Householder QR.
+On MI100, HBM2 keeps both modes bandwidth-bound and the constant is invisible.
+On MI355X, HBM3E delivers data fast enough to expose the compute bottleneck;
 Cholesky's lower constant then translates directly into wall-clock savings.
 This is a hardware--software co-design effect: the same algorithm choice that
-appeared neutral on MI100 yields a $\mathbf{1.4\times}$ improvement on MI355X.
-
-The $\sim 1.6\times$ total Adaptive speedup (MI355X vs.\ MI100) decomposes into
-${\sim}1.2\times$ from architecture alone (HBM3E bandwidth, visible in
-Householder-vs-Householder) and ${\sim}1.3\times$ from the interaction of
-algorithm choice and memory subsystem (Cholesky FLOPS unlocked when bandwidth
-pressure is relieved).
+is neutral on one memory subsystem yields a consistent, growing advantage
+on the next generation.
 
 \begin{figure}[ht]
 \centering
@@ -132,7 +141,7 @@ Table~\ref{tab:traps_mi355x} records Type-1 trap occurrences detected by
 Grid    & HH trap layers & Adap trap layers \\
 \midrule
 $3\times3$ & 15, 16         & 30               \\
-$4\times4$ & 19             & 26               \\
+$4\times4$ & 19             & none             \\
 $5\times5$ & none           & none             \\
 $6\times6$ & none           & none             \\
 $7\times7$ & none           & none             \\
@@ -227,10 +236,11 @@ increasingly uniform.
 
 The $11\times11$ lattice has an odd number of sites in each direction, placing
 the center site $(5,5)$ at the exact C4 symmetry axis of the square lattice.
-As established in Section~\ref{sec:bp_traps}, C4-symmetric configurations
-eliminate the BP fixed-point multiplicity that causes Type-1 traps: BP
-converges to a unique, gauge-uniform fixed point at every layer, making the
-$11\times11$ run the cleanest possible spatial scrambling measurement.
+C4-symmetric configurations eliminate the BP fixed-point multiplicity that
+causes traps: when the operator is placed at the exact symmetry axis of the
+lattice, BP converges to a unique, gauge-uniform fixed point at every layer,
+making the $11\times11$ run the cleanest possible spatial scrambling
+measurement.
 
 \begin{figure}[ht]
 \centering
