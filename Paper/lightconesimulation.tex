@@ -563,7 +563,7 @@ element by decomposing the input flat index (column-major) into a multi-index,
 applying the permutation, and computing the output flat index:
 
 \begin{lstlisting}[language=C++, basicstyle=\ttfamily\footnotesize,
-  caption={GPU tensor permutation kernel}]
+  caption={GPU tensor permutation kernel.}]
 __global__ void tensor_permute_kernel(
     const float* __restrict__ src,  // input tensor (column-major flat)
     float* __restrict__ dst,        // output tensor (permuted flat)
