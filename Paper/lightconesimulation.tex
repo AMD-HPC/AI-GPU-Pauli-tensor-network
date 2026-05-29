@@ -85,14 +85,14 @@
 \begin{abstract}
 We present \textsc{CppSim}, a C++/HIP 2D Ising simulator for
 Heisenberg-picture tensor network time evolution on AMD GPUs.  The key
-computational contributions are: First, a zero-malloc GPU workspace
-that pre-allocates all buffers at startup; Second, a custom HIP tensor
+computational contributions are: first, a zero-malloc GPU workspace
+that pre-allocates all buffers at startup; second, a custom HIP tensor
 permutation kernel replacing host-side index shuffling with a pure
 device-to-device operation, yielding a 7.6$\times$ trotter speedup;
-Third, a hybrid QR strategy selecting Cholesky-QR for tall-skinny
-matrices and Householder-QR otherwise; Fourth, adaptive Belief
+third, a hybrid QR strategy selecting Cholesky-QR for tall-skinny
+matrices and Householder-QR otherwise; fourth, adaptive Belief
 Propagation with log-space Bethe partition function evaluation and
-explicit sign tracking.  The key validation contributions are: First,
+explicit sign tracking.  The key validation contributions are: first,
 correctness and demonstration of $\chi$-convergence of the spin
 autocorrelation function $C(t)$ for $\chi \in \{20,\ldots,110\}$ on a
 $4\times4$ grid, identifying $\chi^* \approx 60$ as the practical
@@ -128,11 +128,11 @@ a central challenge in computational physics. Tensor network (TN) methods provid
 a systematically improvable approximation by representing quantum operators as
 networks of low-rank tensors~\citep{orus2014practical}, with accuracy controlled
 by the bond dimension~$\chi$. While one-dimensional systems are well-served by
-Matrix Product State (MPS) methods~\citep{vidal2003efficient}, two-dimensional
+matrix product state (MPS) methods~\citep{vidal2003efficient}, two-dimensional
 (2D) tensor networks are increasingly important for studying frustrated magnets,
 quantum circuits, and non-equilibrium dynamics at accessible system sizes.
 
-The broader motivation for this work is the Multi-Product Formula (MPF)
+The broader motivation for this work is the multi-product formula (MPF)
 framework for hybrid quantum-classical computation. In MPF, a quantum computer
 executes Trotter circuits to approximate Hamiltonian time evolution, and a
 classical linear regression over multiple circuit runs at different step sizes
@@ -157,7 +157,7 @@ initial operator — no state preparation or measurement of a full density
 matrix is required.
 Computing $C(t)$ exactly would require contracting the full 2D tensor
 network, an exponentially costly operation.
-Belief Propagation (BP)~\citep{tindall2023gauging} makes this tractable:
+Belief propagation (BP)~\citep{tindall2023gauging} makes this tractable:
 each lattice site iteratively sends its neighbors a message summarizing
 everything it sees from its side of the network; after convergence, each
 site holds an approximate picture of the global environment using only
@@ -447,7 +447,7 @@ Table~\ref{tab:fixes}).
 The overarching design principle is that GPU memory allocation is a one-time
 startup cost. Every buffer needed by the simulation --- site tensors, BP messages,
 workspace intermediates --- is allocated at initialization at its worst-case size
-(i.e.\ at $\chimax$) and reused for every gate, layer, and Trotter step.
+(i.e.,\ at $\chimax$) and reused for every gate, layer, and Trotter step.
 The phrasing \emph{maximum size} here is precise but potentially misleading:
 this is not conservative over-provisioning but the \emph{minimum allocation
 that sustains maximum parallelism} --- the four $O(\chimax^4)$ tensors that
@@ -722,7 +722,7 @@ returning the sweep count. Most layers converge in 3--20 sweeps; hard layers
 (typically alternating layers at late times) require the full 100-sweep budget.
 
 \begin{algorithm}
-\caption{Gate update for bond $(v_1, v_2)$}
+\caption{Gate update for bond $(v_1, v_2)$.}
 \label{alg:gate}
 \begin{algorithmic}[1]
 \Require Site tensors $\psi_{v_1}, \psi_{v_2}$, gate $G$, messages $\mu$, $\chimax$
@@ -765,7 +765,7 @@ gate pipeline.
 
 \begin{table}[ht]
 \centering
-\caption{Source file organization}
+\caption{Source file organization.}
 \label{tab:files}
 \begin{tabular}{ll}
 \toprule
@@ -974,7 +974,7 @@ We characterize performance along two axes: how Trotter and BP time each scale
 with bond dimension $\chi$, and how CppSim compares to the Julia reference.
 
 At $\chi=50$, $4\times4$ grid, MI100, CppSim achieves a Trotter time of
-$\approx 8{,}300$\,ms/layer (Householder) vs.\ $\approx 20{,}000$\,ms/layer
+$\approx 8{,}300$\,ms/layer (Householder) versus $\approx 20{,}000$\,ms/layer
 for the Julia/AMDGPU reference --- a $\mathbf{2.4\times}$ speedup --- coming
 primarily from the GPU permutation kernel (\S\ref{sec:permute}) and
 strided-batched GEMM for environment absorption.
@@ -1024,7 +1024,7 @@ and MFMA-accelerated reduction trees rather than raw compute throughput.
 
 \begin{table}[ht]
 \centering
-\caption{Hardware comparison: AMD MI100 vs.\ MI60.}
+\caption{Hardware comparison: AMD MI100 versus MI60.}
 \label{tab:hardware}
 \small
 \begin{tabular}{lrr}
@@ -1090,7 +1090,7 @@ result against the Julia reference and the principal experimental findings.
 \begin{table}[ht]
 \centering
 \caption{\textsc{CppSim} at a glance.
-  \emph{Top}: implementation comparison vs.\ the Julia reference at $\chi=50$,
+  \emph{Top}: implementation comparison versus the Julia reference at $\chi=50$,
   $4{\times}4$, MI100.
   \emph{Bottom}: principal experimental findings from
   Section~\ref{sec:experiments}.
@@ -1101,7 +1101,7 @@ result against the Julia reference and the principal experimental findings.
 {\small
 \begin{tabular}{lccccc}
 \toprule
-& GC & Trotter/layer & Speedup & Memory & Mean $|\Delta C(t)|$ vs f64 \\
+& GC & Trotter/layer & Speedup & Memory & Mean $|\Delta C(t)|$ versus f64 \\
 \midrule
 Julia\textsuperscript{\dag} & \checkmark & ${\sim}20{,}000$\,ms & $1\times$ & $2\times$ (ComplexF32) & ${\sim}9\times10^{-4}$ \\
 \textsc{CppSim}             & $\times$   & ${\sim}8{,}300$\,ms  & ${\sim}2.4\times$ & $1\times$ (real float32) & ${\sim}1.4\times10^{-5}$ \\
