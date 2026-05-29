@@ -247,7 +247,7 @@ grids, QR modes, and GPU architectures.
   \emph{Recovers}: correct value restored at layer $+1$.
   \emph{Persistent}: final layer still trapped, no further chance to recover.
   MI60 runs (both QR modes) show more trapping than MI100 at the same $\chi$ due to
-  floating-point non-determinism (MFMA on MI100 vs.\ vector FP on MI60).
+  floating-point non-determinism (MFMA on MI100 versus vector FP on MI60).
   \emph{n/a}: that $\chi$ was not run on this architecture/mode combination.
   No traps occur on the $5\times5$ grid in either method.}
 \label{tab:trap_inventory}
@@ -292,7 +292,7 @@ stable under further BP iteration but is not the global optimum.
 The word \emph{trap} captures this precisely: the algorithm is not diverging;
 no amount of additional sweeps at the same $\alpha$ will escape the basin.
 The sweep count at a trapped layer is $2$--$3\times$ the typical value
-(e.g., 49 sweeps at $\chi=110$, $t=1.7$ vs.\ 12--18 on neighboring layers),
+(e.g., 49 sweeps at $\chi=110$, $t=1.7$ versus 12--18 on neighboring layers),
 providing an early-warning signal detectable at runtime.
 
 \emph{Type~2 --- non-convergence}: BP exhausts the 100-sweep budget with
@@ -335,7 +335,7 @@ The result is \emph{zero} Type~1 trapped layers on the symmetric $5\times5$ grid
 across all $\chi$ values and all layers (Figure~\ref{fig:ct_5x5}),
 with final values $\Ct(\chi=20)=0.000716$, $\Ct(\chi=40)=0.000907$,
 $\Ct(\chi=60)=0.001073$, $\Ct(\chi=80)=0.028089$, $\Ct(\chi=100)=0.042065$.
-The $5\times5$ grid has strictly more loops ($40$ bonds vs.\ $24$ for $4\times4$),
+The $5\times5$ grid has strictly more loops ($40$ bonds versus $24$ for $4\times4$),
 and the data in Table~\ref{tab:trap_inventory} already show
 that larger grids and higher bond dimensions increase the complexity of the BP
 update and the density of the entanglement spectrum.
@@ -604,7 +604,7 @@ $\Delta n(\mathbf{r},t) = n_{\chi_1}(\mathbf{r},t) - n_{\chi_2}(\mathbf{r},t)$
 for the $4\times4$ and $5\times5$ grids respectively.
 
 On the \emph{symmetric} $5\times5$ grid (Figure~\ref{fig:diff_5x5},
-$\chi_1=80$ vs.\ $\chi_2=50$), $\Delta n$ is exactly $C_4$-symmetric at every
+$\chi_1=80$ versus $\chi_2=50$), $\Delta n$ is exactly $C_4$-symmetric at every
 snapshot: a red interior ring (higher $\chi$ places more weight near the operator
 origin) surrounded by blue corners (lower $\chi$ slightly overestimates corner
 weight at late times).
@@ -613,7 +613,7 @@ confirming that $\Delta n$ is a clean measure of bond-dimension convergence
 on a symmetric grid, uncontaminated by fixed-point multiplicity.
 
 On the \emph{asymmetric} $4\times4$ grid (Figure~\ref{fig:diff_4x4},
-$\chi=80$ vs.\ $\chi=40$, BP trap at $t=1.7$), the same monotone accumulation
+$\chi=80$ versus $\chi=40$, BP trap at $t=1.7$), the same monotone accumulation
 is present but the pattern is \emph{not} $C_4$-symmetric: the off-center initial
 site $(1,1)$ breaks the spatial symmetry of the difference field.
 Between $t=1.7$ (trapped layer) and $t=1.8$ (recovered), a visible rearrangement
@@ -684,7 +684,7 @@ and the off-center formula $N_x/2 - 1$ giving $(3,3)$.
 \begin{table}[ht]
 \centering
 \caption{BP convergence and Bethe norm for $9\times9$, $\chi=20$: correct
-  center $(4,4)$ vs.\ off-center $(3,3)$.
+  center $(4,4)$ versus off-center $(3,3)$.
   $S_e/\log\chi$ is identical for both runs (a property of $\chi=20$ on
   this grid) and included for reference.
   \textbf{Bold}: anomalous values.}
@@ -714,7 +714,7 @@ First, $S_e/\log\chi$ crosses $0.5$ at layer 15 for both runs: the bond
 saturation pressure is identical and is a property of $\chi=20$ on the
 $9\times9$ grid, not of the center choice.
 Second, the off-center run shows a first stress signal at layer 17
-(36 sweeps vs.\ 18 for the correct center), two layers before the
+(36 sweeps versus 18 for the correct center), two layers before the
 explosion — consistent with BP resolving a harder, asymmetric message
 landscape under the same saturation pressure.
 Third, at layer 21 both runs require 100 sweeps, but the outcomes are
@@ -797,7 +797,7 @@ Table~\ref{tab:mi60_chi} compares $\Ct$ at $t=2.0$ for both architectures.
 
 \begin{table}[ht]
 \centering
-\caption{$\Ct$ at $t = 2.0$ on $4\times4$: MI100 vs.\ MI60, all $\chi$.
+\caption{$\Ct$ at $t = 2.0$ on $4\times4$: MI100 versus MI60, all $\chi$.
   \textbf{Bold}: metastable BP trap.
   Daggers mark the two portable operating points where both architectures agree
   and are trap-free.}
@@ -826,7 +826,7 @@ MI60 traps at $\chi \in \{50, 80\}$ while MI100 is clean;
 MI100 traps at $\chi \in \{70, 100\}$ while MI60 is clean.
 Neither architecture is strictly more reliable than the other;
 the trap patterns are fingerprints of the BP fixed-point landscape
-selected by the MFMA reduction tree (MI100) vs.\ scalar vector-ALU (MI60).
+selected by the MFMA reduction tree (MI100) versus scalar vector-ALU (MI60).
 
 At $\chi=40$ and $\chi=60$, both architectures are trap-free and agree
 to within $5\times10^{-4}$ --- better than $0.1\%$.
@@ -853,7 +853,7 @@ Table~\ref{tab:mi60_grids} shows $\Ct$ at saturation.
 \begin{table}[ht]
 \centering
 \caption{$\Ct$ at $n^*$ (lightcone saturation layer) for odd grids,
-  $\chi=50$, MI100 vs.\ MI60 (both with corrected geometric center).
+  $\chi=50$, MI100 versus MI60 (both with corrected geometric center).
   Agreement confirms that grid-size physics is portable at $\chi=50$.}
 \label{tab:mi60_grids}
 \begin{tabular}{ccrrrr}
@@ -903,7 +903,7 @@ $8\times8$ & 112 & 32{,}880 & 36{,}654 & 207{,}509 & 198{,}907 & 5.4$\times$ \\
   for square grids on MI100 and MI60, both QR modes.
   \emph{Top}: raw times in ms; bonds $= 2N(N-1)$ for an $N\times N$ grid;
   MI60/MI100 ratio computed from Householder columns.
-  \emph{Bottom}: same data plotted vs.\ bond count.
+  \emph{Bottom}: same data plotted versus bond count.
   Solid lines ($\circ$): Householder QR; dashed lines ($\square$): Adaptive QR;
   blue: MI100; red: MI60; dotted: linear fits through the origin
   (slopes annotated in s/bond).
@@ -912,7 +912,7 @@ $8\times8$ & 112 & 32{,}880 & 36{,}654 & 207{,}509 & 198{,}907 & 5.4$\times$ \\
   Adaptive is 10--20\% faster on MI100 because Cholesky avoids the full
   Householder factorization when the Gram matrix is well-conditioned.
   MI60 is approximately $5\times$ slower than MI100 across all grid sizes,
-  consistent with the MFMA vs.\ vector-FP throughput ratio at $\chi=50$.}
+  consistent with the MFMA versus vector-FP throughput ratio at $\chi=50$.}
 \label{tab:grid_scaling}\label{fig:grid_scaling}
 \end{figure}
 
@@ -950,7 +950,7 @@ dimensions, identifying the GPU generation required for each configuration.
 
 \begin{figure}[ht]
 \centering
-\captionof{table}{Memory model validation: predicted vs.\ measured VRAM on $4\times4$ grid
+\captionof{table}{Memory model validation: predicted versus measured VRAM on $4\times4$ grid
          (MI100 and MI60, 32\,GB HBM2). Prediction uses
          equations~\eqref{eq:mem_psi}--\eqref{eq:mem_ws}.}
 \label{tab:vram}

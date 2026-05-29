@@ -3,15 +3,14 @@
 \label{app:mi355x}
 % ══════════════════════════════════════════════════════════════════════════════
 
-The AMD Instinct MI355X (CDNA4, 309\,GB HBM3E, 8 GPUs per node on the Rainier
-cluster) enables the primary research target of this work: $10\times10$ at
+The AMD Instinct MI355X (CDNA4, 309\,GB HBM3E, 8 GPUs per node) enables
+the primary research target of this work: $10\times10$ at
 $\chimax=100$, which requires $\approx 109$\,GB and exceeds the capacity of a
 single 32\,GB MI100.
-This appendix reports the MI355X experimental suite run on the Rainier cluster
-(jobs 2150/2151, 2026-05-19), covering grid scaling, QR mode comparison, BP
-trap behaviour, and spatial operator spreading.
+This appendix reports the MI355X experimental suite covering grid scaling,
+QR mode comparison, BP trap behaviour, and spatial operator spreading.
 
-\subsection*{Hardware}
+\subsection{Hardware}
 
 \begin{table}[ht]
 \centering
@@ -33,7 +32,7 @@ VRAM              & 32\,GB HBM2       & 32\,GB HBM2       & 309\,GB HBM3E \\
 The MI355X carries $\mathbf{5.5\times}$ more HBM bandwidth than MI100, which
 has a direct consequence for algorithm mode selection explained below.
 
-\subsection*{Grid-scaling Trotter timing at $\chi = 50$}
+\subsection{Grid-scaling Trotter timing at $\chi = 50$}
 
 Table~\ref{tab:grid_scaling_mi355x} reports per-layer Trotter time averaged
 exclusively over \emph{saturated} layers (those where $\chimax^{\min} =
@@ -92,10 +91,10 @@ a compute or algorithm limitation; the scaling curve itself is unaffected.
 \paragraph{Adaptive QR unlocked by HBM3E.}
 The key result is visible within the MI355X columns: the Adap ratio drops
 progressively below the HH ratio as grid size grows ---
-from $0.78$ vs.\ $1.00$ at $3\times3$ to $8.39$ vs.\ $12.98$ at $6\times6$
+from $0.78$ versus $1.00$ at $3\times3$ to $8.39$ versus $12.98$ at $6\times6$
 (a \textbf{35\% saving} over HH on the same chip).
 On MI100, the same comparison shows Adap tracking HH within 10\% at all grid
-sizes (e.g.\ $11.33$ vs.\ $12.45$ at $6\times6$, a 9\% difference), consistent
+sizes (e.g.,\ $11.33$ versus $12.45$ at $6\times6$, a 9\% difference), consistent
 with both modes being memory-bandwidth-saturated on HBM2.
 The mechanism: Cholesky-QR (Adaptive's primary branch) has a smaller compute
 constant and lower memory traffic per contraction than Householder QR.
@@ -119,12 +118,11 @@ on the next generation.
   BP time (bottom) is variable because convergence at $\chi=100$ requires
   up to 100 sweeps (the configured maximum); the spread reflects per-layer
   variation in BP fixed-point difficulty.
-  Results from job 2208 (40 of 100 requested layers completed within the
-  16\,h wall-time allocation).}
+  Runs completed 40 of 100 requested layers within the 16\,h wall-time allocation.}
 \label{fig:mi355x_10x10_chi100}
 \end{figure}
 
-\subsection*{BP trap behaviour on MI355X}
+\subsection{BP trap behaviour on MI355X}
 
 Table~\ref{tab:traps_mi355x} records Type-1 trap occurrences detected by
 \texttt{detect\_traps.py} on the MI355X grid-scaling logs at $\chi=50$.
@@ -161,15 +159,15 @@ monotone trend), consistent with the MI100 observations in
 Table~\ref{tab:trap_inventory}.
 
 The trap layers differ by a few positions between MI355X and MI100 for the same
-grid and $\chi$, consistent with the CDNA4 vs.\ CDNA1 floating-point non-determinism
+grid and $\chi$, consistent with the CDNA4 versus CDNA1 floating-point non-determinism
 mechanism identified in Section~\ref{sec:portability}: the FP reduction order in
 the MFMA units selects a different stochastic path through the BP iteration,
 landing on a different (but equivalent) trap layer.
 
-\subsection*{Spatial operator spreading at $10\times10$}
+\subsection{Spatial operator spreading at $10\times10$}
 
-All chi=100 runs reported in this section were executed as part of job 2208
-on the Rainier cluster (16\,h wall-time allocation).
+All $\chi=100$ runs reported in this section were executed on an AMD MI355X
+cluster with a 16\,h wall-time allocation.
 The simulations were terminated by the scheduler after ${\approx}38$ Trotter
 steps out of the 100 (70 for $11\times11$) requested; full saturation of the
 scrambling regime would require an estimated additional 16\,h per run.
@@ -265,7 +263,7 @@ measurement.
 \label{fig:lightcone_11x11_chi100}
 \end{figure}
 
-\subsection*{Future performance directions}
+\subsection{Future performance directions}
 
 Two algorithmic improvements are expected to reduce wall-clock time
 substantially for the $\chi=100$ runs reported here.
@@ -305,7 +303,7 @@ If fallbacks are eliminated, Adaptive QR would run strictly faster than
 Householder at $\chi=100$, making it the unambiguous production mode for
 MI355X across all grid sizes.
 
-\subsection*{Summary}
+\subsection{Summary}
 
 \begin{table}[ht]
 \centering
@@ -318,11 +316,11 @@ MI355X across all grid sizes.
 \textbf{Finding} & \textbf{Evidence} & \textbf{Implication} \\
 \midrule
 HBM3E gives ${\sim}1.2\times$ architectural speedup over MI100
-  & HH-vs-HH ratio 0.79--0.85$\times$ across $3\times3$--$7\times7$
+  & HH-versus-HH ratio 0.79--0.85$\times$ across $3\times3$--$7\times7$
   & Bandwidth, not FLOPS, is the bottleneck at $\chi \leq 50$ \\[4pt]
 
 Adaptive QR is unlocked by HBM3E (${\sim}1.4\times$ on same chip)
-  & Adap is neutral vs HH on MI100; 22--35\% faster on MI355X
+  & Adap is neutral versus HH on MI100; 22--35\% faster on MI355X
   & Algorithm mode selection is hardware-generation-dependent \\[4pt]
 
 C4 symmetry eliminates traps regardless of hardware
