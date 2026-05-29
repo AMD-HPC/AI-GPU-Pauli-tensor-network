@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.22 (TeX Live 2022/dev/Debian) (preloaded format=pdflatex 2026.1.30)  28 MAY 2026 21:42
+This is pdfTeX, Version 3.141592653-2.6-1.40.22 (TeX Live 2022/dev/Debian) (preloaded format=pdflatex 2026.1.30)  28 MAY 2026 21:53
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1127,75 +1127,75 @@ File: fig_grid_grid.png Graphic file (type png)
 <use fig_grid_grid.png>
 Package pdftex.def Info: fig_grid_grid.png  used on input line 901.
 (pdftex.def)             Requested size: 352.31625pt x 239.74063pt.
- [26] [27 <./fig_grid_grid.png>]) [28
-
-]
-<fig_timing_chi.png, id=538, 930.8376pt x 391.34206pt>
+ [26] [27 <./fig_grid_grid.png>])
+<fig_timing_chi.png, id=532, 930.8376pt x 391.34206pt>
 File: fig_timing_chi.png Graphic file (type png)
 <use fig_timing_chi.png>
-Package pdftex.def Info: fig_timing_chi.png  used on input line 987.
+Package pdftex.def Info: fig_timing_chi.png  used on input line 985.
 (pdftex.def)             Requested size: 469.75502pt x 197.49779pt.
-<fig_breakdown_chi80.png, id=539, 650.43pt x 505.89pt>
+<fig_breakdown_chi80.png, id=533, 650.43pt x 505.89pt>
 File: fig_breakdown_chi80.png Graphic file (type png)
 <use fig_breakdown_chi80.png>
-Package pdftex.def Info: fig_breakdown_chi80.png  used on input line 989.
+Package pdftex.def Info: fig_breakdown_chi80.png  used on input line 987.
 (pdftex.def)             Requested size: 413.3867pt x 321.5299pt.
- [29] [30 <./fig_timing_chi.png> <./fig_breakdown_chi80.png>] [31
+ [28
+
+] [29 <./fig_timing_chi.png> <./fig_breakdown_chi80.png>] [30
 
 ]
-Underfull \hbox (badness 10000) in paragraph at lines 1120--1121
+Underfull \hbox (badness 10000) in paragraph at lines 1118--1119
 []\OT1/cmr/m/n/10 C4 sym-me-try elim-i-
  []
 
 
-Underfull \hbox (badness 4391) in paragraph at lines 1120--1121
+Underfull \hbox (badness 4391) in paragraph at lines 1118--1119
 \OT1/cmr/m/n/10 nates BP metastable
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1132--1133
+Underfull \hbox (badness 10000) in paragraph at lines 1130--1131
 []\OT1/cmr/m/n/10 Portable op-er-at-ing
  []
 
 
-Underfull \hbox (badness 3668) in paragraph at lines 1133--1134
+Underfull \hbox (badness 3668) in paragraph at lines 1131--1132
 []$\OML/cmm/m/it/10 ^^_ \OMS/cmsy/m/n/10 2 f\OT1/cmr/m/n/10 40\OML/cmm/m/it/10 
 ;  \OT1/cmr/m/n/10 60\OMS/cmsy/m/n/10 g$ \OT1/cmr/m/n/10 trap-free
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1136--1137
+Underfull \hbox (badness 10000) in paragraph at lines 1134--1135
 []\OT1/cmr/m/n/10 Diminishing re-turns
  []
 
 
-Underfull \hbox (badness 4518) in paragraph at lines 1142--1142
+Underfull \hbox (badness 4518) in paragraph at lines 1140--1140
 []\OT1/cmr/m/n/10 Increase $\OML/cmm/m/it/10 ^^_$\OT1/cmr/m/n/10 , not $\OML/cm
 m/m/it/10 $\OT1/cmr/m/n/10 , when
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1144--1145
+Underfull \hbox (badness 10000) in paragraph at lines 1142--1143
 []\OT1/cmr/m/n/10 Validated mem-ory
  []
 
 
-Underfull \hbox (badness 2512) in paragraph at lines 1145--1146
+Underfull \hbox (badness 2512) in paragraph at lines 1143--1144
 []$[]\OT1/cmr/m/n/10 2%$ pre-dic-tion er-ror at
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1148--1149
+Underfull \hbox (badness 10000) in paragraph at lines 1146--1147
 []\OT1/cmr/m/n/10 Lightcone sat-u-ra-tion
  []
 
-[32]
-Underfull \hbox (badness 6364) in paragraph at lines 1208--1211
+[31]
+Underfull \hbox (badness 6364) in paragraph at lines 1206--1209
 []\OT1/cmr/m/n/10.95 AMD ROCm.  rocblas: AMD ROCm BLAS li-brary.  [][]$\OT1/cmt
 t/m/n/10.95 https : / / github . com /
  []
 
-[33] (./appendix_mi355x.tex [34]
+[32] (./appendix_mi355x.tex [33]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 35.
@@ -1208,8 +1208,8 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 35.
 
-[35]
-<fig_mi355x_10x10_chi100.png, id=608, 650.43pt x 505.89pt>
+[34]
+<fig_mi355x_10x10_chi100.png, id=603, 650.43pt x 505.89pt>
 File: fig_mi355x_10x10_chi100.png Graphic file (type png)
 <use fig_mi355x_10x10_chi100.png>
 Package pdftex.def Info: fig_mi355x_10x10_chi100.png  used on input line 110.
@@ -1227,20 +1227,20 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 167.
 
-[36]
-<fig_lightcone_10x10_chi100.png, id=620, 1170.41264pt x 909.51794pt>
+[35]
+<fig_lightcone_10x10_chi100.png, id=615, 1170.41264pt x 909.51794pt>
 File: fig_lightcone_10x10_chi100.png Graphic file (type png)
 <use fig_lightcone_10x10_chi100.png>
 Package pdftex.def Info: fig_lightcone_10x10_chi100.png  used on input line 204
 .
 (pdftex.def)             Requested size: 469.75502pt x 365.03589pt.
-<fig_lightcone_11x11_chi100.png, id=622, 1170.41264pt x 909.51794pt>
+<fig_lightcone_11x11_chi100.png, id=617, 1170.41264pt x 909.51794pt>
 File: fig_lightcone_11x11_chi100.png Graphic file (type png)
 <use fig_lightcone_11x11_chi100.png>
 Package pdftex.def Info: fig_lightcone_11x11_chi100.png  used on input line 245
 .
 (pdftex.def)             Requested size: 469.75502pt x 365.03589pt.
- [37]
+ [36]
 Underfull \hbox (badness 6300) in paragraph at lines 324--324
 []\OT1/cmr/m/n/10 Algorithm mode se-lec-tion
  []
@@ -1280,14 +1280,14 @@ Underfull \hbox (badness 2495) in paragraph at lines 337--338
 \OT1/cmr/m/n/10 four bound-aries si-mul-ta-ne-
  []
 
-) [38] [39 <./fig_mi355x_10x10_chi100.png>] [40 <./fig_lightcone_10x10_chi100.p
-ng>] [41 <./fig_lightcone_11x11_chi100.png>] (./lightconesimulation.aux)
+) [37] [38 <./fig_mi355x_10x10_chi100.png>] [39 <./fig_lightcone_10x10_chi100.p
+ng>] [40 <./fig_lightcone_11x11_chi100.png>] (./lightconesimulation.aux)
 Package rerunfilecheck Info: File `lightconesimulation.out' has not changed.
 (rerunfilecheck)             Checksum: 457942A9E38D4615C787F922F605B1F5;6490.
  ) 
 Here is how much of TeX's memory you used:
- 30088 strings out of 478287
- 568134 string characters out of 5849289
+ 30087 strings out of 478287
+ 568127 string characters out of 5849289
  1229004 words of memory out of 5000000
  47536 multiletter control sequences out of 15000+600000
  487363 words of font info for 96 fonts, out of 8000000 for 9000
@@ -1327,10 +1327,10 @@ ols/msbm10.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm0600.pfb></usr
 /share/texmf/fonts/type1/public/cm-super/sfrm0700.pfb></usr/share/texmf/fonts/t
 ype1/public/cm-super/sfrm0800.pfb></usr/share/texmf/fonts/type1/public/cm-super
 /sfrm1000.pfb></usr/share/texmf/fonts/type1/public/cm-super/sfrm1095.pfb>
-Output written on lightconesimulation.pdf (41 pages, 2212819 bytes).
+Output written on lightconesimulation.pdf (40 pages, 2211954 bytes).
 PDF statistics:
- 861 PDF objects out of 1000 (max. 8388607)
- 699 compressed objects within 7 object streams
- 217 named destinations out of 1000 (max. 500000)
+ 852 PDF objects out of 1000 (max. 8388607)
+ 691 compressed objects within 7 object streams
+ 216 named destinations out of 1000 (max. 500000)
  19822 words of extra memory for PDF output out of 20736 (max. 10000000)
 

@@ -970,17 +970,15 @@ are comparable at $\chi \geq 50$.
 \label{sec:performance}
 % ══════════════════════════════════════════════════════════════════════════════
 
-We characterize performance along two axes: how Trotter and BP time each scale
-with bond dimension $\chi$, and how CppSim compares to the Julia reference.
+%We characterize performance along two axes: how Trotter and BP time each scale
+%with bond dimension $\chi$, and how CppSim compares to the Julia reference.
 
-At $\chi=50$, $4\times4$ grid, MI100, CppSim achieves a Trotter time of
-$\approx 8{,}300$\,ms/layer (Householder) versus $\approx 20{,}000$\,ms/layer
-for the Julia/AMDGPU reference --- a $\mathbf{2.4\times}$ speedup --- coming
-primarily from the GPU permutation kernel (\S\ref{sec:permute}) and
-strided-batched GEMM for environment absorption.
-BP cost is higher in CppSim ($\approx 1{,}100$\,ms) than in Julia
-($\approx 8$\,ms) because CppSim runs up to 100 sweeps to full convergence
-whereas the Julia reference caps at 10 sweeps.
+At $\chi=50$, $4\times4$ grid, MI100, CppSim achieves a Trotter time
+of $\approx 8{,}300$\,ms/layer (Householder) versus $\approx
+20{,}000$\,ms/layer for the Julia/AMDGPU, a $\mathbf{2.4\times}$
+speedup .  BP cost is higher in CppSim ($\approx 1{,}100$\,ms) than in
+Julia ($\approx 8$\,ms) because CppSim runs up to 100 sweeps whereas
+the Julia caps at 10.
 
 \begin{figure}[p]
 \centering
