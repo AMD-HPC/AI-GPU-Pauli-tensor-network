@@ -4,9 +4,9 @@ make_grid_figure.py — Grid scaling (timing) figure
 
 Produces fig_grid_grid.png:
   Trotter time per layer (s) vs number of bonds
-  Four lines: MI_B Adaptive, MI_B Householder, MI_A Adaptive, MI_A Householder
+  Four lines: GPU-B Adaptive, GPU-B Householder, GPU-A Adaptive, GPU-A Householder
   Solid = Householder, dashed = Adaptive  (consistent with C(t) figures)
-  Blue = MI_B, red = MI_A
+  Blue = GPU-B, red = GPU-A
   Linear fits through the origin overlaid as thin dotted lines
 
 Usage:
@@ -53,10 +53,10 @@ def avg_trotter_ms(log_path):
 
 def collect(root):
     series = {
-        'MI_B Adaptive':   ('baseline_20260513/mi100', '#2166ac', '--'),
-        'MI_B Householder':('householder_20260517/mi100', '#2166ac', '-'),
-        'MI_A Adaptive':    ('baseline_20260514/mi60',  '#d73027', '--'),
-        'MI_A Householder': ('householder_20260517/mi60',  '#d73027', '-'),
+        'GPU-B Adaptive':   ('baseline_20260513/mi100', '#2166ac', '--'),
+        'GPU-B Householder':('householder_20260517/mi100', '#2166ac', '-'),
+        'GPU-A Adaptive':    ('baseline_20260514/mi60',  '#d73027', '--'),
+        'GPU-A Householder': ('householder_20260517/mi60',  '#d73027', '-'),
     }
     result = {}
     for label, (subdir, color, ls) in series.items():
@@ -124,10 +124,10 @@ def make_figure(root):
 
     # Legend — one entry per series, explicit color+style, plus fit line
     proxies = [
-        Line2D([0],[0], color='#2166ac', ls='-',  lw=2.0, marker='o', ms=5, label='MI_B  Householder'),
-        Line2D([0],[0], color='#2166ac', ls='--', lw=2.0, marker='s', ms=5, label='MI_B  Adaptive'),
-        Line2D([0],[0], color='#d73027', ls='-',  lw=2.0, marker='o', ms=5, label='MI_A   Householder'),
-        Line2D([0],[0], color='#d73027', ls='--', lw=2.0, marker='s', ms=5, label='MI_A   Adaptive'),
+        Line2D([0],[0], color='#2166ac', ls='-',  lw=2.0, marker='o', ms=5, label='GPU-B  Householder'),
+        Line2D([0],[0], color='#2166ac', ls='--', lw=2.0, marker='s', ms=5, label='GPU-B  Adaptive'),
+        Line2D([0],[0], color='#d73027', ls='-',  lw=2.0, marker='o', ms=5, label='GPU-A   Householder'),
+        Line2D([0],[0], color='#d73027', ls='--', lw=2.0, marker='s', ms=5, label='GPU-A   Adaptive'),
         Line2D([0],[0], color='gray',    ls=':',  lw=1.0, alpha=0.7,  label='Linear fit (origin)'),
     ]
     ax.legend(handles=proxies, loc='upper left', fontsize=9,

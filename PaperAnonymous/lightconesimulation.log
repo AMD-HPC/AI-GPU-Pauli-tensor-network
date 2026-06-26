@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.5.3)  25 JUN 2026 11:01
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2026.5.3)  26 JUN 2026 16:03
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -855,7 +855,7 @@ File: lstlang1.sty 2023/02/27 1.9 listings language file
 (/usr/share/texlive/texmf-dist/tex/latex/listings/lstmisc.sty
 File: lstmisc.sty 2023/02/27 1.9 (Carsten Heinz)
 )
-Package hyperref Info: Option `colorlinks' set `true' on input line 59.
+Package hyperref Info: Option `colorlinks' set `true' on input line 60.
 
 (/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
 File: l3backend-pdftex.def 2024-01-04 L3 backend support: PDF output (pdfTeX)
@@ -865,24 +865,24 @@ File: l3backend-pdftex.def 2024-01-04 L3 backend support: PDF output (pdfTeX)
 (./lightconesimulation.aux)
 \openout1 = `lightconesimulation.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 80.
-LaTeX Font Info:    ... okay on input line 80.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 81.
+LaTeX Font Info:    ... okay on input line 81.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -940,19 +940,19 @@ Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
 File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
-Package hyperref Info: Link coloring ON on input line 80.
+Package hyperref Info: Link coloring ON on input line 81.
 
 (./lightconesimulation.out) (./lightconesimulation.out)
 \@outlinefile=\write4
 \openout4 = `lightconesimulation.out'.
 
 \c@lstlisting=\count345
-LaTeX Info: Redefining \microtypecontext on input line 80.
-Package microtype Info: Applying patch `item' on input line 80.
-Package microtype Info: Applying patch `toc' on input line 80.
-Package microtype Info: Applying patch `eqnum' on input line 80.
-Package microtype Info: Applying patch `footnote' on input line 80.
-Package microtype Info: Applying patch `verbatim' on input line 80.
+LaTeX Info: Redefining \microtypecontext on input line 81.
+Package microtype Info: Applying patch `item' on input line 81.
+Package microtype Info: Applying patch `toc' on input line 81.
+Package microtype Info: Applying patch `eqnum' on input line 81.
+Package microtype Info: Applying patch `footnote' on input line 81.
+Package microtype Info: Applying patch `verbatim' on input line 81.
 Package microtype Info: Generating PDF output.
 Package microtype Info: Character protrusion enabled (level 2).
 Package microtype Info: Using default protrusion set `alltext'.
@@ -969,7 +969,7 @@ Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: End \AtBeginDocument code.
 
 Couldn't patch \deferred@thm@head!
-LaTeX Font Info:    Trying to load font information for U+msa on input line 82.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 83.
 
 (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
@@ -977,7 +977,7 @@ File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 (/usr/share/texlive/texmf-dist/tex/latex/microtype/mt-msa.cfg
 File: mt-msa.cfg 2006/02/04 v1.1 microtype config. file: AMS symbols (a) (RS)
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 82.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 83.
 
 
 (/usr/share/texlive/texmf-dist/tex/latex/amsfonts/umsb.fd
@@ -993,39 +993,26 @@ Package microtype Info: Loading generic protrusion settings for font family
  [1
 
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}] [2] [3] [4] [5] [6]
-Overfull \hbox (0.10416pt too wide) in paragraph at lines 537--542
+Overfull \hbox (0.10416pt too wide) in paragraph at lines 512--517
 \OT1/cmr/m/n/10.95 Site ten-sors $\OML/cmm/m/it/10.95  []$ \OT1/cmr/m/n/10.95 a
 re rank-5 ob-jects (for in-te-rior sites) stored in canon-i-cal bond or-der $[[
 ]\OML/cmm/m/it/10.95 ; []; []; []; []\OT1/cmr/m/n/10.95 ]$,
  []
 
-[7]
 Package hyperref Info: bookmark level for unknown lstlisting defaults to 0 on i
-nput line 566.
- [8] [9]
-Overfull \hbox (5.29315pt too wide) in paragraph at lines 704--715
-\OT1/cmr/m/n/10.95 implemented via rocBLAS strided-batched \OT1/cmtt/m/n/10.95 
-SGEMV\OT1/cmr/m/n/10.95 . Nor-mal-iza-tion is en-tirely on-device: \OT1/cmtt/m/
-n/10.95 rocblas[]sdot
+nput line 541.
+[7] [8]
+Overfull \hbox (65.97496pt too wide) in paragraph at lines 680--691
+\OT1/cmr/m/n/10.95 implemented via BLAS strided-batched \OT1/cmtt/m/n/10.95 SGE
+MV\OT1/cmr/m/n/10.95 . Nor-mal-iza-tion is en-tirely on-device: \OT1/cmtt/m/n/1
+0.95 SDOT \OT1/cmr/m/n/10.95 in \OT1/cmtt/m/n/10.95 POINTER[]MODE[]DEVICE
  []
 
-
-Overfull \hbox (16.64671pt too wide) in paragraph at lines 704--715
-\OT1/cmr/m/n/10.95 in \OT1/cmtt/m/n/10.95 POINTER[]MODE[]DEVICE \OT1/cmr/m/n/10
-.95 writes the sum di-rectly to a de-vice scalar \OT1/cmtt/m/n/10.95 d[]s\OT1/c
-mr/m/n/10.95 , which the \OT1/cmtt/m/n/10.95 normalize[]and[]delta
- []
-
+[9]
 Package hyperref Info: bookmark level for unknown algorithm defaults to 0 on in
-put line 725.
-[10]
-Underfull \hbox (badness 5036) in paragraph at lines 925--925
-[] \OT1/cmtt/m/n/9 rocsolver[]spotrf + rocblas[]strsm  (Cholesky) / rocsolver[]
-sgeqrf + 
- []
+put line 701.
 
-
-Underfull \hbox (badness 1275) in paragraph at lines 925--925
+Underfull \hbox (badness 1275) in paragraph at lines 873--873
 [][]\OT1/cmr/bx/n/10 5. \OT1/cmr/m/n/10 Re-shape $\OML/cmm/m/it/10 R[]  \OMS/cm
 sy/m/n/10 !  \OML/cmm/m/it/10 A[]$\OT1/cmr/m/n/10 : sep-a-rate $\OML/cmm/m/it/1
 0 ^^_[]$ \OT1/cmr/m/n/10 and $\OML/cmm/m/it/10 D$ \OT1/cmr/m/n/10 in-dices ($\O
@@ -1033,14 +1020,9 @@ MS/cmsy/m/n/10 ^^B\OT1/cmr/m/n/10 2$); form $[] =
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 925--925
-[] \OT1/cmtt/m/n/9 symmetrize[]copy rocsolver[]ssyevd form[]sqrt[]matrices 
- []
+LaTeX Warning: Float too large for page by 59.68701pt on input line 889.
 
-
-LaTeX Warning: Float too large for page by 59.68954pt on input line 941.
-
-(./experiments_section.tex [11] [12] [13]
+(./experiments_section.tex [10] [11] [12]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 170.
@@ -1061,274 +1043,223 @@ Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
 (hyperref)                removing `math shift' on input line 170.
 
-<fig_ct_4x4.png, id=367, 603.81586pt x 387.00584pt>
+<fig_ct_4x4.png, id=344, 603.81586pt x 386.6445pt>
 File: fig_ct_4x4.png Graphic file (type png)
 <use fig_ct_4x4.png>
-Package pdftex.def Info: fig_ct_4x4.png  used on input line 179.
-(pdftex.def)             Requested size: 469.75502pt x 301.07793pt.
+Package pdftex.def Info: fig_ct_4x4.png  used on input line 182.
+(pdftex.def)             Requested size: 469.75502pt x 300.79683pt.
 
-Underfull \hbox (badness 3568) in paragraph at lines 195--195
+Underfull \hbox (badness 2617) in paragraph at lines 198--198
 []\OT1/cmr/m/n/10.95 Figure 2: |Spin au-to-cor-re-la-tion $\OML/cmm/m/it/10.95 
 C\OT1/cmr/m/n/10.95 (\OML/cmm/m/it/10.95 t\OT1/cmr/m/n/10.95 )$ on a $4 \OMS/cm
-sy/m/n/10.95 ^^B \OT1/cmr/m/n/10.95 4$ grid (MI[]B, log scale) for $\OML/cmm/m/
+sy/m/n/10.95 ^^B \OT1/cmr/m/n/10.95 4$ grid (GPU-B, log scale) for $\OML/cmm/m/
 it/10.95 ^^_ \OMS/cmsy/m/n/10.95 2
  []
 
-<fig_ct_5x5.png, id=369, 603.81586pt x 387.00584pt>
+<fig_ct_5x5.png, id=346, 603.81586pt x 386.6445pt>
 File: fig_ct_5x5.png Graphic file (type png)
 <use fig_ct_5x5.png>
-Package pdftex.def Info: fig_ct_5x5.png  used on input line 201.
-(pdftex.def)             Requested size: 469.75502pt x 301.07793pt.
-[14]
-Overfull \hbox (29.18375pt too wide) in paragraph at lines 255--271
+Package pdftex.def Info: fig_ct_5x5.png  used on input line 204.
+(pdftex.def)             Requested size: 469.75502pt x 300.79683pt.
+[13]
+Overfull \hbox (31.531pt too wide) in paragraph at lines 258--274
  [][] 
  []
 
-[15 <./fig_ct_4x4.png>] [16 <./fig_ct_5x5.png>] [17] [18]
-Overfull \hbox (6.16762pt too wide) in paragraph at lines 425--435
+[14 <./fig_ct_4x4.png>] [15 <./fig_ct_5x5.png>] [16] [17]
+Overfull \hbox (6.16762pt too wide) in paragraph at lines 428--438
  []\OT1/cmr/bx/n/10.95 Capacity bound-ary.[] \OT1/cmr/m/n/10.95 A dis-tinct thi
 rd regime ap-pears at high en-tan-gle-ment sat-u-ra-tion ($\OML/cmm/m/it/10.95 
 S[]= [] ^^_ \U/msa/m/n/10.95 &
  []
 
-[19]
-<fig_lightcone_trap.png, id=429, 995.8806pt x 366.6498pt>
+<fig_lightcone_trap.png, id=398, 995.8806pt x 366.6498pt>
 File: fig_lightcone_trap.png Graphic file (type png)
 <use fig_lightcone_trap.png>
-Package pdftex.def Info: fig_lightcone_trap.png  used on input line 505.
+Package pdftex.def Info: fig_lightcone_trap.png  used on input line 508.
 (pdftex.def)             Requested size: 469.75502pt x 172.94641pt.
-<fig_lightcone_clean.png, id=430, 995.8806pt x 366.6498pt>
+<fig_lightcone_clean.png, id=399, 995.8806pt x 366.6498pt>
 File: fig_lightcone_clean.png Graphic file (type png)
 <use fig_lightcone_clean.png>
-Package pdftex.def Info: fig_lightcone_clean.png  used on input line 524.
+Package pdftex.def Info: fig_lightcone_clean.png  used on input line 527.
 (pdftex.def)             Requested size: 469.75502pt x 172.94641pt.
-<fig_lightcone_9x9.png, id=433, 747.7536pt x 366.6498pt>
+<fig_lightcone_9x9.png, id=402, 747.7536pt x 366.6498pt>
 File: fig_lightcone_9x9.png Graphic file (type png)
 <use fig_lightcone_9x9.png>
-Package pdftex.def Info: fig_lightcone_9x9.png  used on input line 538.
+Package pdftex.def Info: fig_lightcone_9x9.png  used on input line 541.
 (pdftex.def)             Requested size: 469.75502pt x 230.33601pt.
- [20 <./fig_lightcone_trap.png>]
-<fig_diff_4x4.png, id=454, 1160.1744pt x 722.2182pt>
+[18] [19]
+<fig_diff_4x4.png, id=435, 1160.1744pt x 722.2182pt>
 File: fig_diff_4x4.png Graphic file (type png)
 <use fig_diff_4x4.png>
-Package pdftex.def Info: fig_diff_4x4.png  used on input line 629.
+Package pdftex.def Info: fig_diff_4x4.png  used on input line 632.
 (pdftex.def)             Requested size: 469.75502pt x 292.41962pt.
-<fig_diff_5x5.png, id=455, 939.51pt x 722.2182pt>
+<fig_diff_5x5.png, id=436, 939.51pt x 722.2182pt>
 File: fig_diff_5x5.png Graphic file (type png)
 <use fig_diff_5x5.png>
-Package pdftex.def Info: fig_diff_5x5.png  used on input line 650.
+Package pdftex.def Info: fig_diff_5x5.png  used on input line 653.
 (pdftex.def)             Requested size: 469.75502pt x 361.10822pt.
- [21 <./fig_lightcone_clean.png>] [22 <./fig_lightcone_9x9.png>] [23 <./fig_dif
-f_4x4.png>] [24] [25] [26 <./fig_diff_5x5.png>]
-<fig_grid_grid.png, id=512, 567.68085pt x 386.28316pt>
+
+
+LaTeX Warning: Reference `sec:fixes' on page 20 undefined on input line 729.
+
+[20 <./fig_lightcone_trap.png>] [21 <./fig_lightcone_clean.png>] [22 <./fig_lig
+htcone_9x9.png>] [23 <./fig_diff_4x4.png>] [24] [25 <./fig_diff_5x5.png>]
+<fig_grid_grid.png, id=490, 567.68085pt x 386.28316pt>
 File: fig_grid_grid.png Graphic file (type png)
 <use fig_grid_grid.png>
-Package pdftex.def Info: fig_grid_grid.png  used on input line 901.
+Package pdftex.def Info: fig_grid_grid.png  used on input line 904.
 (pdftex.def)             Requested size: 352.31625pt x 239.74063pt.
- [27
+
+[26
 
  <./fig_grid_grid.png>])
-<fig_timing_chi.png, id=534, 930.8376pt x 391.34206pt>
+<fig_timing_chi.png, id=512, 930.8376pt x 391.34206pt>
 File: fig_timing_chi.png Graphic file (type png)
 <use fig_timing_chi.png>
-Package pdftex.def Info: fig_timing_chi.png  used on input line 987.
+Package pdftex.def Info: fig_timing_chi.png  used on input line 936.
 (pdftex.def)             Requested size: 469.75502pt x 197.49779pt.
-<fig_breakdown_chi80.png, id=535, 650.43pt x 505.89pt>
+<fig_breakdown_chi80.png, id=513, 650.43pt x 505.89pt>
 File: fig_breakdown_chi80.png Graphic file (type png)
 <use fig_breakdown_chi80.png>
-Package pdftex.def Info: fig_breakdown_chi80.png  used on input line 989.
+Package pdftex.def Info: fig_breakdown_chi80.png  used on input line 938.
 (pdftex.def)             Requested size: 413.3867pt x 321.5299pt.
- [28] [29 <./fig_timing_chi.png> <./fig_breakdown_chi80.png>] [30
+ [27] [28 <./fig_timing_chi.png> <./fig_breakdown_chi80.png>] [29
 
-]
-Underfull \hbox (badness 10000) in paragraph at lines 1120--1121
-[]\OT1/cmr/m/n/10 C4 sym-me-try elim-i-
- []
-
-
-Underfull \hbox (badness 4391) in paragraph at lines 1120--1121
-\OT1/cmr/m/n/10 nates BP metastable
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 1132--1133
-[]\OT1/cmr/m/n/10 Portable op-er-at-ing
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 1136--1137
-[]\OT1/cmr/m/n/10 Diminishing re-turns
- []
-
-
-Underfull \hbox (badness 4518) in paragraph at lines 1142--1142
-[]\OT1/cmr/m/n/10 Increase $\OML/cmm/m/it/10 ^^_$\OT1/cmr/m/n/10 , not $\OML/cm
-m/m/it/10 $\OT1/cmr/m/n/10 , when
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 1144--1145
-[]\OT1/cmr/m/n/10 Validated mem-ory
- []
-
-
-Underfull \hbox (badness 2512) in paragraph at lines 1145--1146
-[]$[]\OT1/cmr/m/n/10 2%$ pre-dic-tion er-ror at
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 1148--1149
-[]\OT1/cmr/m/n/10 Lightcone sat-u-ra-tion
- []
-
-[31]
-Underfull \hbox (badness 6364) in paragraph at lines 1206--1209
-[]\OT1/cmr/m/n/10.95 AMD ROCm.  rocblas: AMD ROCm BLAS li-brary.  [][]$\OT1/cmt
-t/m/n/10.95 https : / / github . com /
- []
-
-[32] (./appendix_mi355x.tex [33]
+] (./appendix_mi355x.tex
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 35.
+(hyperref)                removing `math shift' on input line 16.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\chi' on input line 35.
+(hyperref)                removing `\chi' on input line 16.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 35.
+(hyperref)                removing `math shift' on input line 16.
 
-[34]
-<fig_mi355x_10x10_chi100.png, id=604, 650.43pt x 505.89pt>
+[30]
+<fig_mi355x_10x10_chi100.png, id=555, 650.43pt x 505.89pt>
 File: fig_mi355x_10x10_chi100.png Graphic file (type png)
 <use fig_mi355x_10x10_chi100.png>
-Package pdftex.def Info: fig_mi355x_10x10_chi100.png  used on input line 110.
+Package pdftex.def Info: fig_mi355x_10x10_chi100.png  used on input line 59.
 (pdftex.def)             Requested size: 469.75502pt x 365.37524pt.
+ [31] [32 <./fig_mi355x_10x10_chi100.png>]
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 107.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 167.
+(hyperref)                removing `\times' on input line 107.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\times' on input line 167.
+(hyperref)                removing `math shift' on input line 107.
 
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 167.
-
-[35]
-<fig_lightcone_10x10_chi100.png, id=616, 1170.41264pt x 909.51794pt>
+<fig_lightcone_10x10_chi100.png, id=575, 1170.41264pt x 909.51794pt>
 File: fig_lightcone_10x10_chi100.png Graphic file (type png)
 <use fig_lightcone_10x10_chi100.png>
-Package pdftex.def Info: fig_lightcone_10x10_chi100.png  used on input line 204
+Package pdftex.def Info: fig_lightcone_10x10_chi100.png  used on input line 133
 .
 (pdftex.def)             Requested size: 469.75502pt x 365.03589pt.
-<fig_lightcone_11x11_chi100.png, id=618, 1170.41264pt x 909.51794pt>
+[33]
+<fig_lightcone_11x11_chi100.png, id=583, 1170.41264pt x 909.51794pt>
 File: fig_lightcone_11x11_chi100.png Graphic file (type png)
 <use fig_lightcone_11x11_chi100.png>
-Package pdftex.def Info: fig_lightcone_11x11_chi100.png  used on input line 245
+Package pdftex.def Info: fig_lightcone_11x11_chi100.png  used on input line 153
 .
 (pdftex.def)             Requested size: 469.75502pt x 365.03589pt.
- [36]
-Underfull \hbox (badness 1242) in paragraph at lines 322--323
-\OT1/cmr/m/n/10 by HBM3e ($[]1\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 4\OMS/cmsy/m/n/
-10 ^^B$ \OT1/cmr/m/n/10 on
- []
-
-
-Underfull \hbox (badness 6300) in paragraph at lines 324--324
-[]\OT1/cmr/m/n/10 Algorithm mode se-lec-tion
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 324--324
-\OT1/cmr/m/n/10 is hardware-generation-
- []
-
-
-Underfull \hbox (badness 3039) in paragraph at lines 327--328
-[]\OT1/cmr/m/n/10 Odd grids trap-free on
- []
-
-
-Underfull \hbox (badness 1297) in paragraph at lines 331--333
-\OT1/cmr/m/n/10 healthy op-er-a-tor spread-
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 337--338
-[]\OT1/cmr/m/n/10 Consistent with Lieb-
- []
-
-
-Underfull \hbox (badness 2689) in paragraph at lines 337--338
-\OT1/cmr/m/n/10 Robinson cone hit-ting all
- []
-
-
-Underfull \hbox (badness 2495) in paragraph at lines 337--338
-\OT1/cmr/m/n/10 four bound-aries si-mul-ta-ne-
- []
-
-) [37] [38 <./fig_mi355x_10x10_chi100.png>] [39 <./fig_lightcone_10x10_chi100.p
-ng>] [40 <./fig_lightcone_11x11_chi100.png>] (./lightconesimulation.aux)
+ [34 <./fig_lightcone_10x10_chi100.png>] [35 <./fig_lightcone_11x11_chi100.png>
+]) [36] (./lightconesimulation.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
  ***********
-Package rerunfilecheck Info: File `lightconesimulation.out' has not changed.
-(rerunfilecheck)             Checksum: 4EFBA3F4C896743A962F79355FCAF578;6476.
+
+
+LaTeX Warning: There were undefined references.
+
+
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
+
+
+Package rerunfilecheck Warning: File `lightconesimulation.out' has changed.
+(rerunfilecheck)                Rerun to get outlines right
+(rerunfilecheck)                or use package `bookmark'.
+
+Package rerunfilecheck Info: Checksums for `lightconesimulation.out':
+(rerunfilecheck)             Before: BCEFE038B4F53B1209C683D1E152E093;6616
+(rerunfilecheck)             After:  D6E5F67730EB7ED08D4632FDE4A87DCF;6488.
  ) 
 Here is how much of TeX's memory you used:
- 30269 strings out of 476106
- 567443 string characters out of 5793934
- 2098975 words of memory out of 5000000
- 51566 multiletter control sequences out of 15000+600000
- 576173 words of font info for 104 fonts, out of 8000000 for 9000
+ 30239 strings out of 476106
+ 567031 string characters out of 5793934
+ 2101975 words of memory out of 5000000
+ 51553 multiletter control sequences out of 15000+600000
+ 575834 words of font info for 103 fonts, out of 8000000 for 9000
  59 hyphenation exceptions out of 8191
- 84i,14n,87p,1303b,1295s stack positions out of 10000i,1000n,20000p,200000b,200000s
- </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm0700.60
-0pk> </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm1000.
-600pk> </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm109
-5.600pk> </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm0
-600.600pk> </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcr
-m0800.600pk></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx1
-0.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb>
-</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/s
-hare/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/
-texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texliv
-e/texmf-dist/fonts/type1/public/amsfonts/cm/cmitt10.pfb></usr/share/texlive/tex
-mf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dis
-t/fonts/type1/public/amsfonts/cm/cmmi12.pfb></usr/share/texlive/texmf-dist/font
-s/type1/public/amsfonts/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1
-/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public
-/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfon
-ts/cm/cmmi8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c
-mmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pf
-b></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr
-/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb></usr/share/t
-exlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/share/texlive/t
-exmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dis
-t/fonts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/
-type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu
-blic/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/a
-msfonts/cm/cmsy5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts
-/cm/cmsy6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cms
-y7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb>
-</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/s
-hare/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/share/t
-exlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti9.pfb></usr/share/texlive/
-texmf-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/share/texlive/texmf-
-dist/fonts/type1/public/amsfonts/cm/cmtt9.pfb></usr/share/texlive/texmf-dist/fo
-nts/type1/public/amsfonts/symbols/msam10.pfb></usr/share/texlive/texmf-dist/fon
-ts/type1/public/amsfonts/symbols/msbm10.pfb>
-Output written on lightconesimulation.pdf (40 pages, 2169085 bytes).
+ 84i,14n,87p,1099b,1376s stack positions out of 10000i,1000n,20000p,200000b,200000s
+
+pdfTeX warning (dest): name{subsection.B.4} has been referenced but does not ex
+ist, replaced by a fixed one
+
+
+pdfTeX warning (dest): name{subsection.B.3} has been referenced but does not ex
+ist, replaced by a fixed one
+
+
+pdfTeX warning (dest): name{subsection.B.2} has been referenced but does not ex
+ist, replaced by a fixed one
+
+
+pdfTeX warning (dest): name{subsection.B.1} has been referenced but does not ex
+ist, replaced by a fixed one
+
+
+pdfTeX warning (dest): name{appendix.B} has been referenced but does not exist,
+ replaced by a fixed one
+
+ </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm1000.600p
+k> </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm1095.60
+0pk> </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm0600.
+600pk> </home/paolod/.texlive2023/texmf-var/fonts/pk/ljfour/jknappen/ec/tcrm080
+0.600pk></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pf
+b></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></us
+r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx8.pfb></usr/share
+/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmcsc10.pfb></usr/share/texl
+ive/texmf-dist/fonts/type1/public/amsfonts/cm/cmex10.pfb></usr/share/texlive/te
+xmf-dist/fonts/type1/public/amsfonts/cm/cmitt10.pfb></usr/share/texlive/texmf-d
+ist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fo
+nts/type1/public/amsfonts/cm/cmmi12.pfb></usr/share/texlive/texmf-dist/fonts/ty
+pe1/public/amsfonts/cm/cmmi5.pfb></usr/share/texlive/texmf-dist/fonts/type1/pub
+lic/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams
+fonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c
+m/cmmi8.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9
+.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></
+usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/sha
+re/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr5.pfb></usr/share/texli
+ve/texmf-dist/fonts/type1/public/amsfonts/cm/cmr6.pfb></usr/share/texlive/texmf
+-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fo
+nts/type1/public/amsfonts/cm/cmr8.pfb></usr/share/texlive/texmf-dist/fonts/type
+1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public
+/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo
+nts/cm/cmsy5.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/
+cmsy6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.p
+fb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy8.pfb></us
+r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb></usr/share
+/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb></usr/share/texli
+ve/texmf-dist/fonts/type1/public/amsfonts/cm/cmti9.pfb></usr/share/texlive/texm
+f-dist/fonts/type1/public/amsfonts/cm/cmtt10.pfb></usr/share/texlive/texmf-dist
+/fonts/type1/public/amsfonts/cm/cmtt8.pfb></usr/share/texlive/texmf-dist/fonts/
+type1/public/amsfonts/cm/cmtt9.pfb></usr/share/texlive/texmf-dist/fonts/type1/p
+ublic/amsfonts/symbols/msam10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu
+blic/amsfonts/symbols/msbm10.pfb>
+Output written on lightconesimulation.pdf (36 pages, 2158670 bytes).
 PDF statistics:
- 853 PDF objects out of 1000 (max. 8388607)
- 696 compressed objects within 7 object streams
- 216 named destinations out of 1000 (max. 500000)
- 19822 words of extra memory for PDF output out of 20736 (max. 10000000)
+ 799 PDF objects out of 1000 (max. 8388607)
+ 647 compressed objects within 7 object streams
+ 200 named destinations out of 1000 (max. 500000)
+ 19286 words of extra memory for PDF output out of 20736 (max. 10000000)
 

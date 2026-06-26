@@ -6,7 +6,7 @@ Produces fig_breakdown_chi80.png:
   Two panels sharing the x-axis (layer):
     Top:    Trotter time per layer (ms)
     Bottom: BP time per layer (ms)
-  Four series: MI_B HH, MI_B Adaptive, MI_A HH, MI_A Adaptive
+  Four series: GPU-B HH, GPU-B Adaptive, GPU-A HH, GPU-A Adaptive
   Log-scale y-axis. BP spikes at trapped layers are visible.
 
 Usage:
@@ -25,19 +25,19 @@ from pathlib import Path
 CHI = 80
 
 SERIES = {
-    'MI_B Householder': {
+    'GPU-B Householder': {
         'log':   'logs/householder_20260517/mi100/4x4_chi080.log',
         'color': '#2166ac', 'ls': '-',  'lw': 2.0,
     },
-    'MI_B Adaptive': {
+    'GPU-B Adaptive': {
         'log':   'logs/baseline_20260513/mi100/4x4_chi080.log',
         'color': '#2166ac', 'ls': '--', 'lw': 1.8,
     },
-    'MI_A Householder': {
+    'GPU-A Householder': {
         'log':   'logs/householder_20260517/mi60/4x4_chi080.log',
         'color': '#d73027', 'ls': '-',  'lw': 2.0,
     },
-    'MI_A Adaptive': {
+    'GPU-A Adaptive': {
         'log':   'logs/baseline_20260514/mi60/4x4_chi080.log',
         'color': '#d73027', 'ls': '--', 'lw': 1.8,
     },
@@ -98,8 +98,8 @@ def make_figure(root):
             for ax in (ax_t, ax_b):
                 ax.axvline(l_sat, color=cfg['color'], ls=':', lw=0.8, alpha=0.4)
 
-    # Shared saturation annotation (use MI_B HH as reference)
-    rows_ref = parse_log(root / SERIES['MI_B Householder']['log'])
+    # Shared saturation annotation (use GPU-B HH as reference)
+    rows_ref = parse_log(root / SERIES['GPU-B Householder']['log'])
     if rows_ref:
         chi_arr = np.array([r[1] for r in rows_ref])
         layers_arr = np.array([r[0] for r in rows_ref])
@@ -129,13 +129,13 @@ def make_figure(root):
     # Legend
     proxies = [
         Line2D([0],[0], color='#2166ac', ls='-',  lw=2, marker='o', ms=4,
-               label='MI_B  Householder'),
+               label='GPU-B  Householder'),
         Line2D([0],[0], color='#2166ac', ls='--', lw=2, marker='o', ms=4,
-               label='MI_B  Adaptive'),
+               label='GPU-B  Adaptive'),
         Line2D([0],[0], color='#d73027', ls='-',  lw=2, marker='o', ms=4,
-               label='MI_A   Householder'),
+               label='GPU-A   Householder'),
         Line2D([0],[0], color='#d73027', ls='--', lw=2, marker='o', ms=4,
-               label='MI_A   Adaptive'),
+               label='GPU-A   Adaptive'),
     ]
     ax_t.legend(handles=proxies, fontsize=9, framealpha=0.95,
                 handlelength=2.2, loc='upper left')

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-make_mi_c_figure.py — MI_C per-layer timing at 10x10 chi=100
+make_mi_c_figure.py — GPU-C per-layer timing at 10x10 chi=100
 
 Produces fig_mi_c_10x10_chi100.png:
   Two panels sharing the x-axis (layer):
     Top:    Trotter time per layer (ms)
     Bottom: BP time per layer (ms)
-  Two series: MI_C Householder, MI_C Adaptive
+  Two series: GPU-C Householder, GPU-C Adaptive
   Saturation shading and annotation.
-  MI_C only — this run (109 GB) is not feasible on MI_B or MI_A.
+  GPU-C only — this run (109 GB) is not feasible on GPU-B or GPU-A.
 
 Usage:
     python Paper/make_mi_c_figure.py             # auto-locate logs
@@ -126,8 +126,8 @@ def make_figure(root):
         ax.grid(True, which='major', alpha=0.35, lw=0.7)
 
     ax_b.set_xlabel('Trotter layer', fontsize=11)
-    ax_t.set_title(rf'MI_C: per-layer timing on $10\times10$ lattice at $\chi_{{max}}={CHI}$'
-                   '\n(109 GB HBM3e — not feasible on MI_B/MI_A)',
+    ax_t.set_title(rf'GPU-C: per-layer timing on $10\times10$ lattice at $\chi_{{max}}={CHI}$'
+                   '\n(109 GB HBM3e — not feasible on GPU-B/GPU-A)',
                    fontsize=11)
 
     proxies = [

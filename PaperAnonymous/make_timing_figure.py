@@ -6,7 +6,7 @@ Produces fig_timing_chi.png:
   Two-panel figure (log-log):
     Left:  Trotter time per layer vs chi
     Right: BP time per layer vs chi
-  Four series: MI_B HH, MI_B Adaptive, MI_A HH, MI_A Adaptive
+  Four series: GPU-B HH, GPU-B Adaptive, GPU-A HH, GPU-A Adaptive
   Two grids: 4x4 (solid markers) and 5x5 (hollow markers)
   Power-law fits chi^alpha overlaid as dotted lines
 
@@ -54,22 +54,22 @@ def find_root():
 # ── Data collection ────────────────────────────────────────────────────────────
 # Only canonical files: 4x4_chi{NNN}.log  (no _n40, _damped, etc.)
 SERIES = {
-    'MI_B Householder': {
+    'GPU-B Householder': {
         'color': '#2166ac', 'ls': '-',
         '4x4': ('householder_20260517/mi100', [20,40,50,60,70,80,90,100]),
         '5x5': ('householder_20260517/mi100', [20,40,50,60,80,100]),
     },
-    'MI_B Adaptive': {
+    'GPU-B Adaptive': {
         'color': '#2166ac', 'ls': '--',
         '4x4': ('baseline_20260513/mi100', [20,40,50,60,70,80,100]),
         '5x5': ('odd_fix_20260515/mi100',  [50,60,80]),
     },
-    'MI_A Householder': {
+    'GPU-A Householder': {
         'color': '#d73027', 'ls': '-',
         '4x4': ('householder_20260517/mi60', [20,40,50,60,70,80]),
         '5x5': ('householder_20260517/mi60', [50,80]),
     },
-    'MI_A Adaptive': {
+    'GPU-A Adaptive': {
         'color': '#d73027', 'ls': '--',
         '4x4': ('baseline_20260514/mi60', [20,50,80]),
         '5x5': (None, []),
@@ -182,10 +182,10 @@ def make_figure(root):
 
     # ── Legend ────────────────────────────────────────────────────────────────
     proxies = [
-        Line2D([0],[0], color='#2166ac', ls='-',  lw=2, marker='o', ms=6, label='MI_B  Householder'),
-        Line2D([0],[0], color='#2166ac', ls='--', lw=2, marker='o', ms=6, label='MI_B  Adaptive'),
-        Line2D([0],[0], color='#d73027', ls='-',  lw=2, marker='o', ms=6, label='MI_A   Householder'),
-        Line2D([0],[0], color='#d73027', ls='--', lw=2, marker='o', ms=6, label='MI_A   Adaptive'),
+        Line2D([0],[0], color='#2166ac', ls='-',  lw=2, marker='o', ms=6, label='GPU-B  Householder'),
+        Line2D([0],[0], color='#2166ac', ls='--', lw=2, marker='o', ms=6, label='GPU-B  Adaptive'),
+        Line2D([0],[0], color='#d73027', ls='-',  lw=2, marker='o', ms=6, label='GPU-A   Householder'),
+        Line2D([0],[0], color='#d73027', ls='--', lw=2, marker='o', ms=6, label='GPU-A   Adaptive'),
         Line2D([0],[0], color='gray', ls='-',  lw=2, marker='o', ms=6,
                markerfacecolor='gray',  label='4×4 grid'),
         Line2D([0],[0], color='gray', ls='-',  lw=2, marker='s', ms=6,

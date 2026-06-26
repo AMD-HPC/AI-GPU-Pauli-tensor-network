@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-make_mi_c_lightcone.py — Full-page light-cone figure for the MI_C appendix.
+make_mi_c_lightcone.py — Full-page light-cone figure for the GPU-C appendix.
 
 Layout  (one page per figure, ~200 dpi, light theme):
   Row 0-1 : 2 × 4 heatmap panels — n(r,t) at 8 selected Trotter layers
@@ -219,7 +219,7 @@ def make_figure(log_path, out_path, forced_layers=None, vmin=1e-5, dpi=200):
         rf'Operator weight $n(\mathbf{{r}},t)$ — '
         rf'${nx}\times{ny}$ lattice, $\chi_{{\mathrm{{max}}}}={chi}$, {qr_label} QR'
         '\n'
-        rf'MI_C (HBM3e, 192+\,GB) — {n_steps} Trotter steps, $\delta t = 0.1$',
+        rf'GPU-C (HBM3e, 192+\,GB) — {n_steps} Trotter steps, $\delta t = 0.1$',
         fontsize=13, y=0.99,
     )
 
