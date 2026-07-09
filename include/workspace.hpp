@@ -105,8 +105,9 @@
 
 struct Workspace {
     int chi_max;    // maximum bond dimension (set at startup, never changes)
-    int m_max;      // max left dims = chi_max^(MAX_DEGREE-1) = chi_max^3
+    int m_max;      // max left dims = chi_max^(max_degree-1)
     int n_max;      // max right dims = chi_max * D
+    int max_degree; // max site degree (4 for rectangular, 3 for heavy-hex)
 
     /* ── Large buffers — dominate memory usage ───────────────────────── */
 
@@ -202,7 +203,8 @@ struct Workspace {
     /* ── Constructor: allocate everything at startup ─────────────────── */
     // max_degree: maximum site degree in the lattice (default 4 for rectangular,
     //             use 3 for heavy-hex to avoid 2 TB allocation at chi=600)
-    Workspace(int chi_max_, int max_degree = MAX_DEGREE) : chi_max(chi_max_) {
+    Workspace(int chi_max_, int max_degree_ = MAX_DEGREE)
+        : chi_max(chi_max_), max_degree(max_degree_) {
         // m_max = chi_max^(max_degree-1)
         // degree-4 (rectangular interior): chi^3   → large at chi=600
         // degree-3 (heavy-hex junction):   chi^2   → manageable at chi=600
@@ -239,8 +241,8 @@ struct Workspace {
         _alloc(gram,  small);
         _alloc_scalar(S, n_max * D);
 
-        // Env buffers
-        for (int d=0; d<MAX_DEGREE; d++) {
+        // Env buffers — only allocate as many as max_degree (not always 4)
+        for (int d=0; d<max_degree; d++) {
             _alloc(sqrt_env[d],     env);
             _alloc(inv_sqrt_env[d], env);
         }
@@ -269,7 +271,7 @@ struct Workspace {
         _free(R1);   _free(R2);
         _free(A1);   _free(A2);
         _free(RR);   _free(S);    _free(gram);
-        for (int d=0; d<MAX_DEGREE; d++) {
+        for (int d=0; d<max_degree; d++) {
             _free(sqrt_env[d]);
             _free(inv_sqrt_env[d]);
         }

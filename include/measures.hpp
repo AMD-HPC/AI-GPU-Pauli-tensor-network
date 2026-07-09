@@ -782,10 +782,11 @@ struct Measures {
         std::vector<Scalar> ones_D(D, 1.f);
         HIP_CHECK(hipMemcpy(d_sel_full, ones_D.data(), D*sizeof(Scalar), hipMemcpyHostToDevice));
 
-        // d_psi_sq: worst-case 4-bond interior site at chi_max: chi_max^4 * D elements
+        // d_psi_sq: worst-case site at chi_max: chi_max^max_degree * D elements
+        // Use ws.max_degree (not MAX_DEGREE=4) for heavy-hex and other degree-3 lattices
         {
             size_t psi_sq_sz = (size_t)D;
-            for (int i = 0; i < MAX_DEGREE; i++) psi_sq_sz *= (size_t)ws.chi_max;
+            for (int i = 0; i < ws.max_degree; i++) psi_sq_sz *= (size_t)ws.chi_max;
             HIP_CHECK(hipMalloc(&d_psi_sq, psi_sq_sz * sizeof(Scalar)));
         }
 
