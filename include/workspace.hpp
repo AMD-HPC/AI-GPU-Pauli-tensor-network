@@ -200,10 +200,14 @@ struct Workspace {
     int chol_skipped   = 0;   // matrix too small to attempt Cholesky
 
     /* ── Constructor: allocate everything at startup ─────────────────── */
-    Workspace(int chi_max_) : chi_max(chi_max_) {
-        // m_max = chi_max^(MAX_DEGREE-1) = chi^3 for 2D lattice
+    // max_degree: maximum site degree in the lattice (default 4 for rectangular,
+    //             use 3 for heavy-hex to avoid 2 TB allocation at chi=600)
+    Workspace(int chi_max_, int max_degree = MAX_DEGREE) : chi_max(chi_max_) {
+        // m_max = chi_max^(max_degree-1)
+        // degree-4 (rectangular interior): chi^3   → large at chi=600
+        // degree-3 (heavy-hex junction):   chi^2   → manageable at chi=600
         m_max = 1;
-        for (int i=0; i<MAX_DEGREE-1; i++) m_max *= chi_max;
+        for (int i=0; i<max_degree-1; i++) m_max *= chi_max;
         m_max += 1;  // one-element safety margin against boundary overrun in rocsolver internals
 
         // n_max = chi_max * D

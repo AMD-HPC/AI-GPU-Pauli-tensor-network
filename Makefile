@@ -88,6 +88,10 @@ main: main.cpp $(HEADERS)
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main main.cpp $(LIBS)
 	@echo "Built main"
 
+main_heavyhex: main_heavyhex.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex main_heavyhex.cpp $(LIBS)
+	@echo "Built main_heavyhex"
+
 # ── Clean ──────────────────────────────────────────────────────────────────
 
 clean:
