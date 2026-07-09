@@ -516,9 +516,10 @@ struct GateOps {
     /* ================================================================
      * apply_binary_gate
      * ================================================================ */
+    template<typename GridT = Grid>
     void apply_binary_gate(
         Scalar* psi_v1, Scalar* psi_v2,
-        const Gate& gate, Grid& grid,
+        const Gate& gate, GridT& grid,
         std::vector<Scalar*>& out_messages,
         const std::vector<Scalar*>& env_messages,
         const std::vector<int>& frozen_chi,

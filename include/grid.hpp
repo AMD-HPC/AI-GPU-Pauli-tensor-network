@@ -239,6 +239,14 @@ struct Grid {
         _build_colors();
     }
 
+protected:
+    // Protected no-op constructor for subclasses that build their own topology
+    Grid(int chi_max_, int n_colors)
+        : nrows(0), ncols(0), n_sites(0), n_bonds(0),
+          chi_max(chi_max_), colors(n_colors) {}
+
+public:
+
     /* ── Accessors ───────────────────────────────────────────────────── */
     int site_id(int row, int col) const { return row * ncols + col; }
     const Site& site(int row, int col) const { return sites[site_id(row, col)]; }

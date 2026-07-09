@@ -78,6 +78,10 @@ tests: test_tensor test_contraction test_pseudo_sqrt test_gate_ops test_grid tes
 	@echo "--- test_entagle ---";   ./tests/test_entangle
 	@echo "--- test_3x3_golden ---";   ./tests/test_3x3_golden
 
+test_heavyhex: test/test_heavyhex.cpp include/types.hpp include/heavyhex.hpp include/heavyhex_physics.hpp include/gate.hpp include/measures.hpp include/workspace.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test/test_heavyhex test/test_heavyhex.cpp $(LIBS)
+	@echo "Built test/test_heavyhex"
+
 # ── Main simulation ────────────────────────────────────────────────────────
 
 main: main.cpp $(HEADERS)
