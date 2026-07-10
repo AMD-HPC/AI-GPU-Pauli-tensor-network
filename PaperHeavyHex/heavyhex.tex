@@ -1,0 +1,223 @@
+%% heavyhex.tex — CppSim Heavy-Hex paper
+%% Short paper: Tensor Network Simulation on Heavy-Hex Lattices using AMD GPUs
+%%
+%% Build: pdflatex heavyhex.tex
+
+\documentclass[twocolumn,showpacs,preprintnumbers,amsmath,amssymb,prl]{revtex4-2}
+
+\usepackage{graphicx}
+\usepackage{dcolumn}
+\usepackage{bm}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{xcolor}
+
+%% TODO markers
+\newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\newcommand{\CITE}[1]{\textcolor{blue}{[#1]}}
+\newcommand{\chi_{\max}}{\chi_{\max}}
+
+\begin{document}
+
+\title{Tensor Network Simulation of the Heisenberg Model\\
+       on Heavy-Hex Lattices using AMD GPUs}
+
+\author{Paolo D.}
+\affiliation{AMD Research}
+
+\date{\today}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{abstract}
+We extend CppSim, a high-performance C++/HIP tensor network simulator,
+to the heavy-hex lattice geometry used in IBM superconducting quantum processors.
+The heavy-hex graph (degree-2 and degree-3 sites, 3-colorable gate schedule)
+is implemented as a drop-in grid class with no changes to the gate application
+or belief propagation kernels.
+We simulate the isotropic Heisenberg model $H = J\sum_{\langle ij\rangle}
+(\mathbf{X}_i\mathbf{X}_j + \mathbf{Y}_i\mathbf{Y}_j + \mathbf{Z}_i\mathbf{Z}_j)$
+in the Heisenberg picture using Pauli transfer matrices,
+and study the autocorrelation function $C(t) = \langle Z_c(t) Z_c(0) \rangle$
+and operator lightcone on the \texttt{heavy\_hex\_3x3} graph (68 sites, 76 bonds).
+We demonstrate chi convergence up to $\chi = $ \TODO{X} on an AMD MI100 GPU (32 GB),
+and show a \TODO{X}$\times$ performance advantage of the C++/HIP implementation
+over a Julia/AMDGPU.jl reference at saturated bond dimension.
+\end{abstract}
+
+\maketitle
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+\label{sec:intro}
+
+Heavy-hex is the lattice topology used in IBM's superconducting quantum processors
+\CITE{IBM heavy-hex}. Each qubit site has degree 2 or 3, and the graph admits
+a natural 3-coloring of its bonds, enabling parallel gate application within
+each color class.
+
+Classical tensor network (TN) simulation of quantum circuits on heavy-hex graphs
+serves two purposes: (i) validation of quantum computations for small system sizes
+where exact simulation is feasible, and (ii) computation of noise-free reference
+values for quantum error mitigation protocols such as the Multi-Product Formula
+(MPF) \CITE{MPF ref}.
+
+In this paper we show that CppSim \CITE{cppsim}, originally developed for
+rectangular 2D Ising dynamics, extends naturally to heavy-hex topology with
+minimal code changes. The hot-path kernels — gate application, belief propagation,
+workspace management — are topology-agnostic and require no modification.
+Only the grid construction and Hamiltonian gate matrix need to be defined
+for the new geometry.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Heavy-Hex Lattice and Hamiltonian}
+\label{sec:grid}
+
+\subsection{Graph structure}
+
+The \texttt{heavy\_hex\_$n_x \times n_y$} graph has:
+\begin{itemize}
+    \item $(n_x+1)(n_y+1)$ \emph{junction} sites (degree 3)
+    \item remaining \emph{arm} sites (degree 2) connecting adjacent junctions
+    \item $2n_x n_y + n_x + n_y$ bonds total
+\end{itemize}
+
+For $n_x = n_y = 3$: 16 junction sites, 52 arm sites, 76 bonds.
+The graph is bipartite and 3-edge-colorable — bonds partition into 3 color
+classes of sizes 25, 25, 26, corresponding to the natural gate layers
+of the IBM hardware schedule.
+
+Site tensors have shapes $[\chi^2, D]$ (arm) and $[\chi^3, D]$ (junction),
+where $D=4$ is the Pauli basis dimension $\{I, X, Y, Z\}$.
+The memory cost is dominated by junction sites:
+$16 \times \chi^3 \times D \times 4$\,B (float32).
+
+\subsection{Implementation}
+
+The \texttt{FlatHeavyHexGrid} class inherits from \texttt{Grid} and populates
+the same \texttt{Site}/\texttt{Bond}/\texttt{Gate} data structures used by the
+rectangular grid. The color class assignment follows the hardware gate schedule
+(JSON layers 0, 1, 2). No changes are required in \texttt{gate.hpp},
+\texttt{measures.hpp}, or \texttt{workspace.hpp} beyond parametrizing the
+workspace by \texttt{max\_degree=3} instead of 4.
+
+\subsection{Hamiltonian and gate matrix}
+
+We simulate the isotropic Heisenberg (XXX) model:
+\begin{equation}
+    H = J \sum_{\langle ij \rangle} \bigl(X_i X_j + Y_i Y_j + Z_i Z_j\bigr)
+\end{equation}
+with uniform coupling $J = 1$ and time step $\delta t = 0.1$.
+
+In the Heisenberg picture with Pauli basis, the two-site gate
+$U = e^{-i\theta(X\otimes X + Y\otimes Y + Z\otimes Z)}$
+($\theta = J\delta t$) is represented by a $16\times 16$ real
+Pauli transfer matrix (PTM) with block structure:
+\begin{align}
+    \{II, XX, YY, ZZ\} &\to \text{invariant (diagonal = 1)} \\
+    \{IX, XI, YZ, ZY\} &\to \text{$4\times 4$ mixing block} \\
+    \{IY, YI, XZ, ZX\} &\to \text{$4\times 4$ mixing block} \\
+    \{IZ, ZI, XY, YX\} &\to \text{$4\times 4$ mixing block}
+\end{align}
+with elements $\alpha = \cos^2(2\theta)$, $\beta = \sin^2(2\theta)$,
+$\gamma = \sin(2\theta)\cos(2\theta)$.
+This was verified against a Julia reference implementation.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Autocorrelation and Chi Convergence}
+\label{sec:ct}
+
+\subsection{Autocorrelation function}
+
+We initialize the Heisenberg-picture operator as $Z$ at a single center site
+(site 13, a degree-3 junction at the graph midpoint) and $I$ elsewhere.
+The autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle$ is computed
+via the Bethe approximation after each Trotter step.
+
+\subsection{Chi convergence}
+
+\TODO{Insert ct\_convergence.png figure}
+
+\TODO{Insert convergence table from plot\_ct\_convergence.py}
+
+Figure~\ref{fig:ct} shows $C(t)$ for $\chi = 50, 100, 150, 200, 250, 300,
+350, 400, 430$ over 30 Trotter steps. The result converges to
+\TODO{X decimal places} at $\chi = $ \TODO{X}, indicating that
+$\chi_{\max} = $ \TODO{X} is sufficient for faithful simulation on this graph.
+
+The non-monotonic behaviour of $C(t)$ — a decrease followed by partial
+recovery — is a genuine quantum recurrence of the XXX model on the degree-3
+lattice, confirmed by its independence from $\chi$.
+
+\subsection{Operator lightcone}
+
+\TODO{Insert lightcone\_sites\_spatial\_site13.png figure (selected cycles)}
+
+Figure~\ref{fig:lightcone} shows the non-identity Pauli weight $n(v,t)$
+at each site for selected cycles. The operator spreads radially outward
+from the center junction, following the 3-fold symmetry of the hexagonal
+lattice. The wavefront reaches the boundary sites by cycle \TODO{X},
+defining the computational window within which the simulation is exact
+regardless of $\chi$ truncation at the boundary.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Performance}
+\label{sec:perf}
+
+\subsection{Chi scaling}
+
+\TODO{Insert timing\_vs\_chi.png and chi\_growth.png}
+
+Table~\ref{tab:perf} shows the wall-clock time per Trotter cycle at
+saturated bond dimension for each $\chi$ value.
+The dominant cost is the Householder QR decomposition
+($\mathcal{O}(m n^2)$ where $m = \chi^2 D$ for degree-3 sites),
+which exceeds the SVD cost above $\chi \approx $ \TODO{X} cycles.
+
+\TODO{Insert chi scaling table}
+
+\subsection{CppSim vs Julia/AMDGPU.jl}
+
+\TODO{Insert comparison table (10x speedup result)}
+
+At saturated bond dimension ($\chi = 430$, cycles 8--10), CppSim achieves
+a $\sim$10$\times$ speedup over the Julia/AMDGPU.jl reference implementation
+on the same AMD MI100 GPU (32\,GB HBM2). Both use Householder QR and
+float32 arithmetic. The speedup arises from:
+(i) zero GPU memory allocation during simulation (pre-allocated workspace),
+(ii) direct HIP/rocBLAS calls without framework dispatch overhead, and
+(iii) on-device \texttt{pseudo\_sqrt} kernel eliminating CPU--GPU transfers.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+
+We have demonstrated that CppSim, a C++/HIP tensor network simulator,
+extends to the heavy-hex lattice with minimal code changes.
+The topology-agnostic gate and belief propagation kernels accept any
+\texttt{Grid}-derived class, and the heavy-hex grid requires only a new
+site/bond/color construction.
+
+On an AMD MI100 (GPU-B, 32\,GB), we achieve \TODO{exact} simulation up to
+$\chi = $ \TODO{X} on the $3\times3$ heavy-hex graph (68 sites),
+and demonstrate $\sim$10$\times$ speedup over a Julia reference implementation
+at saturated bond dimension.
+
+The operator lightcone visualization — computed as a byproduct of the
+simulation with no additional cost — provides an intuitive picture of
+operator spreading on the hexagonal lattice and defines the computational
+window for quantum error mitigation protocols.
+
+Future work will extend to larger graphs ($2\times2$, $4\times4$) on
+higher-memory hardware (MI355X, 309\,GB), and implement interleaved
+belief propagation to match Julia's online BP approach and eliminate
+BP trap effects.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{acknowledgments}
+\TODO{Acknowledgments}
+\end{acknowledgments}
+
+\bibliography{heavyhex}
+
+\end{document}
