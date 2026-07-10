@@ -48,11 +48,28 @@ int main(int argc, char** argv) {
     Scalar cutoff  = (argc > 5) ? (Scalar)atof(argv[5]) : 1e-10f;
 
     QrMode qr_mode = QrMode::Householder;
+    bool   measure_spatial = false;
+    const char* spatial_file = nullptr;
     for (int i = 1; i < argc; i++) {
         std::string arg(argv[i]);
         if      (arg == "--qr=adaptive")    qr_mode = QrMode::Adaptive;
         else if (arg == "--qr=cholesky")    qr_mode = QrMode::Cholesky;
         else if (arg == "--qr=householder") qr_mode = QrMode::Householder;
+        else if (arg == "--measure=spatial") measure_spatial = true;
+        else if (arg.substr(0,10) == "--spatial=") {
+            measure_spatial = true;
+            spatial_file = argv[i] + 10;  // filename after --spatial=
+        }
+        else if (arg.substr(0,9) == "--center=") {
+            // override center site (0-based site id)
+        }
+    }
+    // parse center after loop to allow --center=N anywhere
+    int center_override = 2;  // default: Julia obs_site=3 (0-based=2)
+    for (int i = 1; i < argc; i++) {
+        std::string arg(argv[i]);
+        if (arg.substr(0,9) == "--center=")
+            center_override = atoi(argv[i] + 9);
     }
 
     printf("═══════════════════════════════════════════════\n");
@@ -77,15 +94,30 @@ int main(int argc, char** argv) {
     HeavyHexSimulator sim(handle, J_coup, dt);
     sim.gate_ops.qr_mode = qr_mode;
 
-    // Center site: Julia's obs_site=3 (1-based) → id=2 (0-based)
-    int center = 2;
-    printf("Center site: id=%d (Julia obs_site=3, vertex (3,))\n\n", center);
+    int center = center_override;
+    printf("Center site: id=%d (degree=%d)\n\n", center, (int)grid.sites[center].degree);
     state.init_heisenberg(grid, center);
 
     printf("Memory:\n");
     printf("  State tensors: %.1f MB\n",   grid.total_tensor_bytes()/1e6);
     printf("  Messages:      %.1f MB\n",   grid.total_message_bytes()/1e6);
     printf("  Workspace:     %.1f MB\n\n", ws.total_bytes/1e6);
+
+    // ── Spatial measurement setup ─────────────────────────────────
+    std::vector<float> spatial(grid.n_sites, 0.f);
+    FILE* spatial_fp = nullptr;
+    if (measure_spatial) {
+        if (spatial_file) {
+            spatial_fp = fopen(spatial_file, "w");
+            if (!spatial_fp) { fprintf(stderr, "Cannot open %s\n", spatial_file); return 1; }
+        } else {
+            spatial_fp = stdout;
+        }
+        // Write header with site count and center
+        fprintf(spatial_fp, "# heavy_hex_3x3  n_sites=%d  center=%d\n",
+                grid.n_sites, center);
+        fprintf(spatial_fp, "# columns: site_id weight\n");
+    }
 
     // ── Header ────────────────────────────────────────────────────
     printf("%-6s %-8s %-8s %-12s %-10s  %-12s %-10s %-10s %-7s %-10s  %-10s %-8s %-8s\n",
@@ -127,11 +159,22 @@ int main(int argc, char** argv) {
                t_trotter, t_bp, t_pf, bp_sweeps, bp_delta,
                lm.gate_err, lm.Se_over_logchi, gap_print);
         fflush(stdout);
+
+        // Spatial Pauli weight per site
+        if (measure_spatial) {
+            meas.compute_pauli_profile(static_cast<Grid&>(grid),
+                                       state.psi, spatial.data());
+            fprintf(spatial_fp, "# cycle %d  C=%.6f  chi=%d\n", layer, C, max_chi);
+            for (int s = 0; s < grid.n_sites; s++)
+                fprintf(spatial_fp, "%d %.6f\n", s, spatial[s]);
+            fflush(spatial_fp);
+        }
     }
 
     printf("\nCholesky-QR: attempted=%d  fallback=%d  skipped=%d\n",
            ws.chol_attempted, ws.chol_fallback, ws.chol_skipped);
     printf("\nDone.\n");
+    if (spatial_fp && spatial_fp != stdout) fclose(spatial_fp);
     rocblas_destroy_handle(handle);
     return 0;
 }
