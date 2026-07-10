@@ -3,32 +3,36 @@
 %%
 %% Build: pdflatex heavyhex.tex
 
-\documentclass[twocolumn,showpacs,preprintnumbers,amsmath,amssymb,prl]{revtex4-2}
-
+\documentclass[10pt,twocolumn]{article}
+\usepackage[top=2cm,bottom=2cm,left=1.5cm,right=1.5cm,columnsep=0.5cm]{geometry}
 \usepackage{graphicx}
-\usepackage{dcolumn}
+\usepackage{amsmath,amssymb}
 \usepackage{bm}
-\usepackage{amsmath}
 \usepackage{hyperref}
 \usepackage{booktabs}
 \usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{abstract}
+\renewcommand{\abstractnamefont}{\normalfont\bfseries}
+\renewcommand{\abstracttextfont}{\normalfont\small}
 
 %% TODO markers
 \newcommand{\TODO}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
 \newcommand{\CITE}[1]{\textcolor{blue}{[#1]}}
-\newcommand{\chi_{\max}}{\chi_{\max}}
+\newcommand{\chimax}{\chi_{\max}}
 
 \begin{document}
 
 \title{Tensor Network Simulation of the Heisenberg Model\\
        on Heavy-Hex Lattices using AMD GPUs}
 
-\author{Paolo D.}
-\affiliation{AMD Research}
+\author{Paolo D. \\ \small AMD Research}
 
 \date{\today}
 
 % ─────────────────────────────────────────────────────────────────────────────
+\maketitle
+
 \begin{abstract}
 We extend CppSim, a high-performance C++/HIP tensor network simulator,
 to the heavy-hex lattice geometry used in IBM superconducting quantum processors.
@@ -44,8 +48,6 @@ We demonstrate chi convergence up to $\chi = $ \TODO{X} on an AMD MI100 GPU (32 
 and show a \TODO{X}$\times$ performance advantage of the C++/HIP implementation
 over a Julia/AMDGPU.jl reference at saturated bond dimension.
 \end{abstract}
-
-\maketitle
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Introduction}
@@ -214,9 +216,8 @@ belief propagation to match Julia's online BP approach and eliminate
 BP trap effects.
 
 % ─────────────────────────────────────────────────────────────────────────────
-\begin{acknowledgments}
+\section*{Acknowledgments}
 \TODO{Acknowledgments}
-\end{acknowledgments}
 
 \bibliography{heavyhex}
 
