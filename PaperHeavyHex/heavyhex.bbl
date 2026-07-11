@@ -5,6 +5,27 @@ TODO.
 \newblock Todo: Heavy-hex lattice topology reference, 2021.
 \newblock To be filled.
 
+\bibitem{tindall2023gauging}
+J.~Tindall and M.~Fishman.
+\newblock Gauging tensor networks with belief propagation.
+\newblock {\em SciPost Physics}, 15:222, 2023.
+
+\bibitem{tindall2024eagle}
+J.~Tindall, M.~Fishman, E.~M. Stoudenmire, and D.~Sels.
+\newblock Efficient tensor network simulation of {IBM}'s eagle kicked ising
+  experiment.
+\newblock {\em PRX Quantum}, 5:010308, 2024.
+
+\bibitem{tindall2025disordered}
+J.~Tindall, A.~Mello, M.~Fishman, M.~Stoudenmire, and D.~Sels.
+\newblock Dynamics of disordered quantum systems with two- and
+  three-dimensional tensor networks, 2025.
+
+\bibitem{rudolph2025simulating}
+M.~S. Rudolph and J.~Tindall.
+\newblock Simulating and sampling from quantum circuits with 2d tensor
+  networks, 2025.
+
 \bibitem{mpf-ref}
 TODO.
 \newblock Todo: Multi-product formula reference, 2026.
@@ -14,5 +35,10 @@ TODO.
 Paolo D'Alberto.
 \newblock Gpu-first heisenberg-picture tensor network dynamics for the 2d
   transverse-field ising model, 2026.
+
+\bibitem{evenbly2026loop}
+G.~Evenbly, N.~Pancotti, A.~Milsted, J.~Gray, and G.~K.-L. Chan.
+\newblock Loop series expansions for tensor networks.
+\newblock {\em Physical Review Research}, 8:013245, 2026.
 
 \end{thebibliography}

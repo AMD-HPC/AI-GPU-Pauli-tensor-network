@@ -70,9 +70,10 @@ each color class.
 
 Classical tensor network (TN) simulation of quantum circuits on heavy-hex graphs
 serves two purposes: (i) validation of quantum computations for small system sizes
-where exact simulation is feasible, and (ii) computation of noise-free reference
-values for quantum error mitigation protocols such as the Multi-Product Formula
-(MPF) \cite{mpf-ref}.
+where exact simulation is feasible
+\cite{tindall2023gauging,tindall2024eagle,tindall2025disordered,rudolph2025simulating},
+and (ii) computation of noise-free reference values for quantum error mitigation
+protocols such as the Multi-Product Formula (MPF) \cite{mpf-ref}.
 
 In this paper we show that CppSim \cite{dalberto2026cppsim}, originally developed for
 rectangular 2D Ising dynamics, extends naturally to heavy-hex topology with
@@ -145,7 +146,7 @@ This was verified against a Julia reference implementation.
 We initialize the Heisenberg-picture operator as $Z$ at a single center site
 (site 13, a degree-3 junction at the graph midpoint) and $I$ elsewhere.
 The autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle$ is computed
-via the Bethe approximation after each Trotter step.
+via the Bethe approximation \cite{tindall2023gauging,evenbly2026loop} after each Trotter step.
 We study convergence with respect to the bond dimension $\chi$ by running
 nine simulations with $\chi \in \{50, 100, 150, 200, 250, 300, 350, 400, 430\}$
 over 30 Trotter steps at cutoff $10^{-4}$.
@@ -248,22 +249,23 @@ $\sim$10$\times$ speedup.
 
 \begin{table}[h]
 \centering
-\caption{Wall-clock time per cycle ($\chi=430$, cutoff=$10^{-4}$,
-32\,GB GPU, float32, Householder QR).
-$\chi_{\rm max}$: maximum bond dimension reached.
-Julia: autocorrelation evolution time only.}
+\caption{Wall-clock time per cycle. GPU runs: $\chi$ capped at 430,
+float32, Householder QR, cutoff=$10^{-4}$.
+CPU: float64, no $\chi$ cap (grows freely to $\chi_{\rm CPU}$).
+Julia: GPU, noiseless evolution time only.
+`---': not measured.}
 \label{tab:comparison}
-\begin{tabular}{rrrrrr}
+\begin{tabular}{rr rrr rr}
 \toprule
-Cycle & $\chi_{\rm max}$ & Julia (s) & CppSim (s) & Speedup \\
+Cycle & $\chi_{\rm max}$ & CPU (s) & $\chi_{\rm CPU}$ & Julia (s) & CppSim (s) & Speedup \\
 \midrule
- 2 &  14 &  29  &   0.1 & 290$\times$ \\
- 4 &  60 &  29  &   0.5 &  58$\times$ \\
- 6 & 165 &  38  &   1.9 &  20$\times$ \\
- 7 & 278 &  65  &   4.4 &  15$\times$ \\
- 8 & 430 & 132  &  12.3 &  11$\times$ \\
- 9 & 430 & 251  &  25.2 &  10$\times$ \\
-10 & 430 & 418  &  46.9 &   9$\times$ \\
+ 2 &  14 &      9 &  14 &  29 &   0.1 & 290$\times$ \\
+ 4 &  60 &     15 &  58 &  29 &   0.5 &  58$\times$ \\
+ 6 & 165 &    201 & 202 &  38 &   1.9 &  20$\times$ \\
+ 7 & 278 &    978 & 364 &  65 &   4.4 &  15$\times$ \\
+ 8 & 430 &  4{,}393 & 637 & 132 & 12.3 &  11$\times$ \\
+ 9 & 430 &    --- & --- & 251 &  25.2 &  10$\times$ \\
+10 & 430 &    --- & --- & 418 &  46.9 &   9$\times$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -282,24 +284,27 @@ float32 arithmetic. The speedup arises from:
 
 We have demonstrated that CppSim, a C++/HIP tensor network simulator,
 extends to the heavy-hex lattice with minimal code changes.
-The topology-agnostic gate and belief propagation kernels accept any
-\texttt{Grid}-derived class, and the heavy-hex grid requires only a new
-site/bond/color construction.
+The topology-agnostic gate and BP kernels accept any \texttt{Grid}-derived
+class; the heavy-hex extension requires only a new site/bond/color construction
+and a $16\times16$ Pauli transfer matrix for the XXX Hamiltonian.
 
-On an a 32\,GB GPU, we achieve \TODO{exact} simulation up to
-$\chi = $ \TODO{X} on the $3\times3$ heavy-hex graph (68 sites),
-and demonstrate $\sim$10$\times$ speedup over a Julia reference implementation
-at saturated bond dimension.
+On a 32\,GB GPU, the $3\times3$ heavy-hex graph (68 sites, 76 bonds)
+is simulated with bond dimension $\chi \leq 430$.
+The autocorrelation $C(t)$ converges at $\chi = 200$
+($|\mathrm{error}| < 10^{-4}$ relative to $\chi=430$) for 10 Trotter cycles.
+The non-monotonic behaviour of $C(t)$ — a quantum recurrence of the
+isotropic Heisenberg model on the finite graph — is confirmed independent
+of $\chi$ and is therefore a physical prediction of the simulation.
+We demonstrate a $\sim$10$\times$ speedup over a Julia/AMDGPU.jl reference
+\cite{rudolph2025simulating} at saturated bond dimension.
 
-The operator lightcone visualization — computed as a byproduct of the
-simulation with no additional cost — provides an intuitive picture of
-operator spreading on the hexagonal lattice and defines the computational
-window for quantum error mitigation protocols.
+The operator lightcone, computed as a byproduct with no additional cost,
+visualizes operator spreading on the hexagonal lattice and defines the
+computational window within which the simulation is exact.
 
-Future work will extend to larger graphs ($2\times2$, $4\times4$) on
-higher-memory hardware, and implement interleaved
-belief propagation to match Julia's online BP approach and eliminate
-BP trap effects.
+Future work will extend to larger graphs on higher-memory hardware,
+and implement interleaved BP to match the online approach of
+\cite{tindall2023gauging} and eliminate BP trap effects.
 
 
 \bibliographystyle{unsrt}

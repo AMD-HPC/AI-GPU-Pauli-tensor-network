@@ -3,44 +3,44 @@ Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
 The top-level auxiliary file: heavyhex.aux
 The style file: unsrt.bst
 Database file #1: heavyhex.bib
-You've used 3 entries,
+You've used 8 entries,
             1791 wiz_defined-function locations,
-            455 strings with 3766 characters,
-and the built_in function-call counts, 392 in all, are:
-= -- 28
-> -- 12
+            482 strings with 4510 characters,
+and the built_in function-call counts, 1380 in all, are:
+= -- 100
+> -- 76
 < -- 0
-+ -- 6
-- -- 3
-* -- 5
-:= -- 64
-add.period$ -- 8
-call.type$ -- 3
-change.case$ -- 3
++ -- 29
+- -- 21
+* -- 69
+:= -- 230
+add.period$ -- 21
+call.type$ -- 8
+change.case$ -- 8
 chr.to.int$ -- 0
-cite$ -- 3
-duplicate$ -- 15
-empty$ -- 55
-format.name$ -- 3
-if$ -- 89
+cite$ -- 8
+duplicate$ -- 52
+empty$ -- 154
+format.name$ -- 21
+if$ -- 304
 int.to.chr$ -- 0
-int.to.str$ -- 3
-missing$ -- 0
-newline$ -- 17
-num.names$ -- 3
-pop$ -- 21
+int.to.str$ -- 8
+missing$ -- 3
+newline$ -- 40
+num.names$ -- 8
+pop$ -- 38
 preamble$ -- 1
 purify$ -- 0
 quote$ -- 0
-skip$ -- 10
+skip$ -- 29
 stack$ -- 0
-substring$ -- 0
-swap$ -- 3
+substring$ -- 45
+swap$ -- 8
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
 type$ -- 0
 warning$ -- 0
-while$ -- 3
-width$ -- 4
-write$ -- 30
+while$ -- 11
+width$ -- 9
+write$ -- 79

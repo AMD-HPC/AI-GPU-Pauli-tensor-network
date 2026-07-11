@@ -3,12 +3,18 @@
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
 \citation{heavyhex-topology}
+\citation{tindall2023gauging}
+\citation{tindall2024eagle}
+\citation{tindall2025disordered}
+\citation{rudolph2025simulating}
 \citation{mpf-ref}
 \citation{dalberto2026cppsim}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
 \newlabel{sec:intro}{{1}{1}{Introduction}{section.1}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {2}Heavy-Hex Lattice and Hamiltonian}{1}{section.2}\protected@file@percent }
 \newlabel{sec:grid}{{2}{1}{Heavy-Hex Lattice and Hamiltonian}{section.2}{}}
+\citation{tindall2023gauging}
+\citation{evenbly2026loop}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Graph structure}{2}{subsection.2.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Implementation}{2}{subsection.2.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Hamiltonian and gate matrix}{2}{subsection.2.3}\protected@file@percent }
@@ -20,19 +26,26 @@
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Operator lightcone}{3}{subsection.3.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {4}Performance}{3}{section.4}\protected@file@percent }
 \newlabel{sec:perf}{{4}{3}{Performance}{section.4}{}}
+\citation{rudolph2025simulating}
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces C(t) truncation error $|C(t,\chi ) - C(t,\chi =430)|$ vs cycle for each $\chi $ value. Errors onset when the bond dimension first saturates at the cap (visible as the left edge of each curve), then grow as more bonds are affected. At cycle 10: $\chi =400$ gives error $3\times 10^{-6}$, $\chi =150$ gives $1.7\times 10^{-4}$.}}{4}{figure.2}\protected@file@percent }
 \newlabel{fig:error}{{2}{4}{C(t) truncation error $|C(t,\chi ) - C(t,\chi =430)|$ vs cycle for each $\chi $ value. Errors onset when the bond dimension first saturates at the cap (visible as the left edge of each curve), then grow as more bonds are affected. At cycle 10: $\chi =400$ gives error $3\times 10^{-6}$, $\chi =150$ gives $1.7\times 10^{-4}$}{figure.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Chi scaling}{4}{subsection.4.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {4.2}CppSim vs Julia/AMDGPU.jl}{4}{subsection.4.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Wall-clock time per cycle ($\chi =430$, cutoff=$10^{-4}$, 32\,GB GPU, float32, Householder QR). $\chi _{\rm  max}$: maximum bond dimension reached. Julia: autocorrelation evolution time only.}}{4}{table.1}\protected@file@percent }
-\newlabel{tab:comparison}{{1}{4}{Wall-clock time per cycle ($\chi =430$, cutoff=$10^{-4}$, 32\,GB GPU, float32, Householder QR). $\chi _{\rm max}$: maximum bond dimension reached. Julia: autocorrelation evolution time only}{table.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Conclusion}{4}{section.5}\protected@file@percent }
+\newlabel{sec:conclusion}{{5}{4}{Conclusion}{section.5}{}}
+\citation{tindall2023gauging}
 \bibstyle{unsrt}
 \bibdata{heavyhex}
 \bibcite{heavyhex-topology}{1}
-\bibcite{mpf-ref}{2}
-\bibcite{dalberto2026cppsim}{3}
-\@writefile{toc}{\contentsline {section}{\numberline {5}Conclusion}{5}{section.5}\protected@file@percent }
-\newlabel{sec:conclusion}{{5}{5}{Conclusion}{section.5}{}}
+\bibcite{tindall2023gauging}{2}
+\bibcite{tindall2024eagle}{3}
+\bibcite{tindall2025disordered}{4}
+\bibcite{rudolph2025simulating}{5}
+\bibcite{mpf-ref}{6}
+\bibcite{dalberto2026cppsim}{7}
+\bibcite{evenbly2026loop}{8}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Wall-clock time per cycle. GPU runs: $\chi $ capped at 430, float32, Householder QR, cutoff=$10^{-4}$. CPU: float64, no $\chi $ cap (grows freely to $\chi _{\rm  CPU}$). Julia: GPU, noiseless evolution time only. `---': not measured.}}{5}{table.1}\protected@file@percent }
+\newlabel{tab:comparison}{{1}{5}{Wall-clock time per cycle. GPU runs: $\chi $ capped at 430, float32, Householder QR, cutoff=$10^{-4}$. CPU: float64, no $\chi $ cap (grows freely to $\chi _{\rm CPU}$). Julia: GPU, noiseless evolution time only. `---': not measured}{table.1}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Non-identity Pauli weight $n(v,t)$ at each site of the heavy\_hex\_3x3 graph over 20 Trotter steps, initialised at site 13 (mid-graph degree-3 junction, marked cyan). The operator spreads radially outward with 3-fold hexagonal symmetry, reaching the graph boundary by cycle $\sim $17. Color scale is per-panel normalized.}}{6}{figure.3}\protected@file@percent }
 \newlabel{fig:lightcone}{{3}{6}{Non-identity Pauli weight $n(v,t)$ at each site of the heavy\_hex\_3x3 graph over 20 Trotter steps, initialised at site 13 (mid-graph degree-3 junction, marked cyan). The operator spreads radially outward with 3-fold hexagonal symmetry, reaching the graph boundary by cycle $\sim $17. Color scale is per-panel normalized}{figure.3}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Maximum bond dimension vs cycle for each $\chi $ cap. All runs saturate at their cap by cycle 7-9. The dashed vertical lines mark the saturation cycle for each cap value.}}{7}{figure.4}\protected@file@percent }
