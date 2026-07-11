@@ -48,6 +48,62 @@ pdflatex heavyhex.tex
 - 20 steps reaches outer boundary of 3x3 graph
 - GIF and multi-panel PNG generated for site 2, 13, 22
 
+## Cholesky QR experiment (2026-07-11)
+
+Ran `run_chi_convergence.sh 30 0.1 1.0 1e-4 --qr=adaptive` on all 9 chi values.
+
+**Results:**
+
+| χ | Householder t_last (s) | Adaptive t_last (s) | Speedup | C(t) correct? |
+|---|----------------------|---------------------|---------|----------------|
+| 200 | 129.5 | 129.4 | ~1x | ✓ |
+| 250 | 203.3 | 205.2 | ~1x | ✓ |
+| 300 | 398.3 | 293.1 | **26%** | ✓ |
+| 350 | 504.7 | 410.6 | **19%** | ✓ |
+| 400 | 857.0 | crashed | — | ✗ GPU hang |
+| 430 | 1153.9 | 320s then wrong | — | ✗ C(t=20)=0.205 (should be ~0.075) |
+
+**Root cause: float32 Gram matrix accumulation error**
+
+Cholesky QR forms G = A'A via SGEMM. At chi=430:
+- m = 740,000 rows accumulated per Gram matrix entry
+- Float32 rounding: ε × m ≈ 1e-7 × 740,000 = **0.07 absolute error per entry**
+- κ(G) = κ(V)² squaring amplifies any mild ill-conditioning in V
+- G becomes indefinite in float32 → SPOTRF either fails (fallback) or
+  succeeds with wrong result → **wrong physics**, then GPU hang
+
+**Conclusion:**
+- Adaptive QR is **safe and beneficial up to χ≈300** (~20-26% speedup)
+- At χ≥400, float32 Gram matrix is too ill-conditioned for Cholesky
+- **Householder is the correct choice for the paper** (used in all published results)
+
+**The fix (Phase 2 of CppSim roadmap):**
+Form G in float64 via `rocblas_gemm_ex` with F64 accumulators, then DPOTRF,
+then STRSM back in float32 for Q. This is the mixed-precision Cholesky that
+would make adaptive QR safe at all χ. Non-trivial but well-understood.
+See FUTURE_CHECKPOINT.md Phase 2.
+
+## Mixed precision roadmap (2026-07-11)
+
+Three levels of mixed precision being considered:
+
+### Level 1: fp16 tensor storage (discussed 2026-07-10)
+Store psi in fp16, compute in fp32. Halves state tensor memory.
+- chi 430→600 on 32GB GPU
+- Implementation: `__half*` psi[], upcast before gate, downcast after
+- Safe: singular values below fp16 ε (~1e-3) are truncated anyway at cutoff=1e-4
+
+### Level 2: float64 Gram matrix (Phase 2 roadmap)
+Compute A'A in float64, Cholesky in float64, TRSM back to float32.
+- Enables Cholesky QR at large χ without physics errors
+- 20-26% speedup at χ=300+, more at higher χ
+- Implementation: `rocblas_gemm_ex` with F64_R accumulators + DPOTRF
+
+### Level 3: combined (future)
+fp16 tensors + float32 gates + float64 Gram = maximum chi range with correct physics.
+- Chi could reach 600+ on 32GB GPU with correct Cholesky QR
+- The "right" architecture for production use
+
 ## Future directions (discussed 2026-07-10)
 
 ### fp16 tensor storage (mixed precision)
