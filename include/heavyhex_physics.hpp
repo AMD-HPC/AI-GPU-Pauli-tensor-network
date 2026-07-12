@@ -300,7 +300,21 @@ struct NoisyHeavyHexSimulator {
                     G_hw.data(), ws, chi_max, cutoff, lm);
             }
 
-            // Step 2: noise gates (per-bond PTM, sequential)
+            // Commit hardware gate messages (always needed)
+            for (auto& gate : grid.colors[c]) {
+                const Bond& bond = grid.bonds[gate.bond_id];
+                int chi = bond.chi;
+                size_t sz = (size_t)chi * chi * sizeof(Scalar);
+                for (int d = 0; d < 2; d++) {
+                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    HIP_CHECK(hipMemcpy(state.messages[idx], new_msg[idx],
+                        sz, hipMemcpyDeviceToDevice));
+                }
+            }
+
+            // Step 2: noise gates — skip if gamma=0 (truly noiseless reference)
+            if (grid.gamma == 0.f) continue;
+
             // Re-snapshot after hardware gates so noise sees updated messages
             for (auto& b : grid.bonds) frozen_chi[b.id] = b.chi;
             for (auto& bond : grid.bonds) {
@@ -317,10 +331,10 @@ struct NoisyHeavyHexSimulator {
                 gate_ops.apply_binary_gate(
                     state.psi[gate.site_a], state.psi[gate.site_b],
                     gate, grid, new_msg, frozen_msg, frozen_chi,
-                    G_noise, ws, chi_max, cutoff, nullptr);  // no metrics for noise
+                    G_noise, ws, chi_max, cutoff, nullptr);
             }
 
-            // Commit updated messages
+            // Commit noise gate messages
             for (auto& gate : grid.colors[c]) {
                 const Bond& bond = grid.bonds[gate.bond_id];
                 int chi = bond.chi;

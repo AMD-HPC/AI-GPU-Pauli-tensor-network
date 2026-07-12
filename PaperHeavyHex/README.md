@@ -83,6 +83,51 @@ then STRSM back in float32 for Q. This is the mixed-precision Cholesky that
 would make adaptive QR safe at all χ. Non-trivial but well-understood.
 See FUTURE_CHECKPOINT.md Phase 2.
 
+## CppSim vs Julia parameter matching — OPEN QUESTION (2026-07-12)
+
+### Julia parameters (from compute_overlaps_gpu.jl)
+- `epsilon_ref = 0.25` — Hamiltonian coupling scale
+- `k_value = 1` → `dt = 1.0/k = 1.0` — time step
+- `phi = 1.41371669` — kick gate angle
+- Gate decomposition: `multi_xx_plus_yy_plus_zz_gate_new` → 4 sublayers:
+  `(Ry+Rx) → Rzz(α) → (Ry+Rx) → Rzz(α) → Rx → Rzz(Δ)` per layer
+- Three gate layers (colors 0,1,2) + kick gates reversed
+- Observable: site 3 (1-based) = site 2 (0-based), Z operator
+- Noise: PTM from JSON, gamma=1.0, applied after each sublayer
+- cutoff=1e-4, no chi cap
+
+### CppSim parameters (current)
+- `J = 1.0`, `dt = 0.1` → effective angle θ = J*dt = 0.1
+- Gate: single full PTM `exp(-iθ(XX+YY+ZZ))` applied once per color class
+- No kick gates
+- Observable: site 2 (0-based), Z operator
+- Noise: PTM from JSON, gamma=1.0, applied after hardware gates per color class
+- cutoff=1e-4, chi_max=430
+
+### Key differences causing chi mismatch
+1. **Different effective time step**: Julia's effective angle per step is ~0.25
+   (epsilon * coupling * dt), CppSim uses J*dt=0.1. Different entanglement growth rate.
+2. **Different gate decomposition**: Julia applies 4 sublayers of single-qubit + Rzz
+   gates per color class. CppSim applies one full XX+YY+ZZ PTM. Not equivalent.
+3. **Kick gates**: Julia adds kick gates (Rz rotations) after each Trotter step.
+   CppSim has no kick gates. Different physics.
+4. **Noise PTM application**: Julia applies noise after each sublayer (4x per color).
+   CppSim applies once after all hardware gates per color. Different noise accumulation.
+
+### What we need to reproduce Julia's noisy chi scaling
+To see χ_noisy ≈ 166 at cycle 10 (as in Julia):
+1. Match the gate decomposition exactly (implement Ry/Rx/Rzz sublayers in CppSim)
+2. Match the effective coupling (epsilon=0.25 scaling)
+3. Add kick gates
+4. Apply noise after each sublayer (not once per color class)
+
+**OR**: accept that CppSim computes different physics and use it as a standalone
+MPF engine with its own parametrization — not required to match Julia exactly.
+
+### Data needed for debugging
+Run Julia with `--spatial` output for noisy state to see per-site Pauli weights
+and confirm chi saturation. Compare with CppSim noisy at matched parameters.
+
 ## Mixed precision roadmap (2026-07-11)
 
 Three levels of mixed precision being considered:
