@@ -96,6 +96,10 @@ main_heavyhex: main_heavyhex.cpp $(HEADERS) include/heavyhex.hpp include/heavyhe
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex main_heavyhex.cpp $(LIBS)
 	@echo "Built main_heavyhex"
 
+main_heavyhex_noisy: main_heavyhex_noisy.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp include/heavyhex_noise_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_noisy main_heavyhex_noisy.cpp $(LIBS)
+	@echo "Built main_heavyhex_noisy"
+
 # ── Clean ──────────────────────────────────────────────────────────────────
 
 clean:
