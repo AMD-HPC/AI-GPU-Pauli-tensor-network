@@ -105,8 +105,12 @@ main_heavyhex_mpf: main_heavyhex_mpf.cpp $(HEADERS) include/heavyhex.hpp include
 	@echo "Built main_heavyhex_mpf"
 
 test_overlap_cpu: test/test_overlap_cpu.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp include/heavyhex_noise_data.hpp include/overlap_cpu.hpp include/measures.hpp
-	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test/test_overlap_cpu test/test_overlap_cpu.cpp $(LIBS) -lcblas
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test/test_overlap_cpu test/test_overlap_cpu.cpp $(LIBS) -lopenblas
 	@echo "Built test/test_overlap_cpu"
+
+test_overlap_gpu: test/test_overlap_gpu.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp include/heavyhex_noise_data.hpp include/overlap_gpu.hpp include/measures.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test/test_overlap_gpu test/test_overlap_gpu.cpp $(LIBS)
+	@echo "Built test/test_overlap_gpu"
 
 # ── Clean ──────────────────────────────────────────────────────────────────
 
