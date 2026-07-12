@@ -60,11 +60,19 @@ print(f"Bonds: {n_bonds}")
 # PTM from JSON is row-major [16][16]: PTM[input_col][output_row]
 # We need col-major [256]: M[row + 16*col]
 def to_colmajor(ptm_rowmajor):
-    """Convert row-major 16×16 to col-major flat [256]."""
+    """Convert PTM from JSON format to CppSim col-major flat [256].
+
+    JSON stores PTM as ptm[output_row][input_col] (row-major).
+    Julia transposes before use: itensor(transpose(ptm), legs).
+    CppSim apply_gate_to_RR4 expects G[output_row + 16*input_col] col-major.
+
+    So: out[output_row + 16*input_col] = ptm_rowmajor[output_row][input_col]
+    which is straightforward row→col-major conversion without extra transpose.
+    """
     out = [0.0] * 256
-    for col in range(16):
-        for row in range(16):
-            out[row + 16*col] = ptm_rowmajor[col][row]
+    for output_row in range(16):
+        for input_col in range(16):
+            out[output_row + 16*input_col] = ptm_rowmajor[output_row][input_col]
     return out
 
 gamma_ptms = {}  # gamma_str → list of 256 floats per bond_id
