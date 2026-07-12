@@ -466,3 +466,28 @@ private:
         add_color(2, HEAVY_HEX_3x3_COLOR2, HEAVY_HEX_3x3_COLOR2_N);
     }
 };
+
+/* =========================================================
+ * NoisyHeavyHexGrid — heavy-hex grid with per-bond noise PTMs
+ *
+ * Extends FlatHeavyHexGrid with hardware noise from the PTM data.
+ * The noise PTM for each bond is looked up by bond_id and gamma.
+ * No runtime JSON loading — data is embedded as static C++ arrays.
+ *
+ * Usage:
+ *   NoisyHeavyHexGrid grid(chi_max, 1.0f);
+ *   const float* ptm = grid.noise_ptm(bond_id);  // 16×16 col-major
+ * ========================================================= */
+#include "heavyhex_noise_data.hpp"
+
+struct NoisyHeavyHexGrid : public FlatHeavyHexGrid {
+    float gamma;
+
+    NoisyHeavyHexGrid(int chi_max_, float gamma_)
+        : FlatHeavyHexGrid(chi_max_), gamma(gamma_) {}
+
+    // Return pointer to 256-element col-major 16×16 noise PTM for this bond
+    const float* noise_ptm(int bond_id) const {
+        return heavy_hex_3x3_noise_ptm(bond_id, gamma);
+    }
+};

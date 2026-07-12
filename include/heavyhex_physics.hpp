@@ -238,3 +238,107 @@ struct HeavyHexSimulator {
         return max_chi;
     }
 };
+
+/* =========================================================
+ * NoisyHeavyHexSimulator — noisy Trotter layer for heavy-hex
+ *
+ * Each Trotter step applies:
+ *   1. Hardware gate (XxYyZz PTM) per bond — same as HeavyHexSimulator
+ *   2. Noise PTM per bond — from NoisyHeavyHexGrid::noise_ptm(bond_id)
+ *
+ * Noise is applied sequentially after hardware gates within each
+ * color class, using the same frozen/new message protocol.
+ * ========================================================= */
+struct NoisyHeavyHexSimulator {
+    rocblas_handle handle;
+    GateOps gate_ops;
+    Scalar J, dt;
+
+    NoisyHeavyHexSimulator(rocblas_handle h_, Scalar J_, Scalar dt_)
+        : handle(h_), gate_ops(h_), J(J_), dt(dt_) {}
+
+    int trotter_layer(HeavyHexState& state, NoisyHeavyHexGrid& grid,
+                      Workspace& ws, int chi_max, Scalar cutoff=1e-10f,
+                      LayerMetrics* lm=nullptr)
+    {
+        auto G_hw = HeavyHexGates::XxYyZz(J * dt);
+
+        int nm = 2 * grid.n_bonds;
+        std::vector<int>     frozen_chi(grid.n_bonds);
+        std::vector<Scalar*> frozen_msg(nm, nullptr);
+        std::vector<Scalar*> new_msg(nm, nullptr);
+
+        size_t alloc = (size_t)chi_max * chi_max * sizeof(Scalar);
+        for (auto& bond : grid.bonds) {
+            for (int d = 0; d < 2; d++) {
+                int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                HIP_CHECK(hipMalloc(&frozen_msg[idx], alloc));
+                HIP_CHECK(hipMalloc(&new_msg[idx], alloc));
+            }
+        }
+
+        for (int c = 0; c < 3; c++) {
+            // Snapshot current state
+            for (auto& b : grid.bonds) frozen_chi[b.id] = b.chi;
+            for (auto& bond : grid.bonds) {
+                int chi = bond.chi;
+                size_t sz = (size_t)chi * chi * sizeof(Scalar);
+                for (int d = 0; d < 2; d++) {
+                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    HIP_CHECK(hipMemcpy(frozen_msg[idx], state.messages[idx],
+                        sz, hipMemcpyDeviceToDevice));
+                    HIP_CHECK(hipMemcpy(new_msg[idx], state.messages[idx],
+                        sz, hipMemcpyDeviceToDevice));
+                }
+            }
+
+            // Step 1: hardware gates
+            for (auto& gate : grid.colors[c]) {
+                gate_ops.apply_binary_gate(
+                    state.psi[gate.site_a], state.psi[gate.site_b],
+                    gate, grid, new_msg, frozen_msg, frozen_chi,
+                    G_hw.data(), ws, chi_max, cutoff, lm);
+            }
+
+            // Step 2: noise gates (per-bond PTM, sequential)
+            // Re-snapshot after hardware gates so noise sees updated messages
+            for (auto& b : grid.bonds) frozen_chi[b.id] = b.chi;
+            for (auto& bond : grid.bonds) {
+                int chi = bond.chi;
+                size_t sz = (size_t)chi * chi * sizeof(Scalar);
+                for (int d = 0; d < 2; d++) {
+                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    HIP_CHECK(hipMemcpy(frozen_msg[idx], new_msg[idx],
+                        sz, hipMemcpyDeviceToDevice));
+                }
+            }
+            for (auto& gate : grid.colors[c]) {
+                const float* G_noise = grid.noise_ptm(gate.bond_id);
+                gate_ops.apply_binary_gate(
+                    state.psi[gate.site_a], state.psi[gate.site_b],
+                    gate, grid, new_msg, frozen_msg, frozen_chi,
+                    G_noise, ws, chi_max, cutoff, nullptr);  // no metrics for noise
+            }
+
+            // Commit updated messages
+            for (auto& gate : grid.colors[c]) {
+                const Bond& bond = grid.bonds[gate.bond_id];
+                int chi = bond.chi;
+                size_t sz = (size_t)chi * chi * sizeof(Scalar);
+                for (int d = 0; d < 2; d++) {
+                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    HIP_CHECK(hipMemcpy(state.messages[idx], new_msg[idx],
+                        sz, hipMemcpyDeviceToDevice));
+                }
+            }
+        }
+
+        for (auto p : frozen_msg) if (p) HIP_CHECK(hipFree(p));
+        for (auto p : new_msg)    if (p) HIP_CHECK(hipFree(p));
+
+        int max_chi = 1;
+        for (auto& bond : grid.bonds)
+            max_chi = std::max(max_chi, bond.chi);
+        return max_chi;
+    }
+};
