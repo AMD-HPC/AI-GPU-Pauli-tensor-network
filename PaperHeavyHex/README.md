@@ -149,6 +149,42 @@ fp16 tensors + float32 gates + float64 Gram = maximum chi range with correct phy
 - Chi could reach 600+ on 32GB GPU with correct Cholesky QR
 - The "right" architecture for production use
 
+## Two-GPU MPF implementation (2026-07-13) — COMPLETE
+
+Full MPF pipeline working on 2 MI100 GPUs with P2P:
+
+**Architecture:**
+- GPU 0: noiseless (chi_max=400), `HeavyHexSimulator`
+- GPU 1: 3 noisy states (chi_max=150, gamma=1.0/1.4/1.8), `NoisyHeavyHexSimulator`
+- `std::thread` for true parallel trotter (GPU 0 ∥ GPU 1)
+- P2P: noisy psi + messages copied GPU1→GPU0 via `hipMemcpyPeer`
+- Overlap `⟨ψ_nl|ψ_n(γ)⟩` computed on GPU 0 using BP with noisy grid/messages
+
+**Key files:**
+- `main_heavyhex_mpf.cpp`: main driver
+- `include/overlap_gpu.hpp`: P2P copy + `compute_overlaps_p2p()`
+- `test/test_overlap_gpu.cpp`: 7/7 tests passing
+
+**Sample output (chi_nl=400, chi_n=150, 10 steps):**
+```
+Cycle  C_nl      OV(1.0)   OV(1.4)   OV(1.8)   chi_nl chi_n t_nl   t_n    t_tot
+8      0.189680  0.257312  0.272946  0.284375  400    150   9.1s   18.7s  26.3s
+10     0.107682  0.172697  0.186936  0.197447  400    150   30.7s  39.3s  61.8s
+```
+
+**Note**: t_n > t_nl at later cycles because GPU 1 runs 3 noisy states sequentially.
+True parallelism only helps when t_nl > t_n (early cycles). At late cycles GPU 1 is
+the bottleneck — could be fixed by running 3 gammas on 3 GPUs instead.
+
+**Open question**: The overlap `⟨ψ_nl|ψ_n(γ)⟩` uses BP on the noisy grid with noisy
+messages as an approximation. For the exact bilinear form, BP should run on the
+double-layer network. Current approximation is a starting point for physics exploration.
+
+**Open question**: Noise PTM orientation and gate decomposition still differ from Julia.
+The noisy chi grows large (hits cap at 150 by cycle 7) unlike Julia's small chi (~166).
+Matching Julia exactly requires: same gate decomposition, epsilon=0.25 coupling,
+kick gates, and noise applied per sublayer (not per color class).
+
 ## Future directions (discussed 2026-07-10)
 
 ### fp16 tensor storage (mixed precision)
