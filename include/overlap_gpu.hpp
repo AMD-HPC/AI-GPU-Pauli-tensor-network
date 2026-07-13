@@ -102,20 +102,37 @@ inline void compute_overlaps_p2p(
             center_site, 100, &tb, &tp, &sw, &dl);
     }
 
-    // For each gamma: P2P copy noisy psi to GPU 0, compute overlap
+    // For each gamma: P2P copy noisy psi + messages to GPU 0, compute overlap
     for (int g = 0; g < n_gammas; g++) {
         // P2P copy noisy psi: GPU 1 → GPU 0
         auto psi_n_gpu0 = p2p_copy_psi(
             state_n[g]->psi, *grid_n[g], chi_n, gpu_n, gpu_nl);
 
-        // Compute ⟨ψ_nl|ψ_n⟩ on GPU 0:
-        // Use noiseless messages as environment, noisy psi as operator
+        // P2P copy noisy messages: GPU 1 → GPU 0
+        // (messages must match the grid's bond chi values)
         hipSetDevice(gpu_nl);
+        int nm = 2 * grid_n[g]->n_bonds;
+        std::vector<Scalar*> msg_n_gpu0(nm, nullptr);
+        for (auto& bond : grid_n[g]->bonds) {
+            for (int d = 0; d < 2; d++) {
+                int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                int chi = bond.chi;
+                size_t sz = (size_t)chi*chi*sizeof(Scalar);
+                HIP_CHECK(hipMalloc(&msg_n_gpu0[idx], sz));
+                HIP_CHECK(hipMemcpyPeer(msg_n_gpu0[idx], gpu_nl,
+                                        state_n[g]->messages[idx], gpu_n, sz));
+            }
+        }
+
+        // Compute ⟨ψ_nl|ψ_n⟩: use noisy grid + noisy messages + noisy psi
+        // This gives C(t) of the noisy operator in the noisy environment —
+        // which is the correct approximation for the MPF overlap.
         overlaps_out[g] = meas.autocorrelation_with_bp(
-            grid_nl, psi_n_gpu0, msg_nl,
+            static_cast<const Grid&>(*grid_n[g]), psi_n_gpu0, msg_n_gpu0,
             center_site, 100, &tb, &tp, &sw, &dl);
 
         // Free scratch on GPU 0
         free_psi(psi_n_gpu0, gpu_nl);
+        for (auto p : msg_n_gpu0) if (p) HIP_CHECK(hipFree(p));
     }
 }
