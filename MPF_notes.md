@@ -90,5 +90,34 @@ Larger hardware (MI355X) would extend the achievable χ range proportionally.
 | `PaperHeavyHex/heavyhex.tex` | Paper draft |
 | `PaperHeavyHex/README.md` | Detailed implementation notes |
 
+## Noise interleaving approximation (2026-07-13)
+
+The number of noise applications per Trotter step is controlled by `NOISE_POWER`
+in `extract_noise_ptm.py`. This approximates different physical models:
+
+| NOISE_POWER | Model | Noisy χ at cycle 10 | Notes |
+|-------------|-------|---------------------|-------|
+| 1 | Once per color class (CppSim default) | ~410 | Chi grows too fast |
+| 3 | Once per sublayer group | ~316 | Intermediate |
+| 25 | Once per individual gate (~Julia) | ~146 | Matches Julia chi |
+
+With NOISE_POWER=25:
+- Noisy chi matches Julia (~146 vs ~166 at cycle 10) ✓
+- t_n drops from 39s → 6s per cycle (small chi = fast) ✓
+- C(t) no longer shows quantum recurrence — noise washes it out
+- OV(γ) > C_nl throughout — noise inflates the overlap in Heisenberg picture
+
+**Key observation**: OV ordering is non-monotonic at late cycles (OV(1.4) > OV(1.0)
+at cycle 10). A simple linear MPF regression may not be stable for all cycles.
+
+**Next step**: Apply proper MPF linear regression (solve for coefficients c₀,c₁,c₂,c₃
+such that c₀·C_nl + c₁·OV(1.0) + c₂·OV(1.4) + c₃·OV(1.8) extrapolates to zero noise)
+and compare extrapolated values against C_nl as a validation.
+
+The `NOISE_POWER` parameter should be treated as a **physics approximation choice**,
+not just a tuning knob — the correct value depends on the gate decomposition used
+on the hardware. For the heavy_hex_3x3 hardware gates, NOISE_POWER≈25 matches
+Julia's chi scaling, suggesting this is the physically appropriate choice.
+
 ---
 *Date: 2026-07-13 — Paolo D'Alberto & Claude (Anthropic)*

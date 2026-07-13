@@ -79,6 +79,22 @@ def to_colmajor(ptm_rowmajor):
             out[output_row + 16*input_col] = ptm_rowmajor[input_col][output_row]
     return out
 
+def ptm_power(ptm_colmajor, n):
+    """Raise a 16×16 col-major PTM to the nth power via matrix multiplication.
+    Approximates n interleaved noise applications per Trotter step.
+    For n=1: original PTM (CppSim default).
+    For n=3: matches Julia's 3 noise applications per color class.
+    """
+    import numpy as np
+    M = np.array(ptm_colmajor, dtype=float).reshape(16, 16, order='F')  # col-major → 2D
+    Mn = np.linalg.matrix_power(M, n)
+    return list(Mn.flatten(order='F'))  # back to col-major flat
+
+# Number of noise applications per Trotter step (1=CppSim default, 3=Julia-like)
+NOISE_POWER = int(os.environ.get('NOISE_POWER', '1'))
+if NOISE_POWER != 1:
+    print(f"  Raising PTMs to power {NOISE_POWER} (Julia has ~3 noise apps per step)")
+
 gamma_ptms = {}  # gamma_str → list of 256 floats per bond_id
 
 for gamma_str in gammas:
@@ -94,7 +110,8 @@ for gamma_str in gammas:
                 continue
             if bond_ptms[bond_id] is not None:
                 print(f"  WARNING: bond {bond_id} has multiple PTMs (layer {layer_idx})")
-            bond_ptms[bond_id] = to_colmajor(ptm)
+            ptm_cm = to_colmajor(ptm)
+            bond_ptms[bond_id] = ptm_power(ptm_cm, NOISE_POWER) if NOISE_POWER != 1 else ptm_cm
 
     # Check all bonds covered
     missing = [i for i, p in enumerate(bond_ptms) if p is None]
