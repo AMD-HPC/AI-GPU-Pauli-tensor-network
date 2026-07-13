@@ -1,0 +1,10 @@
+[HIP] out of memory at ./include/measures.hpp:799
+═══════════════════════════════════════════════
+  CppSim — Ising Heisenberg Picture
+  BUILD: May 13 2026 23:14:30
+  Bethe edge corr, BP diagonal (d=0/d=3)
+  Grid: 4x4  chi_max=120  D=4
+  Steps: 20  dt=0.100  h=-1.000  J=-1.000  cutoff=1.00e-11
+═══════════════════════════════════════════════
+
+[Workspace] allocated 13336.1 MB (chi_max=120 m_max=1728001 n_max=480)

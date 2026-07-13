@@ -107,7 +107,6 @@ int main(int argc, char** argv) {
     sim.gate_ops.qr_mode = qr_mode;
 
     // Center site — geometric center, works for both even and odd grids.
-    // Even: (nx-1)/2 == nx/2-1 (same as Julia convention). Odd: gives true midpoint.
     int cr = (nx-1)/2, cc = (ny-1)/2;
     int center = grid.site_id(cr, cc);
     printf("Center site: (%d,%d) id=%d\n\n", cr, cc, center);

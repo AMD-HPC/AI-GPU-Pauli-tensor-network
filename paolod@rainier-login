@@ -1,0 +1,211 @@
+#!/bin/bash
+# ══════════════════════════════════════════════════════════════════════════════
+# run_mi300x.sh — MI300X full experiment suite
+#
+# Organized by scientific priority so partial completion is still publishable.
+# Each section is independent — comment out sections you want to defer.
+#
+# Memory reference (GB, from analytic model, ±2%):
+#   Grid       chi=50  chi=70  chi=90  chi=100  chi=110
+#   4×4          0.8     3.1     8.5     12.9     30.1
+#   9×9          5.4    20.5    56.0     85.3       —
+#   10×10        6.9    26.3    71.8    109.3    ~159
+#   11×11        8.5    32.4    88.4    134.4    ~196  (borderline)
+#   12×12       10.1    38.5   105.0    159.9       —
+#
+# Timing estimate (MI300X ≈ 7× MI100 MFMA):
+#   10×10 chi=100 : ~2 min/layer → 60 layers ≈ 2 h
+#   10×10 chi=110 : ~3 min/layer → 60 layers ≈ 3 h
+#   12×12 chi=100 : ~3 min/layer → 80 layers ≈ 4 h
+# ══════════════════════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+BINARY=${BINARY:-./main}
+LOGDIR=logs/mi300x_$(date +%Y%m%d)
+mkdir -p "$LOGDIR"
+
+# Physics constants — same as all MI100 runs
+DT=0.1; H=-1.0; J=-1.0; CUT=1e-11
+
+# ── helpers ────────────────────────────────────────────────────────────────────
+
+vram_free_gb() {
+    # Returns free VRAM in GB for GPU 0 (rocm-smi output: "X MiB")
+    rocm-smi --showmeminfo vram --json 2>/dev/null \
+        | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+free=int(next(iter(d.values()))['VRAM Total Memory (B)'])-int(next(iter(d.values()))['VRAM Total Used Memory (B)'])
+print(f'{free/1e9:.1f}')
+" 2>/dev/null || echo "999"
+}
+
+run() {
+    local nx=$1 ny=$2 chi=$3 steps=$4
+    shift 4
+    local extra="${*}"
+    local tag="${nx}x${ny}_chi$(printf '%03d' $chi)_n${steps}"
+    # append flag suffix to tag so damped/spatial runs don't overwrite clean runs
+    if [[ "$extra" == *"damped"* ]]; then
+        local alpha
+        alpha=$(echo "$extra" | grep -oP '(?<=--alpha=)\S+' || echo "X")
+        tag="${tag}_damp${alpha}"
+    fi
+    if [[ "$extra" == *"measure=all"* ]]; then tag="${tag}_all"; fi
+    local log="$LOGDIR/${tag}.log"
+
+    if [[ -f "$log" ]]; then
+        echo "[SKIP] $tag — log exists"
+        return 0
+    fi
+
+    echo "──────────────────────────────────────────────"
+    echo "[START] $(date '+%Y-%m-%d %H:%M:%S')  $tag"
+    echo "        flags: ${extra:-none}"
+    $BINARY $nx $ny $chi $steps $DT $H $J $CUT $extra 2>&1 | tee "$log"
+    echo "[DONE ] $(date '+%Y-%m-%d %H:%M:%S')  $tag"
+}
+
+check_vram() {
+    local needed_gb=$1 label=$2
+    local free
+    free=$(vram_free_gb)
+    if awk "BEGIN{exit ($free < $needed_gb)}"; then
+        echo "[WARN ] $label needs ~${needed_gb} GB, only ${free} GB free — skipping"
+        return 1
+    fi
+    return 0
+}
+
+echo "══════════════════════════════════════════════"
+echo " MI300X experiment suite — $(date '+%Y-%m-%d')"
+echo " Logs → $LOGDIR"
+echo " Binary: $(readlink -f $BINARY)"
+echo "══════════════════════════════════════════════"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# A — Cross-architecture validation
+#     Reproduce known MI100 results to confirm binary and driver are correct.
+#     Expected C(t) at t=2.0: chi=50→0.0558, chi=80→0.0543 (clean layers).
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== A: cross-architecture validation ==="
+
+run  4  4  50 20      # 0.8 GB  — reference; must match MI100 to 5 sig figs t≤1.4
+run  4  4  80 20      # 5.3 GB  — check for trap at L17 (architecture-dependent)
+run  5  5  80 30      # 6.5 GB  — C4 symmetric, must be trap-free (established)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# B — 10×10 chi-convergence  ★ PRIMARY SCIENTIFIC TARGET ★
+#     The paper's research target: chi convergence on a 10×10 grid.
+#     10×10 center (4,4) is NOT C4-symmetric (even grid) — expect traps.
+#     n* = 5 × d_max = 5 × 9 = 45 layers; run to 60 to see saturation onset.
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== B: 10×10 chi-convergence (primary target) ==="
+
+run 10 10  50 60      #   6.9 GB   — fast baseline; establishes early universality
+run 10 10  70 60      #  26.3 GB
+run 10 10  90 60      #  71.8 GB
+run 10 10 100 60      # 109.3 GB   — primary target; watch for traps
+run 10 10 110 60      # ~159 GB    — MI300X exclusive; MI100 OOM
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# C — 10×10 full scrambling  (long run, high chi)
+#     Run well past n*=45 to observe C(t)→0 and lightcone saturation.
+#     With --measure=all: captures n(r,t) spatial weights for lightcone figure.
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== C: 10×10 full scrambling ==="
+
+check_vram 109 "10×10 chi=100 n=80" && \
+    run 10 10 100 80 --measure=all    # 109 GB, ~2.5 h — full lightcone + C(t)→0
+
+check_vram  72 "10×10 chi=90 n=80" && \
+    run 10 10  90 80 --measure=all    #  72 GB, ~1.5 h
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# D — 11×11 symmetric grid  (odd grid → true C4 symmetry)
+#     11×11 center (5,5): all corners at Manhattan distance 10.
+#     n* = 5 × 10 = 50 layers.  Hypothesis: zero Type-1 traps at all chi.
+#     Direct comparison with 10×10 (asymmetric) at same chi isolates symmetry.
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== D: 11×11 symmetric grid (C4, trap-free hypothesis) ==="
+
+run 11 11  50 70      #   8.5 GB
+run 11 11  70 70      #  32.4 GB
+run 11 11  90 70      #  88.4 GB
+check_vram 134 "11×11 chi=100" && \
+    run 11 11 100 70  # ~134 GB   — MI300X only; should be trap-free
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# E — 12×12 grid  (new frontier: largest grid studied)
+#     Center (5,5), d_max=12, n*=60.  Run to 80 layers to observe saturation.
+#     chi=50 and chi=70 are fast validation; chi=100 is the ambitious run.
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== E: 12×12 grid (new frontier) ==="
+
+run 12 12  50 80      #  10.1 GB
+run 12 12  70 80      #  38.5 GB
+check_vram 160 "12×12 chi=100" && \
+    run 12 12 100 80  # ~160 GB   — tight; monitor VRAM
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# F — 9×9 high-chi  (C4 symmetric, established trap-free baseline)
+#     Compare chi=100,110 on 9×9 (C4) vs 10×10 (asymmetric):
+#     isolates whether traps on 10×10 B-section are symmetry-driven.
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== F: 9×9 high-chi (C4 symmetric control) ==="
+
+run  9  9 100 60      #  85.3 GB  — should be fully trap-free
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# G — Damped BP at 10×10 high chi
+#     If traps appear in section B, test remediation at MI300X scale.
+#     Run only after reviewing B logs — skip if 10×10 chi=100 was clean.
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== G: damped BP remediation (run after reviewing B logs) ==="
+
+check_vram 109 "10×10 chi=100 damped" && \
+    run 10 10 100 60 --bp=damped --alpha=0.50
+check_vram 109 "10×10 chi=100 damped 0.80" && \
+    run 10 10 100 60 --bp=damped --alpha=0.80
+check_vram 159 "10×10 chi=110 damped" && \
+    run 10 10 110 60 --bp=damped --alpha=0.50
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# H — Spatial snapshots for paper figures
+#     --measure=all logs n(r,t) per layer for lightcone and diff figures.
+#     Selected runs only (logs are large).
+# ══════════════════════════════════════════════════════════════════════════════
+echo; echo "=== H: spatial snapshots for figures ==="
+
+run 11 11  50 70 --measure=all    #   8.5 GB — 11×11 lightcone (C4 symmetric)
+run 12 12  50 80 --measure=all    #  10.1 GB — 12×12 lightcone (new frontier)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Summary
+# ══════════════════════════════════════════════════════════════════════════════
+echo
+echo "══════════════════════════════════════════════"
+echo " Summary — completed logs in $LOGDIR"
+echo "══════════════════════════════════════════════"
+printf "%-35s  %-8s  %-10s  %s\n" "run" "layers" "C(t)_final" "trap_layers"
+for log in "$LOGDIR"/*.log; do
+    [[ -f "$log" ]] || continue
+    tag=$(basename "$log" .log)
+    layers=$(grep -c "^[[:space:]]*[0-9]" "$log" 2>/dev/null || echo "?")
+    ct_final=$(grep -oP '(?<=\s)[0-9]+\.[0-9]+(?=\s*$)' "$log" 2>/dev/null | tail -1 || echo "?")
+    # trapped layers: sweeps >= 30 AND delta < tol (heuristic: look for bold-equivalent)
+    traps=$(grep -P '^\s+\d+\s+\d+\s+\d+\s+\S+\s+[3-9]\d\s' "$log" 2>/dev/null \
+            | awk '$5 >= 30 && $6 < 1e-4 {print $1}' | tr '\n' ',' | sed 's/,$//' || echo "none")
+    printf "%-35s  %-8s  %-10s  %s\n" "$tag" "$layers" "$ct_final" "${traps:-none}"
+done
+echo "══════════════════════════════════════════════"

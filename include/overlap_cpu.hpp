@@ -27,7 +27,7 @@
 #include <vector>
 #include <cmath>
 #include <cstring>
-#include <cblas.h>   // CPU BLAS for GEMV/DOT
+#include <cblas.h>   // OpenBLAS: install libopenblas-dev, link with -lopenblas
 
 /* ── D2H helpers ─────────────────────────────────────────────────────────── */
 
