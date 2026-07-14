@@ -160,5 +160,47 @@ not just a tuning knob — the correct value depends on the gate decomposition u
 on the hardware. For the heavy_hex_3x3 hardware gates, NOISE_POWER≈25 matches
 Julia's chi scaling, suggesting this is the physically appropriate choice.
 
+## MPF Failure Mode Matrix (2026-07-14)
+
+### Why MPF could fail — taxonomy
+
+| # | Failure mode | Assumption broken | Experiment | Wave |
+|---|-------------|-------------------|------------|------|
+| 1 | **Cutoff kills gamma info** | Small eigenvalues carry γ-dependent signal; relative truncation breaks polynomial assumption | cutoff=1e-3/1e-4/1e-5 | Wave 1 |
+| 2 | **Chi cap destroys info** | Same but absolute truncation — late cycles capped | chi_nl=200/300/400 | Wave 4 |
+| 3 | **Noise model wrong** | MPF assumes noise interleaved with gates; offline noise breaks O(γ) polynomial | NP=1/3/10/25 | Wave 3 |
+| 4 | **Bethe approx breaks** | BP messages don't converge; overlap is approximate not exact | monitor sweeps+delta | All |
+| 5 | **Linear regime violated** | γ=1.0–1.8 too far from 0; polynomial expansion not valid | ⚠️ **MISSING** | need γ<1 |
+| 6 | **Finite size / boundary** | Quantum recurrence violates "spreading to infinity" MPF assumption | center=2/13/22 | Wave 2 |
+| 7 | **Observable non-polynomial in γ** | OV(γ) has non-analytic dependence; MPF formula not applicable | NP + cutoff combined | Wave 1+3 |
+| 8 | **Lightcone boundary** | MPF valid only within lightcone; breaks at late cycles | steps=10/20/30 | Wave 5 |
+
+### Gap: Missing experiment for failure mode 5
+
+Need γ values closer to 0 to test linear regime validity:
+- Options: γ={0.5, 0.75, 1.0} or γ={0.2, 0.4, 0.6}
+- **Problem**: JSON only has γ={1.0, 1.4, 1.8} — hardware recalibration needed
+- **Workaround**: use PTM^α for fractional α (synthetic scaling) — approximate but testable
+- Add to future wave: `NOISE_POWER` as a float, not integer
+
+### Scoring rubric
+
+After each experiment, score MPF quality:
+- **A**: |error| < 1e-3 for cycles 1-10 — MPF works
+- **B**: |error| < 1e-2 cycles 1-5, degrades after — MPF works within lightcone
+- **C**: |error| < 5e-2 throughout — marginal
+- **D**: |error| > 5e-2 from early cycles — MPF fails
+
+**Current anchor** (co4_ct2_np25_nl400_nn150_s10): **B**
+
+### Key insight (2026-07-14)
+
+MPF breaks at cycle 6 regardless of cutoff (1e-3 vs 1e-4 gives same C(t) but same MPF quality).
+This suggests the breakdown is NOT primarily due to truncation of C(t).
+The more likely cause: **the gamma-dependent information in the small eigenvalues
+is lost by truncation, even when C(t) appears converged** — cutoff and chi_max
+are two faces of the same coin. The observable C(t) is insensitive to small
+singular values; the MPF extrapolation may not be.
+
 ---
-*Date: 2026-07-13 — Paolo D'Alberto & Claude (Anthropic)*
+*Date: 2026-07-13/14 — Paolo D'Alberto & Claude (Anthropic)*
