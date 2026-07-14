@@ -75,6 +75,47 @@ Julia/AMDGPU.jl (measured at matched χ=430, cutoff=1e-4) comes from:
 These numbers are estimates of the best achievable on MI100 for this computation.
 Larger hardware (MI355X) would extend the achievable χ range proportionally.
 
+## MPF Extrapolation Results (2026-07-13)
+
+Script: `mpf_extrapolate.py --data mpf_out.dat`
+
+Coefficients for γ={1.0, 1.4, 1.8}: **c=(+7.875, -11.250, +4.375)**
+(large alternating signs — typical for MPF, amplifies statistical noise on hardware)
+
+| Cycle | C_nl | OV_extrap | \|error\| | Quality | Notes |
+|-------|------|-----------|----------|---------|-------|
+| 1 | 0.886 | 0.886 | 5.7e-5 | excellent | within lightcone, chi small |
+| 2 | 0.611 | 0.613 | 2.0e-3 | good | |
+| 3 | 0.323 | 0.324 | 1.4e-3 | good | |
+| 4 | 0.145 | 0.142 | 2.6e-3 | good | |
+| 5 | 0.105 | 0.108 | 2.6e-3 | good | |
+| 6 | 0.146 | 0.179 | 3.3e-2 | fair | chi_nl approaching saturation |
+| 7 | 0.189 | 0.279 | 9.0e-2 | poor | chi_nl=278, truncation growing |
+| 8-10 | — | — | 0.15-0.19 | poor | **chi_nl saturated at 400** |
+
+**Key finding**: MPF extrapolation is excellent/good for cycles 1-5 and degrades
+sharply from cycle 6 onward — precisely when χ_nl begins to saturate (163→278→400).
+
+**Two interpretations (both likely true):**
+1. **Noiseless truncation**: once χ_nl is capped, C_nl itself is approximate —
+   the "reference" we're comparing against is no longer exact
+2. **Noise model breakdown**: at late cycles OV(γ) >> C_nl with large gamma
+   dependence; the linear-in-gamma MPF assumption breaks down in this regime
+
+**The lightcone connection**: MPF works within the lightcone boundary (cycles 1-5,
+where chi_min=1 meaning some bonds are still product state). Beyond the boundary
+(cycle 14 where chi_min first grows), the full graph is entangled and truncation
+errors are unavoidable with the current chi_max=400.
+
+**Next explorations:**
+- Repeat with NOISE_POWER=1 and NOISE_POWER=25 — does MPF accuracy change?
+- Repeat with larger chi_nl (need larger GPU) — does extrapolation improve at late cycles?
+- Spatial MPF: apply site-by-site extrapolation to Pauli weights — does it work
+  within the lightcone and fail outside?
+- Different observable sites (site 13 vs site 2) — center of graph vs corner
+- Different gamma spacing — {1.0, 1.3, 1.6} vs {1.0, 1.4, 1.8}
+- Vary dt to change effective Trotter step and chi growth rate
+
 ## Files
 
 | File | Description |
