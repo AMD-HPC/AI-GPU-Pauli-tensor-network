@@ -133,11 +133,20 @@ log "=== WAVE 2: Center site ==="
 run_experiment mpf_co4_ct13_np25_nl400_nn150_s10 1e-4  13  25  400  150  10   2
 run_experiment mpf_co4_ct22_np25_nl400_nn150_s10 1e-4  22  25  400  150  10  13
 
-# Wave 3: noise power
-log "=== WAVE 3: Noise power ==="
+# Wave 3: noise power + sanity checks
+# NP=0: identity noise (gamma=0 sanity — OV should equal C_nl)
+# NP=25: anchor (already in Wave 1)
+log "=== WAVE 3: Noise power + sanity ==="
+run_experiment mpf_co4_ct2_np0_nl400_nn150_s10   1e-4   2   0  400  150  10  13  # sanity: no noise
 run_experiment mpf_co4_ct2_np1_nl400_nn150_s10   1e-4   2   1  400  150  10  13
 run_experiment mpf_co4_ct2_np3_nl400_nn150_s10   1e-4   2   3  400  150  10  13
 run_experiment mpf_co4_ct2_np10_nl400_nn150_s10  1e-4   2  10  400  150  10  13
+
+# Wave 6: synthetic small-gamma regime (failure mode 5)
+# PTM^(1/n) approximates smaller effective gamma — poking the bear
+log "=== WAVE 6: Synthetic small gamma (failure mode 5) ==="
+run_experiment mpf_co4_ct2_npf2_nl400_nn150_s10  1e-4   2   2  400  150  10  13  # PTM^(1/2) ~ gamma=0.5
+run_experiment mpf_co4_ct2_npf5_nl400_nn150_s10  1e-4   2   5  400  150  10  13  # PTM^(1/5) ~ gamma=0.2
 
 # Wave 4: chi scaling
 log "=== WAVE 4: Chi scaling ==="

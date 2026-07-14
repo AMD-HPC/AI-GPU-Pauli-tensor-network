@@ -81,17 +81,30 @@ def to_colmajor(ptm_rowmajor):
 
 def ptm_power(ptm_colmajor, n):
     """Raise a 16×16 col-major PTM to the nth power via matrix multiplication.
-    Approximates n interleaved noise applications per Trotter step.
-    For n=1: original PTM (CppSim default).
-    For n=3: matches Julia's 3 noise applications per color class.
+    Special cases:
+      n=0: identity PTM (no noise — sanity check: OV should equal C_nl)
+      n=1: original PTM (CppSim default — once per color class)
+      n=3: once per sublayer group
+      n=25: once per gate (~Julia interleaving)
+    Fractional n (e.g. n=0.5, 0.2) gives PTM^n — synthetic small-gamma proxy.
     """
     import numpy as np
-    M = np.array(ptm_colmajor, dtype=float).reshape(16, 16, order='F')  # col-major → 2D
-    Mn = np.linalg.matrix_power(M, n)
-    return list(Mn.flatten(order='F'))  # back to col-major flat
+    M = np.array(ptm_colmajor, dtype=float).reshape(16, 16, order='F')
+    if n == 0:
+        # Identity: no noise — used for sanity check
+        Mn = np.eye(16)
+    elif n == int(n):
+        Mn = np.linalg.matrix_power(M, int(n))
+    else:
+        # Fractional power via eigendecomposition
+        vals, vecs = np.linalg.eig(M)
+        Mn = vecs @ np.diag(vals**n) @ np.linalg.inv(vecs)
+        Mn = Mn.real  # PTM should be real
+    return list(Mn.flatten(order='F'))
 
-# Number of noise applications per Trotter step (1=CppSim default, 3=Julia-like)
-NOISE_POWER = int(os.environ.get('NOISE_POWER', '1'))
+# Number of noise applications per Trotter step
+# 0=identity (sanity), 1=CppSim default, 25=Julia-like, fractional=synthetic gamma
+NOISE_POWER = float(os.environ.get('NOISE_POWER', '1'))
 if NOISE_POWER != 1:
     print(f"  Raising PTMs to power {NOISE_POWER} (Julia has ~3 noise apps per step)")
 

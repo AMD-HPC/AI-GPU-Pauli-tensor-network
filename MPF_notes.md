@@ -170,7 +170,7 @@ Julia's chi scaling, suggesting this is the physically appropriate choice.
 | 2 | **Chi cap destroys info** | Same but absolute truncation — late cycles capped | chi_nl=200/300/400 | Wave 4 |
 | 3 | **Noise model wrong** | MPF assumes noise interleaved with gates; offline noise breaks O(γ) polynomial | NP=1/3/10/25 | Wave 3 |
 | 4 | **Bethe approx breaks** | BP messages don't converge; overlap is approximate not exact | monitor sweeps+delta | All |
-| 5 | **Linear regime violated** | γ=1.0–1.8 too far from 0; polynomial expansion not valid | ⚠️ **MISSING** | need γ<1 |
+| 5 | **Linear regime violated** | γ=1.0–1.8 too far from 0; polynomial expansion not valid | PTM^(1/2)~γ=0.5, PTM^(1/5)~γ=0.2 | Wave 6 (synthetic) |
 | 6 | **Finite size / boundary** | Quantum recurrence violates "spreading to infinity" MPF assumption | center=2/13/22 | Wave 2 |
 | 7 | **Observable non-polynomial in γ** | OV(γ) has non-analytic dependence; MPF formula not applicable | NP + cutoff combined | Wave 1+3 |
 | 8 | **Lightcone boundary** | MPF valid only within lightcone; breaks at late cycles | steps=10/20/30 | Wave 5 |
