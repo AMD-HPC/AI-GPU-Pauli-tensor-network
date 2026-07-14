@@ -15,7 +15,12 @@
 # Usage: bash run_mpf_experiments.sh [--dry-run]
 
 DRY=${1:-""}
-mkdir -p logs/mpf_experiments
+
+# All output goes inside the git repository — never /tmp
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs/mpf_experiments"
+mkdir -p "$LOG_DIR"
+echo "Logs directory: $LOG_DIR"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 
@@ -49,12 +54,12 @@ run_experiment() {
     mv heavyhex_noise_data.hpp include/
     make PHYS_DIM=4 main_heavyhex_mpf main_heavyhex_noisy -j2 > /dev/null 2>&1
 
-    local logfile="logs/mpf_experiments/${name}.log"
-    local spatial_nl="logs/mpf_experiments/${name}_spatial_nl.dat"
-    local spatial_n10="logs/mpf_experiments/${name}_spatial_n10.dat"
-    local spatial_n14="logs/mpf_experiments/${name}_spatial_n14.dat"
-    local spatial_n18="logs/mpf_experiments/${name}_spatial_n18.dat"
-    local spatial_gpu2="logs/mpf_experiments/${name}_spatial_gpu2_ct${center2}.dat"
+    local logfile="$LOG_DIR/${name}.log"
+    local spatial_nl="$LOG_DIR/${name}_spatial_nl.dat"
+    local spatial_n10="$LOG_DIR/${name}_spatial_n10.dat"
+    local spatial_n14="$LOG_DIR/${name}_spatial_n14.dat"
+    local spatial_n18="$LOG_DIR/${name}_spatial_n18.dat"
+    local spatial_gpu2="$LOG_DIR/${name}_spatial_gpu2_ct${center2}.dat"
 
     # GPU 0+1: MPF run (noiseless + 3 noisy overlaps)
     # We add spatial output for noiseless via main_heavyhex on GPU0 separately

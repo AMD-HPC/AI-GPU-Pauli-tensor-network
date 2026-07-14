@@ -1,0 +1,2 @@
+# Ignore large spatial data files but keep logs
+*.dat
