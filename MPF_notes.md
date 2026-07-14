@@ -303,5 +303,45 @@ where GPU_large ≥ ~20GB and GPU_small ≥ ~4GB.
 
 **Not yet confirmed by experiments** — pending full wave results.
 
+## Exact interleaved noise PTM — TODO (2026-07-14)
+
+The current `extract_noise_ptm.py` with NOISE_POWER=n is an approximation.
+The exact model composes gate and noise PTMs in the correct order:
+
+```
+PTM_eff = M_ε · M_C · M_ε · M_B · M_ε · M_A
+```
+
+Script skeleton: `build_exact_noise_ptm.py` — needs `julia_gate_sequence_ptm()` implemented.
+Required: coupling constants from graph JSON + gate sequence from Julia's decomposition.
+Output: `heavyhex_exact_noise_data.hpp` (different name to avoid confusion).
+**Status**: TODO — implement when experiments are analyzed and wave runs complete.
+
+## Igor's bp_mpf workload — Float32 fix (2026-07-14)
+
+**Repository**: `AMD-HPC/amd-TensorNetworkQuantumSimulator.jl` branch `feature/gpu-bp-mpf`
+**PR #23**: `fix/float32-loopcorrections-clean2` → `feature/gpu-bp-mpf`
+
+**Problem**: `loopcorrections` inner product computes vertex scalars of `BilinearForm`
+which can be **strongly negative** (vn=-0.94) for Float32 Pauli-basis states.
+`sqrt(vn)` fails with DomainError in Float32.
+
+**Fix**: in `compute_inner()` (`tnqs_noisy_epsilon_evolution.jl`), promote states
+to ComplexF32 before calling `inner(alg="loopcorrections")`. States stay Float32
+throughout Trotter evolution — only the inner product step is temporarily complex.
+Imaginary part of result is ~1e-14 (machine precision).
+
+**Igor's workload structure**:
+- Epsilon parametrization: ε={0.1, 0.15, 0.2} (Hamiltonian coupling, not noise scaling)
+- Gamma={1.0, 2.0, 3.0} for noise models
+- Per cycle: A matrix (3×3 inner products between noisy states) + B vector (noisy vs noiseless)
+- MPF coefficients: convex optimization via JuMP+ECOS (more robust than Vandermonde)
+- 13 inner product calls per cycle (all currently on CPU — GPU acceleration is next)
+- `_binned_pool`: not available in our AMDGPU version, set to `nothing` locally
+
+**Key observation**: z_nl alternates sign (quantum oscillation); noisy values always
+positive (noise suppresses oscillation). Negative inner products are genuine physics —
+Z operator anti-correlates with initial state during quantum recurrence.
+
 ---
 *Date: 2026-07-13/14 — Paolo D'Alberto & Claude (Anthropic)*
