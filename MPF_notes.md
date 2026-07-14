@@ -202,5 +202,18 @@ is lost by truncation, even when C(t) appears converged** — cutoff and chi_max
 are two faces of the same coin. The observable C(t) is insensitive to small
 singular values; the MPF extrapolation may not be.
 
+## Hardware architecture observation (2026-07-14)
+
+With NP=25, noisy χ saturates at ~80 regardless of chi_n cap.
+GPU 1 (noisy × 3 gammas) uses only ~30% of a 16GB GPU.
+This means heterogeneous hardware (large + small GPU) maps naturally to
+the noiseless/noisy split — observed on MI60 (32GB) + Radeon VII (16GB).
+
+**Physical reason**: noise damps operator entanglement → χ_n << χ_nl is a
+physical property, not a hardware accident. Generalizes to any hardware pair
+where GPU_large ≥ ~20GB and GPU_small ≥ ~4GB.
+
+**Not yet confirmed by experiments** — pending full wave results.
+
 ---
 *Date: 2026-07-13/14 — Paolo D'Alberto & Claude (Anthropic)*
