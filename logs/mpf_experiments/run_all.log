@@ -30,3 +30,140 @@ make: 'main_heavyhex_noisy' is up to date.
 [05:04:14]   cutoff=1e-5  center=2  NP=25  chi_nl=400  chi_n=150  steps=10
 [05:04:14]   GPU2: noiseless center=13
 [05:08:51]   MPF done (exit 0)
+[05:15:13]   GPU2 noiseless done (exit 0)
+[05:15:44]     noisy gamma=1.0 done
+[05:16:09]     noisy gamma=1.4 done
+[05:16:28]     noisy gamma=1.8 done
+[05:23:29]     noiseless spatial done
+[05:23:29]     MPF extrapolation done → mpf_co5_ct2_np25_nl400_nn150_s10_mpf.log
+[05:23:29]   === mpf_co5_ct2_np25_nl400_nn150_s10 complete ===
+[05:23:29] === WAVE 2: Center site ===
+[05:23:29] === mpf_co4_ct13_np25_nl400_nn150_s10 ===
+[05:23:29]   cutoff=1e-4  center=13  NP=25  chi_nl=400  chi_n=150  steps=10
+[05:23:29]   GPU2: noiseless center=2
+[05:27:45]   MPF done (exit 0)
+[05:27:45]   GPU2 noiseless done (exit 0)
+[05:28:43]     noisy gamma=1.0 done
+[05:29:34]     noisy gamma=1.4 done
+[05:30:19]     noisy gamma=1.8 done
+[05:35:19]     noiseless spatial done
+[05:35:19]     MPF extrapolation done → mpf_co4_ct13_np25_nl400_nn150_s10_mpf.log
+[05:35:20]   === mpf_co4_ct13_np25_nl400_nn150_s10 complete ===
+[05:35:20] === mpf_co4_ct22_np25_nl400_nn150_s10 ===
+[05:35:20]   cutoff=1e-4  center=22  NP=25  chi_nl=400  chi_n=150  steps=10
+[05:35:20]   GPU2: noiseless center=13
+[05:44:23]   MPF done (exit 0)
+[05:45:34]   GPU2 noiseless done (exit 0)
+[05:46:01]     noisy gamma=1.0 done
+[05:46:23]     noisy gamma=1.4 done
+[05:46:41]     noisy gamma=1.8 done
+[05:48:18]     noiseless spatial done
+[05:48:19]     MPF extrapolation done → mpf_co4_ct22_np25_nl400_nn150_s10_mpf.log
+[05:48:19]   === mpf_co4_ct22_np25_nl400_nn150_s10 complete ===
+[05:48:19] === WAVE 3: Noise power + sanity ===
+[05:48:19] === mpf_co4_ct2_np0_nl400_nn150_s10 ===
+[05:48:19]   cutoff=1e-4  center=2  NP=0  chi_nl=400  chi_n=150  steps=10
+[05:48:19]   GPU2: noiseless center=13
+[05:52:12]   MPF done (exit 0)
+[05:53:23]   GPU2 noiseless done (exit 0)
+[05:54:36]     noisy gamma=1.0 done
+[05:55:48]     noisy gamma=1.4 done
+[05:57:01]     noisy gamma=1.8 done
+[05:59:20]     noiseless spatial done
+[05:59:20]     MPF extrapolation done → mpf_co4_ct2_np0_nl400_nn150_s10_mpf.log
+[05:59:20]   === mpf_co4_ct2_np0_nl400_nn150_s10 complete ===
+[05:59:20] === mpf_co4_ct2_np1_nl400_nn150_s10 ===
+[05:59:20]   cutoff=1e-4  center=2  NP=1  chi_nl=400  chi_n=150  steps=10
+[05:59:20]   GPU2: noiseless center=13
+[06:02:09]   MPF done (exit 0)
+[06:04:23]   GPU2 noiseless done (exit 0)
+[06:05:17]     noisy gamma=1.0 done
+[06:06:05]     noisy gamma=1.4 done
+[06:06:50]     noisy gamma=1.8 done
+[06:09:09]     noiseless spatial done
+[06:09:09]     MPF extrapolation done → mpf_co4_ct2_np1_nl400_nn150_s10_mpf.log
+[06:09:09]   === mpf_co4_ct2_np1_nl400_nn150_s10 complete ===
+[06:09:09] === mpf_co4_ct2_np3_nl400_nn150_s10 ===
+[06:09:09]   cutoff=1e-4  center=2  NP=3  chi_nl=400  chi_n=150  steps=10
+[06:09:09]   GPU2: noiseless center=13
+[06:11:19]   MPF done (exit 0)
+[06:14:11]   GPU2 noiseless done (exit 0)
+[06:14:47]     noisy gamma=1.0 done
+[06:15:19]     noisy gamma=1.4 done
+[06:15:47]     noisy gamma=1.8 done
+[06:18:06]     noiseless spatial done
+[06:18:06]     MPF extrapolation done → mpf_co4_ct2_np3_nl400_nn150_s10_mpf.log
+[06:18:06]   === mpf_co4_ct2_np3_nl400_nn150_s10 complete ===
+[06:18:06] === mpf_co4_ct2_np10_nl400_nn150_s10 ===
+[06:18:06]   cutoff=1e-4  center=2  NP=10  chi_nl=400  chi_n=150  steps=10
+[06:18:06]   GPU2: noiseless center=13
+[06:19:57]   MPF done (exit 0)
+[06:23:08]   GPU2 noiseless done (exit 0)
+[06:23:28]     noisy gamma=1.0 done
+[06:23:45]     noisy gamma=1.4 done
+[06:24:02]     noisy gamma=1.8 done
+[06:26:21]     noiseless spatial done
+[06:26:21]     MPF extrapolation done → mpf_co4_ct2_np10_nl400_nn150_s10_mpf.log
+[06:26:21]   === mpf_co4_ct2_np10_nl400_nn150_s10 complete ===
+[06:26:21] === WAVE 6: Synthetic small gamma (failure mode 5) ===
+[06:26:21] === mpf_co4_ct2_npf2_nl400_nn150_s10 ===
+[06:26:21]   cutoff=1e-4  center=2  NP=2  chi_nl=400  chi_n=150  steps=10
+[06:26:21]   GPU2: noiseless center=13
+[06:28:47]   MPF done (exit 0)
+[06:31:25]   GPU2 noiseless done (exit 0)
+[06:32:07]     noisy gamma=1.0 done
+[06:32:44]     noisy gamma=1.4 done
+[06:33:18]     noisy gamma=1.8 done
+[06:35:37]     noiseless spatial done
+[06:35:37]     MPF extrapolation done → mpf_co4_ct2_npf2_nl400_nn150_s10_mpf.log
+[06:35:37]   === mpf_co4_ct2_npf2_nl400_nn150_s10 complete ===
+[06:35:37] === mpf_co4_ct2_npf5_nl400_nn150_s10 ===
+[06:35:37]   cutoff=1e-4  center=2  NP=5  chi_nl=400  chi_n=150  steps=10
+[06:35:37]   GPU2: noiseless center=13
+[06:37:36]   MPF done (exit 0)
+[06:40:38]   GPU2 noiseless done (exit 0)
+[06:41:09]     noisy gamma=1.0 done
+[06:41:34]     noisy gamma=1.4 done
+[06:41:57]     noisy gamma=1.8 done
+[06:44:16]     noiseless spatial done
+[06:44:16]     MPF extrapolation done → mpf_co4_ct2_npf5_nl400_nn150_s10_mpf.log
+[06:44:16]   === mpf_co4_ct2_npf5_nl400_nn150_s10 complete ===
+[06:44:16] === WAVE 4: Chi scaling ===
+[06:44:16] === mpf_co4_ct2_np25_nl200_nn100_s10 ===
+[06:44:16]   cutoff=1e-4  center=2  NP=25  chi_nl=200  chi_n=100  steps=10
+[06:44:16]   GPU2: noiseless center=13
+[06:45:13]   MPF done (exit 0)
+[06:45:54]   GPU2 noiseless done (exit 0)
+[06:46:07]     noisy gamma=1.0 done
+[06:46:19]     noisy gamma=1.4 done
+[06:46:28]     noisy gamma=1.8 done
+[06:47:26]     noiseless spatial done
+[06:47:26]     MPF extrapolation done → mpf_co4_ct2_np25_nl200_nn100_s10_mpf.log
+[06:47:26]   === mpf_co4_ct2_np25_nl200_nn100_s10 complete ===
+[06:47:26] === mpf_co4_ct2_np25_nl300_nn120_s10 ===
+[06:47:26]   cutoff=1e-4  center=2  NP=25  chi_nl=300  chi_n=120  steps=10
+[06:47:26]   GPU2: noiseless center=13
+[06:48:43]   MPF done (exit 0)
+[06:50:03]   GPU2 noiseless done (exit 0)
+[06:50:16]     noisy gamma=1.0 done
+[06:50:26]     noisy gamma=1.4 done
+[06:50:35]     noisy gamma=1.8 done
+[06:52:03]     noiseless spatial done
+[06:52:03]     MPF extrapolation done → mpf_co4_ct2_np25_nl300_nn120_s10_mpf.log
+[06:52:03]   === mpf_co4_ct2_np25_nl300_nn120_s10 complete ===
+[06:52:03] === WAVE 5: Steps ===
+[06:52:03] === mpf_co4_ct2_np25_nl400_nn150_s20 ===
+[06:52:03]   cutoff=1e-4  center=2  NP=25  chi_nl=400  chi_n=150  steps=20
+[06:52:03]   GPU2: noiseless center=13
+[07:40:40]   MPF done (exit 0)
+[08:43:40]   GPU2 noiseless done (exit 0)
+[08:44:51]     noisy gamma=1.0 done
+[08:45:35]     noisy gamma=1.4 done
+[08:46:05]     noisy gamma=1.8 done
+[10:05:57]     noiseless spatial done
+[10:05:57]     MPF extrapolation done → mpf_co4_ct2_np25_nl400_nn150_s20_mpf.log
+[10:05:57]   === mpf_co4_ct2_np25_nl400_nn150_s20 complete ===
+[10:05:57] === mpf_co4_ct2_np25_nl400_nn150_s30 ===
+[10:05:57]   cutoff=1e-4  center=2  NP=25  chi_nl=400  chi_n=150  steps=30
+[10:05:57]   GPU2: noiseless center=13
+[12:51:58]   MPF done (exit 0)
