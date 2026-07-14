@@ -303,6 +303,44 @@ where GPU_large ≥ ~20GB and GPU_small ≥ ~4GB.
 
 **Not yet confirmed by experiments** — pending full wave results.
 
+## BP consistency for cross-correlation inner products (2026-07-14)
+
+### The mathematical guarantee
+In the Pauli basis all operator coefficients are real. Inner products between any two
+states are guaranteed real — the Pauli basis is orthonormal. No exceptions.
+
+### Why BP produces complex intermediates
+BP approximates the inner product via vertex/edge scalars. For single-state
+observables (C(t) = ⟨ψ|ψ₀⟩), vertex scalars are norms — always positive → real.
+
+For cross-correlation ⟨ψᵢ|ψⱼ⟩ with i≠j, BP forms a double-layer network.
+Vertex scalars represent cross-correlations between two different states — can be
+negative at intermediate BP iterations even though the true fixed point is real.
+
+The `sqrt(vn) < 0` is BP leaving the real domain during convergence — a violation
+of the mathematical guarantee. The imaginary parts cancel at convergence (~1e-14)
+but this is the algorithm finding the right answer via a wrong path.
+
+### The correct fix (not yet implemented)
+A BP formulation for the double-layer network that:
+- Maintains real messages throughout convergence
+- Keeps vertex scalars non-negative at every iteration
+- Different message initialization/update rules — not a sqrt workaround
+
+The `adapt(Complex, ψ)` fix in Igor's code is a numerical band-aid that works but
+obscures the real problem. `sqrt(abs(vn))` loses sign information — wrong.
+
+### Implication for CppSim full MPF
+When we implement the A matrix: `A[i,j] = ⟨ψ_noisy(εᵢ)|ψ_noisy(εⱼ)⟩`
+we will face the same issue. Our current P2P approach uses noiseless messages as
+environment — works for ⟨ψ_nl|ψ_noisy⟩ but may not be consistent for cross-noisy.
+
+**Open question**: can the A matrix be computed using one noisy state's messages as
+environment for the other, staying real throughout? Or does the double-layer BP
+fundamentally require complex arithmetic for cross-correlation inner products?
+
+This is the key research question before implementing full MPF in CppSim.
+
 ## Exact interleaved noise PTM — TODO (2026-07-14)
 
 The current `extract_noise_ptm.py` with NOISE_POWER=n is an approximation.
