@@ -243,6 +243,53 @@ Output: heavyhex_noise_data.hpp with exact interleaved PTMs
 **Status**: TODO — implement after current experiment wave completes.
 The NOISE_POWER=25 approximation is good enough for the current experiments.
 
+## Lightcone Frontier MPF Result (2026-07-14) — KEY FINDING
+
+### Hypothesis
+MPF extrapolation is accurate at **frontier sites** (where the operator just arrived,
+chi not yet saturated) and less accurate in the bulk (where chi is large or saturated).
+
+### Test
+Script: `analyze_lightcone_mpf.py`
+Experiment: `mpf_co4_ct2_np25_nl400_nn150_s10` (anchor run)
+Threshold: w_nl=0.001 to define frontier vs bulk
+
+Sites partitioned per cycle:
+- **BULK**: w_nl > threshold (operator established, chi may be saturated)
+- **FRONTIER**: 0 < w_nl < threshold (operator just arrived, chi growing)
+- **DARK**: w_nl ≈ 0 (operator not arrived, chi=1, exact)
+
+### Result: frontier_better = ✓ YES for ALL 10 cycles
+
+| Cycle | n_bulk | n_front | err_bulk | err_front | Ratio |
+|-------|--------|---------|----------|-----------|-------|
+| 1  | 1  | 5  | 3.6e-6 | 2.8e-6 | 1.3x |
+| 5  | 7  | 19 | 5.5e-4 | 8.2e-5 | 6.7x |
+| 8  | 7  | 30 | 5.2e-4 | 2.7e-4 | 1.9x |
+| 10 | 10 | 36 | 7.3e-4 | 2.9e-4 | 2.5x |
+
+Even at cycles 8-10 where scalar C(t) MPF was "poor", the **spatial MPF
+at the frontier is accurate**. The scalar analysis was too coarse — it averaged
+over bulk and frontier, hiding the spatially structured validity.
+
+### Implication
+The scalar MPF failure at late cycles is NOT a failure of MPF itself — it's a
+consequence of averaging over bulk sites where the reference C_nl is truncated.
+At frontier sites, where chi is still small and the reference is exact, MPF works.
+
+**MPF validity is spatially structured, tracking the lightcone frontier.**
+
+### Prediction test
+MPF extrapolation at frontier sites does NOT reliably predict the next cycle —
+the current noiseless value is a better baseline predictor. This suggests MPF
+is a better corrector (noise → noiseless) than a predictor (t → t+1).
+
+### Next steps
+- Repeat for other experiments (different NP, center, cutoff)
+- Does frontier_better hold for NP=1 (less noise)?
+- Plot: frontier error vs chi_n at frontier sites — is it correlated?
+- This result may justify the paper claim: MPF is valid within the lightcone
+
 ## Hardware architecture observation (2026-07-14)
 
 With NP=25, noisy χ saturates at ~80 regardless of chi_n cap.
