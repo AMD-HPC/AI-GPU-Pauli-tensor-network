@@ -202,6 +202,47 @@ is lost by truncation, even when C(t) appears converged** — cutoff and chi_max
 are two faces of the same coin. The observable C(t) is insensitive to small
 singular values; the MPF extrapolation may not be.
 
+## Exact noise interleaving PTM (2026-07-14) — TODO after experiments
+
+### The problem with NOISE_POWER
+
+`extract_noise_ptm.py` with NOISE_POWER=n raises the noise PTM to the nth power:
+```
+PTM_eff = M_ε^n
+```
+This is an approximation — it assumes noise commutes with gates.
+
+### The exact solution
+
+The physically correct model ε(C·ε(B·ε(A·ρ·A†)·B†)·C†) in PTM form is:
+```
+PTM_eff = M_ε · M_C · M_ε · M_B · M_ε · M_A
+```
+where M_A, M_B, M_C are the gate PTMs and M_ε is the noise PTM.
+All 16×16 real matrices — exact composition via matrix multiplication.
+
+**Key insight**: The result is still a single PTM per bond. CppSim doesn't change
+at all — just feed it a different (exact) matrix. Only the Python extractor changes.
+
+### What we need
+
+1. Gate PTMs in Pauli basis for Julia's decomposition:
+   - Ry(π/2), Rx(π), Rx(-π), Ry(-π/2) — single-qubit, 4×4
+   - Rzz(α·dt) — two-qubit, 16×16
+   See Julia's `multi_xx_plus_yy_plus_zz_gate_new` for exact sequence
+
+2. Compose: M_ε interleaved at correct positions in the gate sequence
+
+3. Store result in `heavyhex_noise_data.hpp` — same format, exact physics
+
+### Script: `build_exact_noise_ptm.py` (separate from extract_noise_ptm.py)
+
+Inputs: JSON noise file + graph JSON (for coupling constants)
+Output: heavyhex_noise_data.hpp with exact interleaved PTMs
+
+**Status**: TODO — implement after current experiment wave completes.
+The NOISE_POWER=25 approximation is good enough for the current experiments.
+
 ## Hardware architecture observation (2026-07-14)
 
 With NP=25, noisy χ saturates at ~80 regardless of chi_n cap.
