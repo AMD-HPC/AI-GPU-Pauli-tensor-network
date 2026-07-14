@@ -154,9 +154,10 @@ run_experiment mpf_co4_ct2_np25_nl200_nn100_s10  1e-4   2  25  200  100  10  13
 run_experiment mpf_co4_ct2_np25_nl300_nn120_s10  1e-4   2  25  300  120  10  13
 
 # Wave 5: number of steps
+# Note: s30 removed — at chi_max=400 chi saturates by cycle 8,
+# making cycles 9-30 unreliable for MPF. s20 gives enough extra cycles.
 log "=== WAVE 5: Steps ==="
 run_experiment mpf_co4_ct2_np25_nl400_nn150_s20  1e-4   2  25  400  150  20  13
-run_experiment mpf_co4_ct2_np25_nl400_nn150_s30  1e-4   2  25  400  150  30  13
 
 log "=== ALL EXPERIMENTS COMPLETE ==="
 log "Results in: logs/mpf_experiments/"
