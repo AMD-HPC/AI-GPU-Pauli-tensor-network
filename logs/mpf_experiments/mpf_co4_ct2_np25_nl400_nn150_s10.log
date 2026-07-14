@@ -1,0 +1,41 @@
+[P2P] Peer access enabled between 2 GPUs
+═══════════════════════════════════════════════
+  CppSim — Heavy-Hex MPF (2-GPU + P2P)
+  BUILD: Jul 14 2026 04:56:22
+  Graph: heavy_hex_3x3  68 sites  76 bonds  D=4
+  GPU 0 (noiseless): chi_max=400
+  GPU 1 (noisy x3):  chi_max=150  gamma=1.0/1.4/1.8
+  n_steps=10  dt=0.100  J=1.000  cutoff=1.00e-04  center=site2
+  QR: householder  |  Parallel: std::thread + P2P overlap
+═══════════════════════════════════════════════
+
+[Workspace] allocated 4817.4 MB (chi_max=400 m_max=160001 n_max=1600)
+[Measures] f64 BP scratch: 4096.0 MB (chi_max=400)
+[HeavyHexState] D=4 center=2 all chi=1
+GPU 0 memory: state=16517.1 MB  msg=97.3 MB  ws=4817.4 MB
+[Workspace] allocated 317.5 MB (chi_max=150 m_max=22501 n_max=600)
+[Measures] f64 BP scratch: 216.0 MB (chi_max=150)
+[HeavyHexState] D=4 center=2 all chi=1
+[Workspace] allocated 317.5 MB (chi_max=150 m_max=22501 n_max=600)
+[Measures] f64 BP scratch: 216.0 MB (chi_max=150)
+[HeavyHexState] D=4 center=2 all chi=1
+[Workspace] allocated 317.5 MB (chi_max=150 m_max=22501 n_max=600)
+[Measures] f64 BP scratch: 216.0 MB (chi_max=150)
+[HeavyHexState] D=4 center=2 all chi=1
+GPU 1 memory: 1213.9 MB per state × 3 = 3641.6 MB total
+
+Cycle   C_nl         OV(1.0)      OV(1.4)      OV(1.8)       chi_nl  chi_n    t_nl(s)  t_n(s)   t_tot(s)
+------  ------------ ------------ ------------ ------------  ------- -------  -------- -------- --------
+0       1.000000     1.000000     1.000000     1.000000      1       1        -        -        -       
+1       0.886203     0.890661     0.892227     0.893682      4       4        0.748    1.168    1.713   
+2       0.611167     0.636940     0.645553     0.653646      25      16       0.141    0.585    0.971   
+3       0.322922     0.368106     0.384087     0.399192      33      23       0.460    1.120    1.604   
+4       0.144893     0.191199     0.209083     0.226005      60      34       0.444    1.430    1.880   
+5       0.105018     0.152781     0.167764     0.180994      99      57       0.859    1.569    2.068   
+6       0.146135     0.225433     0.235006     0.239362      163     71       1.741    2.172    2.809   
+7       0.189173     0.331707     0.334223     0.326220      278     81       3.931    2.856    5.106   
+8       0.189680     0.396850     0.394023     0.377375      400     100      9.311    4.376    13.137  
+9       0.152158     0.393747     0.391406     0.375073      400     117      18.139   5.417    26.096  
+10      0.107682     0.347556     0.350246     0.340180      400     146      30.862   6.521    46.224  
+
+Done.

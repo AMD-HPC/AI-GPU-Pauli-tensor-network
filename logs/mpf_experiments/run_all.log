@@ -1,0 +1,32 @@
+Logs directory: /scratch/MPF/CppSim/logs/mpf_experiments
+[04:54:22] Building binaries...
+make: 'main_heavyhex_mpf' is up to date.
+make: 'main_heavyhex' is up to date.
+make: 'main_heavyhex_noisy' is up to date.
+[04:54:22] === WAVE 1: Cutoff sensitivity ===
+[04:54:22] === mpf_co3_ct2_np25_nl400_nn150_s10 ===
+[04:54:22]   cutoff=1e-3  center=2  NP=25  chi_nl=400  chi_n=150  steps=10
+[04:54:22]   GPU2: noiseless center=13
+[04:54:55]   MPF done (exit 0)
+[04:55:35]   GPU2 noiseless done (exit 0)
+[04:55:41]     noisy gamma=1.0 done
+[04:55:47]     noisy gamma=1.4 done
+[04:55:53]     noisy gamma=1.8 done
+[04:56:19]     noiseless spatial done
+[04:56:19]     MPF extrapolation done → mpf_co3_ct2_np25_nl400_nn150_s10_mpf.log
+[04:56:19]   === mpf_co3_ct2_np25_nl400_nn150_s10 complete ===
+[04:56:19] === mpf_co4_ct2_np25_nl400_nn150_s10 ===
+[04:56:19]   cutoff=1e-4  center=2  NP=25  chi_nl=400  chi_n=150  steps=10
+[04:56:19]   GPU2: noiseless center=13
+[04:58:06]   MPF done (exit 0)
+[05:01:21]   GPU2 noiseless done (exit 0)
+[05:01:35]     noisy gamma=1.0 done
+[05:01:45]     noisy gamma=1.4 done
+[05:01:55]     noisy gamma=1.8 done
+[05:04:13]     noiseless spatial done
+[05:04:14]     MPF extrapolation done → mpf_co4_ct2_np25_nl400_nn150_s10_mpf.log
+[05:04:14]   === mpf_co4_ct2_np25_nl400_nn150_s10 complete ===
+[05:04:14] === mpf_co5_ct2_np25_nl400_nn150_s10 ===
+[05:04:14]   cutoff=1e-5  center=2  NP=25  chi_nl=400  chi_n=150  steps=10
+[05:04:14]   GPU2: noiseless center=13
+[05:08:51]   MPF done (exit 0)
