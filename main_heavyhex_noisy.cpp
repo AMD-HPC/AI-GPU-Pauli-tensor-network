@@ -51,6 +51,7 @@ int main(int argc, char** argv) {
     float  gamma     = 1.0f;
     int    center    = 13;
     bool   measure_spatial = false;
+    bool   use_exact = false;
     const char* spatial_file = nullptr;
 
     for (int i = 1; i < argc; i++) {
@@ -60,6 +61,7 @@ int main(int argc, char** argv) {
         else if (arg == "--qr=householder") qr_mode = QrMode::Householder;
         else if (arg.substr(0,8) == "--gamma=")  gamma  = atof(argv[i]+8);
         else if (arg.substr(0,9) == "--center=") center = atoi(argv[i]+9);
+        else if (arg == "--exact")          use_exact = true;
         else if (arg == "--measure=spatial") measure_spatial = true;
         else if (arg.substr(0,10) == "--spatial=") {
             measure_spatial = true;
@@ -73,7 +75,8 @@ int main(int argc, char** argv) {
     printf("  Graph: heavy_hex_3x3  68 sites  76 bonds  D=%d\n", D);
     printf("  chi_max=%d  n_steps=%d  dt=%.3f  J=%.3f  cutoff=%.2e\n",
            chi_max, n_steps, dt, J_coup, cutoff);
-    printf("  gamma=%.1f  center=site%d\n", gamma, center);
+    printf("  gamma=%.1f  center=site%d  noise=%s\n", gamma, center,
+           use_exact ? "exact-interleaved" : "approx-NOISE_POWER");
     printf("  QR: %s\n",
            qr_mode == QrMode::Cholesky    ? "cholesky" :
            qr_mode == QrMode::Householder ? "householder" : "adaptive");
@@ -83,7 +86,7 @@ int main(int argc, char** argv) {
     rocblas_handle handle;
     rocblas_create_handle(&handle);
 
-    NoisyHeavyHexGrid    grid(chi_max, gamma);
+    NoisyHeavyHexGrid    grid(chi_max, gamma, use_exact);
     Workspace            ws(chi_max, 3);
     HeavyHexState        state(grid);
     Measures             meas(handle, ws);

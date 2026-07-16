@@ -2,19 +2,18 @@
  * main_heavyhex.cpp — Heavy-hex Heisenberg picture simulation
  *
  * Computes C(t) = <Z_center(t) Z_center(0)> on the heavy_hex_3x3 graph
- * (68 sites, 76 bonds) using the isotropic Heisenberg Hamiltonian H = J·Σ(XX+YY+ZZ).
+ * (68 sites, 76 bonds) using the precomputed gate PTM from heavyhex_ideal_kick_data.hpp.
  *
- * Benchmark comparison target: Julia MPF simulator noiseless evolution (nl column).
- * Julia baseline (Float32, maxdim=600, MI100):
- *   Step 6: 38s   Step 7: 64s   Step 8: 144s   Step 9: 351s   Step 10: 844s
+ * Gate model and physical parameters (epsilon, phi, dt) are baked into the
+ * HPP at build time via build_ptm.py — they are NOT runtime arguments.
+ *
+ * Physical time: t = cycle × DT  where DT = HEAVY_HEX_3x3_IDEAL_KICK_DT
  *
  * Usage:
- *   ./main_heavyhex [chi_max] [n_steps] [dt] [J] [cutoff] [--qr=MODE]
+ *   ./main_heavyhex [chi_max] [n_steps] [cutoff] [--qr=MODE] [--center=N]
  *
  * Defaults:
- *   chi_max=600  n_steps=10  dt=0.1  J=1.0  cutoff=1e-10
- *   --qr=householder
- *   --qr=adaptive   (Cholesky for large tall-thin matrices)
+ *   chi_max=400  n_steps=10  cutoff=1e-4
  */
 
 #include "types.hpp"
@@ -41,11 +40,14 @@ static double now_ms() {
 
 int main(int argc, char** argv) {
     // ── Parse arguments ───────────────────────────────────────────
-    int    chi_max = (argc > 1) ? atoi(argv[1]) : 600;
+    int    chi_max = (argc > 1) ? atoi(argv[1]) : 400;
     int    n_steps = (argc > 2) ? atoi(argv[2]) : 10;
-    Scalar dt      = (argc > 3) ? atof(argv[3]) : 0.1f;
-    Scalar J_coup  = (argc > 4) ? atof(argv[4]) : 1.0f;
-    Scalar cutoff  = (argc > 5) ? (Scalar)atof(argv[5]) : 1e-10f;
+    Scalar cutoff  = (argc > 3) ? (Scalar)atof(argv[3]) : 1e-4f;
+
+    // Physical parameters from HPP — not CLI arguments
+    const float epsilon = HEAVY_HEX_3x3_IDEAL_KICK_EPSILON;
+    const float phi     = HEAVY_HEX_3x3_IDEAL_KICK_PHI;
+    const float dt      = HEAVY_HEX_3x3_IDEAL_KICK_DT;
 
     QrMode qr_mode = QrMode::Householder;
     bool   measure_spatial = false;
@@ -76,8 +78,8 @@ int main(int argc, char** argv) {
     printf("  CppSim — Heavy-Hex Heisenberg\n");
     printf("  BUILD: %s %s\n", __DATE__, __TIME__);
     printf("  Graph: heavy_hex_3x3  68 sites  76 bonds  3 colors  D=%d\n", D);
-    printf("  chi_max=%d  n_steps=%d  dt=%.3f  J=%.3f  cutoff=%.2e\n",
-           chi_max, n_steps, dt, J_coup, cutoff);
+    printf("  chi_max=%d  n_steps=%d  cutoff=%.2e\n", chi_max, n_steps, cutoff);
+    printf("  epsilon=%.4f  phi=%.8f  dt=%.4f  (from HPP)\n", epsilon, phi, dt);
     printf("  QR: %s\n",
            qr_mode == QrMode::Cholesky    ? "cholesky (forced)" :
            qr_mode == QrMode::Householder ? "householder (forced)" : "adaptive");
@@ -91,7 +93,8 @@ int main(int argc, char** argv) {
     Workspace         ws(chi_max, 3);  // max_degree=3 for heavy-hex (not 4)
     HeavyHexState     state(grid);
     Measures          meas(handle, ws);
-    HeavyHexSimulator sim(handle, J_coup, dt);
+    meas.initial_state_ = HEAVY_HEX_3x3_IDEAL_KICK_INITIAL_STATE;
+    HeavyHexSimulator sim(handle, 1.0f, dt);
     sim.gate_ops.qr_mode = qr_mode;
 
     int center = center_override;
@@ -128,6 +131,13 @@ int main(int argc, char** argv) {
            "------","--------","--------","------------","----------",
            "------------","----------","----------","-------","----------",
            "----------","--------","--------");
+    // Test: inner_op_state at t=0 should equal 1.0
+    {
+        Scalar C0 = meas.inner_op_state(
+            static_cast<Grid&>(grid), state.psi, state.messages,
+            HEAVY_HEX_3x3_IDEAL_KICK_INITIAL_STATE, center);
+        printf("  [test] inner_op_state(t=0) = %.6f  (expect 1.000000)\n", C0);
+    }
     printf("%-6d %-8d %-8d %-12.6f %-10s  %-12s %-10s %-10s %-7s %-10s  %-10s %-8s %-8s\n",
            0,1,1,1.0f,"-","-","-","-","-","-","-","-","-");
 

@@ -175,6 +175,15 @@ struct Operators {
         m[2+D*2] = 1.f;
         return m;
     }
+    // rho_selector for ρ_v = (I + s·Z)/2
+    // In Pauli basis vector form: [1, 0, 0, s] (normalization absorbed)
+    // s=+1 for |0>, s=-1 for |1>
+    static std::vector<Scalar> rho(int spin) {  // spin = +1 or -1
+        std::vector<Scalar> m(D*D, 0.f);
+        m[0+D*0] = 1.f;           // I component
+        m[3+D*3] = 1.f * spin;    // Z component with sign
+        return m;
+    }
     // Trace: full D×D identity — sums ALL Pauli components.
     // Used in autocorrelation_with_bp to compute per-site Frobenius
     // vertex_scalars for rescaling (brings psi tensors to O(1) numerically).
@@ -732,20 +741,24 @@ struct BpResult { int sweeps; float delta; };
 struct Measures {
     rocblas_handle handle;
     Workspace& ws;
+    GateOps gate_ops;
     bool    full_bp   = false;  // false=diagonal (default), true=full chi×chi (wrong for bilinear form)
     bool    damped_bp = false;  // true=damped diagonal BP (--bp=damped)
     float   bp_alpha  = 1.0f;  // damping factor α ∈ (0,1]; 1.0=no damping (--alpha=)
+    const int* initial_state_ = nullptr;  // per-site initial state: +1=|0>, -1=|1>, nullptr=all |0>
 
     // Norm BP messages — chi-vector (same layout as C(t) diagonal messages).
     // Populated by bp_converge_norm; used by compute_norm.
     std::vector<Scalar*> norm_bp_msg;
     std::vector<int>     norm_bp_msg_chi;  // allocated chi per slot for realloc detection
 
-    Scalar* d_sel_full = nullptr; // [D] ones — sums ALL physical components (norm BP)
-    Scalar* d_psi_sq   = nullptr; // scratch for ψ² in compute_norm; sized chi_max^4*D
-    Scalar* d_ones  = nullptr;  // GPU ones vector for GEMV reductions in bp_update
-    Scalar* d_sel_I = nullptr;  // [1×D] selector for I-component (d=0)
-    Scalar* d_sel_Z = nullptr;  // [1×D] selector for Z-component (d=3)
+    Scalar* d_sel_full    = nullptr; // [D] ones — sums ALL physical components (norm BP)
+    Scalar* d_psi_sq      = nullptr; // scratch for ψ² in compute_norm; sized chi_max^4*D
+    Scalar* d_ones        = nullptr;  // GPU ones vector for GEMV reductions in bp_update
+    Scalar* d_sel_I       = nullptr;  // [1×D] selector for I-component (d=0)
+    Scalar* d_sel_Z       = nullptr;  // [1×D] selector for Z-component (d=3)
+    Scalar* d_sel_rho_p   = nullptr;  // [1×D] = [1,0,0,+1] for spin=+1 (|0>)
+    Scalar* d_sel_rho_m   = nullptr;  // [1×D] = [1,0,0,-1] for spin=-1 (|1>)
     Scalar* d_mu    = nullptr;  // GPU output buffer for reduced message (chi_max floats)
     Scalar* d_M     = nullptr;  // GPU scratch for full chi×chi message (chi_max² floats)
     Scalar* d_s     = nullptr;  // 1 float on GPU — sdot result (Σ d_mu or trace(M))
@@ -763,7 +776,7 @@ struct Measures {
     double* d_O_d    = nullptr; // D×D double — measurement operator upload slot
     double* d_I_d    = nullptr; // D×D double — identity operator (pre-loaded)
 
-    Measures(rocblas_handle h, Workspace& ws_) : handle(h), ws(ws_) {
+    Measures(rocblas_handle h, Workspace& ws_) : handle(h), ws(ws_), gate_ops(h) {
         // ones vector: max size = m_max = chi_max^3 (for GEMV over L or R_other)
         HIP_CHECK(hipMalloc(&d_ones, (size_t)ws.m_max * sizeof(Scalar)));
         std::vector<Scalar> ones(ws.m_max, 1.f);
@@ -781,6 +794,14 @@ struct Measures {
         HIP_CHECK(hipMalloc(&d_sel_full, D*sizeof(Scalar)));
         std::vector<Scalar> ones_D(D, 1.f);
         HIP_CHECK(hipMemcpy(d_sel_full, ones_D.data(), D*sizeof(Scalar), hipMemcpyHostToDevice));
+
+        // ρ selectors for inner_op_state: [1,0,0,±1]
+        HIP_CHECK(hipMalloc(&d_sel_rho_p, D*sizeof(Scalar)));
+        HIP_CHECK(hipMalloc(&d_sel_rho_m, D*sizeof(Scalar)));
+        std::vector<Scalar> rho_p = {1.f, 0.f, 0.f, +1.f};
+        std::vector<Scalar> rho_m = {1.f, 0.f, 0.f, -1.f};
+        HIP_CHECK(hipMemcpy(d_sel_rho_p, rho_p.data(), D*sizeof(Scalar), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_sel_rho_m, rho_m.data(), D*sizeof(Scalar), hipMemcpyHostToDevice));
 
         // d_psi_sq: worst-case site at chi_max: chi_max^max_degree * D elements
         // Use ws.max_degree (not MAX_DEGREE=4) for heavy-hex and other degree-3 lattices
@@ -827,8 +848,10 @@ struct Measures {
 
     ~Measures() {
         if (d_ones)  HIP_CHECK(hipFree(d_ones));
-        if (d_sel_I) HIP_CHECK(hipFree(d_sel_I));
-        if (d_sel_Z) HIP_CHECK(hipFree(d_sel_Z));
+        if (d_sel_I)     HIP_CHECK(hipFree(d_sel_I));
+        if (d_sel_Z)     HIP_CHECK(hipFree(d_sel_Z));
+        if (d_sel_rho_p) HIP_CHECK(hipFree(d_sel_rho_p));
+        if (d_sel_rho_m) HIP_CHECK(hipFree(d_sel_rho_m));
         if (d_mu)    HIP_CHECK(hipFree(d_mu));
         if (d_M)     HIP_CHECK(hipFree(d_M));
         if (d_s)     HIP_CHECK(hipFree(d_s));
@@ -1035,6 +1058,112 @@ struct Measures {
         float max_change;
         HIP_CHECK(hipMemcpy(&max_change, d_delta, sizeof(float), hipMemcpyDeviceToHost));
         return max_change;
+    }
+
+    /* ── bp_update_with_rho ──────────────────────────────────────────
+     * Same as bp_update but uses per-site ρ selector instead of d_sel_I.
+     * Used by inner_op_state to run BP on the bilinear form ⟨ψ(t)|ρ⟩.
+     * rho_spins[v]: +1 → [1,0,0,+1], -1 → [1,0,0,-1], center → Z=[0,0,0,1]
+     */
+    float bp_update_with_rho(const Grid& grid,
+                             const std::vector<Scalar*>& psi,
+                             std::vector<Scalar*>& messages,
+                             int center_site,
+                             const int* rho_spins,
+                             float alpha = 1.0f)
+    {
+        float one=1.f, zero=0.f;
+        hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
+        HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(Scalar), rbstream));
+
+        for (auto& bond : grid.bonds) {
+            int chi = bond.chi;
+            for (int dir = 0; dir < 2; dir++) {
+                int src_id  = (dir==0) ? bond.site_a : bond.site_b;
+                int src_dir = (dir==0) ? bond.dir_a  : bond.dir_b;
+                const Site& src = grid.sites[src_id];
+
+                std::vector<int> shape;
+                for (int d = 0; d < MAX_DEGREE; d++)
+                    if (src.bond_id[d] >= 0)
+                        shape.push_back(grid.bonds[src.bond_id[d]].chi);
+                shape.push_back(D);
+                int ndim = (int)shape.size();
+                int total = 1; for (auto s : shape) total *= s;
+
+                HIP_CHECK(hipMemcpy(ws.cv1, psi[src_id],
+                    total*sizeof(Scalar), hipMemcpyDeviceToDevice));
+                Scalar* cur = ws.cv1, *nxt = ws.cv2;
+
+                // Contract all non-cut neighbor bonds
+                for (int d = 0; d < MAX_DEGREE; d++) {
+                    if (src.bond_id[d] < 0 || d == src_dir) continue;
+                    int li = src.bond_local[d];
+                    const Bond& eb = grid.bonds[src.bond_id[d]];
+                    int bchi = eb.chi;
+                    mode_n_contract(handle, cur, shape.data(), ndim,
+                                   messages[eb.msg_incoming(src_id)],
+                                   bchi, bchi, li, nxt);
+                    std::swap(cur, nxt);
+                }
+
+                // Select physical component with ρ selector per site
+                const Scalar* sel;
+                if (src_id == center_site)         sel = d_sel_Z;
+                else if (rho_spins[src_id] >= 0)   sel = d_sel_rho_p;
+                else                               sel = d_sel_rho_m;
+
+                mode_n_contract(handle, cur, shape.data(), ndim,
+                                sel, D, 1, ndim-1, nxt);
+
+                int src_local = src.bond_local[src_dir];
+                int L = 1; for (int d = 0; d < src_local; d++) L *= shape[d];
+                int R_full = 1; for (int d = src_local+1; d < ndim; d++) R_full *= shape[d];
+                int R_other = R_full / D;
+
+                int msg_idx = (dir==0) ? bond.msg_from_a() : bond.msg_from_b();
+                int blocks  = (chi*chi + 255) / 256;
+
+                if (L == 1) {
+                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                        chi, R_other, &one, nxt, chi, d_ones, 1, &zero, d_mu, 1));
+                } else if (R_other == 1) {
+                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                        L, chi, &one, nxt, L, d_ones, 1, &zero, d_mu, 1));
+                } else {
+                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                        L, chi*R_other, &one, nxt, L, d_ones, 1, &zero, cur, 1));
+                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                        chi, R_other, &one, cur, chi, d_ones, 1, &zero, d_mu, 1));
+                }
+                RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device));
+                RB_CHECK(rocblas_sdot(handle, chi, d_mu, 1, d_ones, 1, d_s));
+                RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
+                normalize_and_delta<<<blocks, 256, 0, rbstream>>>(
+                    d_mu, messages[msg_idx], messages[msg_idx], d_s, d_delta, chi, alpha);
+            }
+        }
+
+        HIP_CHECK(hipStreamSynchronize(rbstream));
+        Scalar delta_h = 0.f;
+        HIP_CHECK(hipMemcpy(&delta_h, d_delta, sizeof(Scalar), hipMemcpyDeviceToHost));
+        return delta_h;
+    }
+
+    BpResult bp_converge_with_rho(const Grid& grid,
+                                  const std::vector<Scalar*>& psi,
+                                  std::vector<Scalar*>& messages,
+                                  int center_site,
+                                  const int* rho_spins,
+                                  int n_sweeps = 100,
+                                  float tol = 1e-5f)
+    {
+        float last_delta = 1e30f;
+        for (int i = 0; i < n_sweeps; i++) {
+            last_delta = bp_update_with_rho(grid, psi, messages, center_site, rho_spins);
+            if (last_delta < tol) return {i+1, last_delta};
+        }
+        return {n_sweeps, last_delta};
     }
 
     BpResult bp_converge(const Grid& grid,
@@ -1266,6 +1395,112 @@ struct Measures {
 
         for (auto p : bp_msg) if (p) HIP_CHECK(hipFree(p));
         return C;
+    }
+
+    /* ── inner_op_state ──────────────────────────────────────────────
+     * Computes C(t) = Tr(O(t) · ρ) = inner(ψ(t), ρ) via BP.
+     *
+     * Mirrors Julia's inner(ψ, ρ; alg="bp"):
+     *   1. BilinearForm(ψ, ρ) — fresh BPC with identity messages
+     *   2. update(bpc) — BP sweeps on ψ⊗ρ bilinear form
+     *   3. partition function
+     *
+     * Since ρ is a product state (chi=1), the bilinear form bond dim
+     * equals ψ's bond dim. BP uses per-site ρ selectors:
+     *   rho_spins[v]=+1 → sel=[1,0,0,+1], -1 → sel=[1,0,0,-1]
+     *   center_site   → sel=[0,0,0,1] (Z observable)
+     *
+     * Fresh identity messages (not reusing ψ's BPC messages).
+     * Sign tracked in log-space — no sqrt(-1) issue.
+     */
+    Scalar inner_op_state(
+        const Grid& grid,
+        const std::vector<Scalar*>& psi,
+        const std::vector<Scalar*>& messages,
+        const int* rho_spins,
+        int center_site,
+        int n_sweeps = 100)
+    {
+        // Step 1: Allocate fresh identity messages for ⟨ψ|ρ⟩ bilinear form
+        int nm = 2 * grid.n_bonds;
+        std::vector<Scalar*> bp_msg(nm, nullptr);
+        for (auto& bond : grid.bonds) {
+            for (int d = 0; d < 2; d++) {
+                int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                int chi = bond.chi;
+                HIP_CHECK(hipMalloc(&bp_msg[idx], (size_t)chi*chi*sizeof(Scalar)));
+                // Julia uses delta(linds) = plain chi×chi identity (no 1/chi)
+                std::vector<Scalar> eye(chi*chi, 0.f);
+                for (int i = 0; i < chi; i++) eye[i*chi+i] = 1.f;
+                HIP_CHECK(hipMemcpy(bp_msg[idx], eye.data(),
+                    (size_t)chi*chi*sizeof(Scalar), hipMemcpyHostToDevice));
+            }
+        }
+
+        // Step 2: Run BP on ψ using per-site ρ selectors
+        // bp_converge_with_rho selects [1,0,0,±1] per site instead of [1,0,0,0]
+        bp_converge_with_rho(grid, psi, bp_msg, center_site, rho_spins, n_sweeps);
+
+        // Step 3: Compute Bethe partition function with ρ selectors
+        // Use bp_partitionfunction with per-site ρ operators
+        // Upload per-site operators to GPU once via vertex_scalar loop
+        // (reuse bp_partitionfunction with rho ops)
+
+        // Build per-site D×D operator matrices: diag([1,0,0,±1]) or diag([0,0,0,1])
+        // These are the same as d_sel_rho_p/m/Z but as D×D diagonal matrices
+        std::vector<Scalar> op_rho_p(D*D, 0.f); op_rho_p[0]   = 1.f; op_rho_p[3+D*3] = 1.f;
+        std::vector<Scalar> op_rho_m(D*D, 0.f); op_rho_m[0]   = 1.f; op_rho_m[3+D*3] = -1.f;
+        std::vector<Scalar> op_Z(D*D, 0.f);     op_Z[3+D*3]   = 1.f;
+
+        float *d_op_rho_p, *d_op_rho_m, *d_op_Z;
+        HIP_CHECK(hipMalloc(&d_op_rho_p, D*D*sizeof(Scalar)));
+        HIP_CHECK(hipMalloc(&d_op_rho_m, D*D*sizeof(Scalar)));
+        HIP_CHECK(hipMalloc(&d_op_Z,     D*D*sizeof(Scalar)));
+        HIP_CHECK(hipMemcpy(d_op_rho_p, op_rho_p.data(), D*D*sizeof(Scalar), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_op_rho_m, op_rho_m.data(), D*D*sizeof(Scalar), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_op_Z,     op_Z.data(),     D*D*sizeof(Scalar), hipMemcpyHostToDevice));
+
+        // Bethe partition function: Π_v a_v / Π_e ze_e
+        double log_num  = 0.0;
+        double sign_num = 1.0;
+
+        for (auto& site : grid.sites) {
+            const float* op = (site.id == center_site)       ? d_op_Z :
+                              (rho_spins[site.id] >= 0)      ? d_op_rho_p : d_op_rho_m;
+            Scalar vs = vertex_scalar(handle, site, psi[site.id], grid, bp_msg,
+                                      op, ws.cv1, ws.cv2, false);
+            if (!std::isfinite(vs)) { sign_num = 0.0; break; }
+            if (vs == 0.f)          { sign_num = 0.0; break; }
+            sign_num *= (vs > 0.f ? 1.0 : -1.0);
+            log_num  += std::log(std::abs((double)vs));
+        }
+
+        // Bethe edge correction
+        double log_den  = 0.0;
+        double sign_den = 1.0;
+        for (auto& bond : grid.bonds) {
+            int chi = bond.chi, chi2 = chi*chi;
+            std::vector<Scalar> ma(chi2), mb(chi2);
+            HIP_CHECK(hipMemcpy(ma.data(), bp_msg[bond.msg_from_a()],
+                chi2*sizeof(Scalar), hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(mb.data(), bp_msg[bond.msg_from_b()],
+                chi2*sizeof(Scalar), hipMemcpyDeviceToHost));
+            double ze = 0.0;
+            for (int k = 0; k < chi2; k++) ze += (double)ma[k] * mb[k];
+            if (std::abs(ze) > 1e-30) {
+                sign_den *= (ze > 0 ? 1.0 : -1.0);
+                log_den  += std::log(std::abs(ze));
+            }
+        }
+
+        // Cleanup
+        for (auto p : bp_msg) if (p) HIP_CHECK(hipFree(p));
+        HIP_CHECK(hipFree(d_op_rho_p));
+        HIP_CHECK(hipFree(d_op_rho_m));
+        HIP_CHECK(hipFree(d_op_Z));
+
+        if (sign_num == 0.0) return 0.f;
+        return (Scalar)(sign_num * sign_den * std::exp(log_num - log_den));
     }
 
     /* ── rescale ─────────────────────────────────────────────────────

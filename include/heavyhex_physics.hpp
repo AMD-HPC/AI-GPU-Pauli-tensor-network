@@ -137,8 +137,10 @@ struct HeavyHexState {
     HeavyHexState& operator=(const HeavyHexState&) = delete;
 
     void init_heisenberg(FlatHeavyHexGrid& g, int center_site) {
-        std::vector<Scalar> h_I = {1.f, 0.f, 0.f, 0.f};  // I in Pauli basis
-        std::vector<Scalar> h_Z = {0.f, 0.f, 0.f, 1.f};  // Z in Pauli basis
+        // Heisenberg picture: evolve Z operator at center, I everywhere else
+        // Initial state ρ enters at measurement time, not here
+        std::vector<Scalar> h_I = {1.f, 0.f, 0.f, 0.f};  // I operator
+        std::vector<Scalar> h_Z = {0.f, 0.f, 0.f, 1.f};  // Z operator
 
         for (auto& site : g.sites) {
             Scalar* data = (site.id == center_site) ? h_Z.data() : h_I.data();
@@ -177,8 +179,6 @@ struct HeavyHexSimulator {
                       Workspace& ws, int chi_max, Scalar cutoff=1e-10f,
                       LayerMetrics* lm=nullptr)
     {
-        auto G = HeavyHexGates::XxYyZz(J * dt);
-
         int nm = 2 * grid.n_bonds;
         std::vector<int>     frozen_chi(grid.n_bonds);
         std::vector<Scalar*> frozen_msg(nm, nullptr);
@@ -209,12 +209,14 @@ struct HeavyHexSimulator {
             }
 
             for (auto& gate : grid.colors[c]) {
+                const float* G = heavy_hex_3x3_ideal_kick_ptm(gate.bond_id);
                 gate_ops.apply_binary_gate(
                     state.psi[gate.site_a], state.psi[gate.site_b],
                     gate, grid,
                     new_msg, frozen_msg, frozen_chi,
-                    G.data(), ws, chi_max, cutoff, lm);
+                    G, ws, chi_max, cutoff, lm);
             }
+
 
             // Commit updated messages for this color class
             for (auto& gate : grid.colors[c]) {
@@ -231,6 +233,24 @@ struct HeavyHexSimulator {
 
         for (auto p : frozen_msg) if (p) HIP_CHECK(hipFree(p));
         for (auto p : new_msg)    if (p) HIP_CHECK(hipFree(p));
+
+        // Wave 2: kick gate — Rx(2φ) once per site, independent of bond degree
+        {
+            size_t tmp_sz = 0;
+            for (auto& site : grid.sites) {
+                int vol = D;
+                for (int d = 0; d < MAX_DEGREE; d++)
+                    if (site.bond_id[d] >= 0)
+                        vol *= grid.bonds[site.bond_id[d]].chi;
+                tmp_sz = std::max(tmp_sz, (size_t)vol);
+            }
+            Scalar* tmp;
+            HIP_CHECK(hipMalloc(&tmp, tmp_sz * sizeof(Scalar)));
+            for (auto& site : grid.sites)
+                gate_ops.apply_unary_gate(state.psi[site.id], site, grid,
+                                          HEAVY_HEX_3x3_IDEAL_KICK_SITE_PTM, tmp);
+            HIP_CHECK(hipFree(tmp));
+        }
 
         int max_chi = 1;
         for (auto& bond : grid.bonds)
@@ -261,8 +281,6 @@ struct NoisyHeavyHexSimulator {
                       Workspace& ws, int chi_max, Scalar cutoff=1e-10f,
                       LayerMetrics* lm=nullptr)
     {
-        auto G_hw = HeavyHexGates::XxYyZz(J * dt);
-
         int nm = 2 * grid.n_bonds;
         std::vector<int>     frozen_chi(grid.n_bonds);
         std::vector<Scalar*> frozen_msg(nm, nullptr);
@@ -293,6 +311,7 @@ struct NoisyHeavyHexSimulator {
             }
 
             // Step 1: hardware gates
+            auto G_hw = HeavyHexGates::XxYyZz(J * dt);
             for (auto& gate : grid.colors[c]) {
                 gate_ops.apply_binary_gate(
                     state.psi[gate.site_a], state.psi[gate.site_b],

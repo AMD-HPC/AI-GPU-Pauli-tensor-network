@@ -479,15 +479,20 @@ private:
  *   const float* ptm = grid.noise_ptm(bond_id);  // 16×16 col-major
  * ========================================================= */
 #include "heavyhex_noise_data.hpp"
+#include "heavyhex_exact_noise_data.hpp"
+#include "heavyhex_ideal_kick_data.hpp"
 
 struct NoisyHeavyHexGrid : public FlatHeavyHexGrid {
     float gamma;
+    bool  exact;  // true = exact interleaved PTM, false = NOISE_POWER approximation
 
-    NoisyHeavyHexGrid(int chi_max_, float gamma_)
-        : FlatHeavyHexGrid(chi_max_), gamma(gamma_) {}
+    NoisyHeavyHexGrid(int chi_max_, float gamma_, bool exact_ = false)
+        : FlatHeavyHexGrid(chi_max_), gamma(gamma_), exact(exact_) {}
 
     // Return pointer to 256-element col-major 16×16 noise PTM for this bond
     const float* noise_ptm(int bond_id) const {
+        if (exact)
+            return heavy_hex_3x3_exact_noise_ptm(bond_id, gamma);
         return heavy_hex_3x3_noise_ptm(bond_id, gamma);
     }
 };

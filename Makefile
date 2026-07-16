@@ -86,6 +86,10 @@ test_noisy_heavyhex: test/test_noisy_heavyhex.cpp include/types.hpp include/heav
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test/test_noisy_heavyhex test/test_noisy_heavyhex.cpp $(LIBS)
 	@echo "Built test/test_noisy_heavyhex"
 
+test_inner_op_state: test_inner_op_state.cpp include/types.hpp include/heavyhex.hpp include/heavyhex_physics.hpp include/heavyhex_ideal_kick_data.hpp include/gate.hpp include/measures.hpp include/workspace.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test_inner_op_state test_inner_op_state.cpp $(LIBS)
+	@echo "Built test_inner_op_state"
+
 # ── Main simulation ────────────────────────────────────────────────────────
 
 main: main.cpp $(HEADERS)

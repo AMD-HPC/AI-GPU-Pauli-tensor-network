@@ -1,5 +1,209 @@
 # CppSim Heavy-Hex MPF — Two-GPU Implementation Summary
 
+---
+
+## SESSION 2026-07-15 — Restart: Julia as Ground Truth
+
+### What we discovered
+
+**1. The models were never apple-to-apple.**
+CppSim was simulating a different physical model than Julia:
+- CppSim: pure Heisenberg `exp(-iθ(XX+YY+ZZ))`, uniform coupling J=1.0, dt=0.1, NO kick gate
+- Julia: hardware-native 3-Rzz decomposition, heterogeneous couplings from device JSON, epsilon=0.25, WITH kick gate `Rx(2φ)` on every site after every Trotter step (φ=1.41371669)
+
+**2. The kick gate is essential physics.**
+The kick gate makes the model quantum chaotic. Without it, the pure Heisenberg model
+is integrable and chi grows slowly. With it, chi doubles every cycle for the noiseless
+state. This is intentional — chaotic dynamics is what makes MPF meaningful.
+
+**3. Noiseless chi is intractable beyond cycle 8.**
+With the kick gate and epsilon=0.25 on heavy_hex_3x3:
+- Chi_nl doubles every cycle: 4→14→28→58→110→202→364→637→1086 (cycles 1-9)
+- Cycle 10 OOMs at 32GB
+- Practical chi_max for noiseless: ~400 (saturates at cycle 7)
+
+**4. Noisy chi is manageable.**
+Noise suppresses entanglement — chi_n grows linearly ~25/cycle:
+- Cycles 1-9: 4→14→24→39→58→82→108→134→154
+- At chi_max=200, noisy states run comfortably to 10+ cycles
+
+**5. C(t) oscillates in sign due to kick gate.**
+The kick `Rx(2φ)` with 2φ≈9π/10 rotates Z → -0.951·Z + ... each cycle.
+C(t) alternates sign: negative at odd cycles, positive at even cycles.
+CppSim's always-positive C(t) is a different observable.
+
+**6. NP=25 approximation was wrong.**
+Pre-composing the noise PTM (`noise^25`) is not equivalent to applying it
+interleaved with gates in the TN state. Julia applies noise PTM as a gate
+to the full TN with fresh BP messages — a many-body effect that per-bond
+PTM composition cannot capture.
+
+**7. BP frequency matters.**
+Julia runs BP between every gate group (~6× per Trotter step).
+CppSim runs BP once per full Trotter cycle.
+This causes 5× chi difference and 10× difference in gamma spread.
+
+### Golden Reference (Julia, Float32, epsilon=0.25, gamma=1.0, maxdim=uncapped, cutoff=1e-4)
+
+Script: `workloads/noisy_ptm_simulation/compute_overlaps_gpu.jl heavy_hex_3x3 10 200`
+Log: `logs/golden_noiseless_gamma10_eps025_maxdim200.log`
+
+| Cycle | C_nl | C_n(γ=1.0) | overlap | χ_nl | χ_n | t(s) |
+|-------|------|------------|---------|------|-----|------|
+| 1 | -0.6786 | -0.6665 | 0.9809 | 4 | 4 | 157 |
+| 2 | +0.8127 | +0.7396 | 0.9312 | 14 | 14 | 78 |
+| 3 | -0.7205 | -0.6146 | 0.8320 | 28 | 24 | 81 |
+| 4 | +0.6808 | +0.5475 | 0.7217 | 58 | 39 | 78 |
+| 5 | -0.6916 | -0.5058 | 0.6208 | 110 | 58 | 82 |
+| 6 | +0.6207 | +0.4435 | 0.5330 | 202 | 82 | 90 |
+| 7 | -0.6346 | -0.4044 | 0.4528 | 364 | 108 | 119 |
+| 8 | +0.5921 | +0.3555 | 0.3832 | 637 | 134 | 214 |
+| 9 | -0.5998 | -0.3292 | 0.3243 | 1086 | 154 | 626 |
+| 10 | OOM | — | — | ~2000+ | ~175 | — |
+
+Notes:
+- maxdim was NOT applied in this run (bug: missing from apply_kwargs) — chi_nl is uncapped
+- C(t) oscillates in sign every cycle (kick gate effect)
+- |C_nl| stays ~0.60-0.81 — kicked model does not decay to zero
+- |C_n| decays steadily: 0.667→0.329 over 9 cycles
+- overlap decays monotonically: 0.981→0.324
+
+### C(t) comparison — current state
+
+| Cycle | C(t) Julia | C(t) CppSim | ratio |
+|-------|-----------|-------------|-------|
+| 1 | -0.6786 | -0.8033 | 0.845 |
+| 2 | +0.8127 | +0.6005 | 0.739 |
+| 3 | -0.7205 | -0.4816 | 0.668 |
+| 4 | +0.6808 | +0.5043 | 0.741 |
+
+Signs match ✓. Magnitudes differ by ~15-33% and growing with cycle.
+
+**Known sources of difference (investigated):**
+
+1. **Initial state ρ** — Julia measures `Tr(Z(t)·ρ)` where ρ has per-qubit +1/−1 from device JSON.
+   CppSim measures `Tr(Z(t)·I⊗...⊗I)` — assumes all qubits in |0⟩.
+   
+   Attempted fix: per-site rho operator in `bp_partitionfunction`. Failed because in CppSim's
+   canonical gauge, Z content at non-center sites lives in bond tensors (messages), not in
+   the site tensor's physical index d=3. The per-site operator change has nothing to act on.
+   
+   **Correct fix**: initialize a second TN representing ρ and contract `inner(ψ(t), ρ)` via BP,
+   exactly as Julia does. This requires a new measurement function.
+
+2. **Gate PTM sign convention** — Julia uses negative Rzz angles (Δ = −coupling).
+   CppSim tried both signs — C(t) identical. The gate is symmetric under sign flip for Z observable.
+
+3. **Truncation frequency** — Julia SVDs after every individual gate; CppSim SVDs once per
+   composed PTM. This explains chi difference but NOT C(t) difference (verified: C(t) stable
+   across cutoff 1e-2 to 1e-4 in CppSim).
+
+4. **Site indexing** — Julia site (3,) = CppSim site 2 ✓. Confirmed correct.
+
+**Root cause**: CppSim measurement assumes all-zero initial state. Center site 2's three
+neighbors (sites 32, 33, 34) all have spin=−1 (|1⟩) in the device initial state. The correct
+C(t) requires contracting the evolved operator with the actual device ρ, not the all-zero state.
+
+**TODO before proceeding**:
+Implement `measure_with_rho(ψ_bpc, ρ_bpc)` — a BP inner product between the evolved operator
+TN and the initial state TN. This matches Julia's `inner(network(bpc), rho; alg="bp")` exactly.
+The ρ TN is initialized once from `HEAVY_HEX_3x3_IDEAL_KICK_INITIAL_STATE` and never evolved.
+
+### inner_op_state — implementation status (2026-07-16)
+
+**Goal**: Implement `C(t) = Tr(O(t) · ρ) = inner(ψ(t), ρ)` matching Julia's
+`inner(network(bpc), rho; alg="bp")`.
+
+**Correct algorithm (3 steps):**
+1. Contract physical index of each ψ_v with ρ_v → φ_v (no physical index)
+   `φ_v[χ_1,...] = Σ_d ψ_v[χ_1,...,d] × ρ_v[d]`
+2. Run fresh BP on φ_v tensors (physical dim=1)
+3. Compute Bethe partition function on φ_v
+
+**Key facts learned:**
+- φ_v (step 1) correctly contracts ρ into ψ — verified at t=0: C(0)=1 ✓
+- Messages from ψ BP are WRONG for φ BP — need fresh BP on φ_v
+- `bp_converge` uses hardcoded D — cannot be reused for physical dim=1
+- Need dedicated BP sweep for φ_v tensors
+
+**Next step**: implement `bp_update_phi` — same message update formula
+as `bp_update` but with physical dim=1 site tensors φ_v. Then:
+```
+BpResult bp_converge_phi(grid, phi, bp_msg, n_sweeps)
+```
+followed by Bethe partition function on φ_v.
+
+**What works:**
+- Step 1 (physical contraction) ✓
+- t=0 test: C(0)=1 ✓
+- flip32 changes C(t) ✓ (rho correction is active)
+
+**What doesn't work yet:**
+- Messages not correct for φ_v bilinear form
+- `all+1 rho ≠ autocorrelation` — different observables, expected
+- `device rho = -0.403` vs Julia `-0.679` — wrong messages
+
+**Files:**
+- `test_inner_op_state.cpp` — standalone test (4/5 pass currently)
+- `include/measures.hpp` — `inner_op_state()` function
+
+**Build note**: `msg_from()` not found — use `msg_from_a()`/`msg_from_b()`
+depending on direction. Fix before next build.
+
+### Physicist conversation — key insights (2026-07-16)
+
+**1. Gate decomposition intent confirmed**
+The Trotter decomposition into gates1→gates2→gates3→gates4 exists for one reason:
+noise must be inserted at specific physical points. The chi-damping side effect is
+accidental. CppSim's precomputed PTM is a valid optimization — physics preserved,
+fewer SVDs.
+
+**2. sqrt(Complex) is a mathematical artifact**
+Physicists agree intuitively. The vertex scalar `a_v` can go negative due to BP
+approximation errors compounding through many intermediate states. With precomputed
+large PTMs (one SVD per color, not per gate), BP sees fewer intermediate states →
+less drift → fewer negative vertex scalars. CppSim's log-space sign tracking avoids
+sqrt entirely — numerically cleaner.
+
+**3. MPF consistency > accuracy**
+The MPF sum `Σ cᵢ × C(γᵢ)` works by cancellation — systematic errors that are
+identical across noise levels cancel out. HOWEVER: the A matrix `A[i,j] = ⟨ψᵢ|ψⱼ⟩`
+and B vector `B[i] = ⟨ψᵢ|ψ_nl⟩` require inner products that must be computed with
+HIGH CONSISTENCY across noise levels. Any asymmetric systematic error gets amplified
+by the solver — especially when A becomes ill-conditioned (late cycles).
+
+**4. MPF coefficient divergence observed**
+From Julia epsilon-based MPF output (noise={0.1, 0.15, 0.2}):
+- noise=0.1 coefficients ~0.3-0.4 — stable
+- noise=0.15 grows 1.4→2.7 — unstable  
+- noise=0.2 grows -0.7→-2.2 — unstable, wrong sign
+This is A matrix ill-conditioning at late cycles when noise damps all signals
+toward the same value — eigenvalues shrink, condition number explodes.
+Confirms: consistency in inner product computation is critical.
+
+**5. Precomputed PTM argument is alive**
+Physicists had not considered precomputing PTM_eff = gate·noise interleaved.
+The argument: for fixed hardware calibration, precompute once offline for each
+gamma → same physics, 12× fewer runtime SVDs. Valid optimization for paper.
+
+---
+
+### Plan going forward (Choice A — match Julia exactly)
+
+**Step 1**: Add kick gate to CppSim `trotter_layer()` — `Rx(2φ)` on every site after each color class
+**Step 2**: Implement 3-Rzz hardware gate decomposition with heterogeneous couplings
+**Step 3**: Match epsilon=0.25 (J=1.0, dt=0.25 equivalent via coupling scaling)
+**Step 4**: Validate noiseless C(t) matches Julia cycle-by-cycle
+**Step 5**: Add noise interleaved between gate groups (not pre-composed)
+**Step 6**: Run with chi_max=400 noiseless, chi_max=200 noisy — get golden MPF dataset
+
+### Script fixes applied (2026-07-15)
+- `src/utils.jl`: `pseudo_sqrt_inv_sqrt` — adapt D to CPU before `map_diag`, adapt back with `datatype(D)`
+- `compute_overlaps_gpu.jl`: epsilon_ref=0.25 restored, Float32 states, added C_nl/C_n via rho inner product
+- **Bug to fix**: `maxdim` missing from `apply_kwargs` — chi was uncapped in golden run
+
+---
+
 **Hardware**: 2× AMD MI100 (32 GB HBM2, peer-to-peer enabled)  
 **Graph**: heavy_hex_3x3 — 68 sites, 76 bonds, 3-colorable, D=4 (Pauli basis)  
 **Hamiltonian**: Isotropic Heisenberg H = J·Σ(XX+YY+ZZ), J=1, dt=0.1, cutoff=1e-4
