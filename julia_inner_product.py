@@ -338,25 +338,46 @@ def run_bp(n_sweeps=25, tol=1e-5, rho_fn=None):
 run_bp()
 
 # ── Autocorrelation check ─────────────────────────────────────────────────
+def contract_site(v, rho):
+    """Contract site tensor with all incoming messages and rho selector → scalar.
+
+    Shape of psi_v: (chi_0, chi_1, ..., chi_k, D)
+    Messages are chi×chi matrices.
+    rho is D-vector.
+    Result: a_v = Σ_{i0,i1,...,ik,d} psi_v[i0,i1,...,ik,d] × M0[i0] × M1[i1] × ... × rho[d]
+    where M_e = diagonal of message matrix.
+    """
+    psi_v = get_psi(v)
+    sh = site_shape(v)  # (chi_0,...,chi_k,D)
+    nbonds = len(site_bonds[v])
+
+    # Get diagonal of each message (chi-vector)
+    msg_diags = [msg_incoming(site_bonds[v][k], v).diagonal()
+                 for k in range(nbonds)]
+
+    # Reshape psi to (chi_0,...,chi_k,D) and compute weighted sum
+    t = psi_v.reshape(sh)
+
+    # Contract each bond message (diagonal = chi-vector)
+    for k in range(nbonds):
+        m = msg_diags[k]  # shape (chi_k,)
+        # Multiply along axis k
+        # t has shape (...,chi_k,...,D), multiply by m along axis k
+        t = t * m.reshape([1]*k + [len(m)] + [1]*(len(t.shape)-k-1))
+
+    # Sum over all bond indices, then contract with rho over physical
+    # t now has same shape but weighted; sum over bond indices
+    result = (t * rho.reshape([1]*nbonds + [D])).sum()
+    return float(result)
+
 def bethe_pf(rho_fn):
     """Compute Bethe partition function with per-site rho selector."""
     log_num = 0.0
     sign_num = 1.0
 
     for v in range(N_SITES):
-        sh = site_shape(v)
         rho = rho_fn(v)
-        cur = get_psi(v).reshape(sh)
-        cur_sh = list(sh)
-
-        # Contract all incoming messages
-        for k, bid in enumerate(site_bonds[v]):
-            M = msg_incoming(bid, v)  # chi×chi diagonal
-            cur = np.tensordot(cur.reshape(cur_sh), M, axes=([k],[0]))
-            cur = np.moveaxis(cur, -1, k)
-
-        # Contract physical (last dim) with rho
-        a_v = float(np.tensordot(cur.reshape(cur_sh), rho, axes=([-1],[0])).sum())
+        a_v = contract_site(v, rho)
 
         if a_v == 0.0: sign_num = 0.0; break
         sign_num *= np.sign(a_v)
@@ -365,10 +386,9 @@ def bethe_pf(rho_fn):
     log_den = 0.0
     sign_den = 1.0
     for bid in range(len(bond_list)):
-        # ze = Tr(Ma × Mb) for chi×chi messages
-        Ma = msgs[bid][0]
-        Mb = msgs[bid][1]
-        ze = float(np.trace(Ma @ Mb))
+        Ma = msgs[bid][0].diagonal()  # use diagonal for chi-vector messages
+        Mb = msgs[bid][1].diagonal()
+        ze = float(Ma @ Mb)
         if abs(ze) > 1e-30:
             sign_den *= np.sign(ze)
             log_den += np.log(abs(ze))
@@ -381,12 +401,41 @@ pv = get_psi(CENTER)
 print(f"\nDebug psi[center] shape: {pv.shape}")
 print(f"  psi[center] first 8 values: {pv.flatten()[:8]}")
 print(f"  chi bonds around center: {[chi[bid] for bid in site_bonds[CENTER]]}")
+print(f"  psi[center] norm: {np.linalg.norm(pv):.6f}")
+
+# Check a few phi values to understand BP input
+rho_test = np.array([1.,0.,0.,0.])  # I selector
+pv_flat = pv.reshape(-1, D)
+phi_test = pv_flat @ rho_test
+print(f"  phi_I[center] (I selector): first 4 = {phi_test.reshape(site_shape(CENTER)[:-1]).flatten()[:4]}")
+rho_test2 = np.array([0.,0.,0.,1.])  # Z selector
+phi_test2 = pv_flat @ rho_test2
+print(f"  phi_Z[center] (Z selector): first 4 = {phi_test2.reshape(site_shape(CENTER)[:-1]).flatten()[:4]}")
 
 # Z⊗I autocorrelation
 rho_Z = lambda v: np.array([0.,0.,0.,1.]) if v==CENTER else np.array([1.,0.,0.,0.])
 run_bp(rho_fn=rho_Z)
 C_auto = bethe_pf(rho_Z)
 print(f"\nAutocorrelation inner(ψ, Z⊗I) = {C_auto:.6f}  (Julia: -0.803318)")
+
+# Debug a_v for center
+sh = site_shape(CENTER)
+cur = get_psi(CENTER).reshape(sh)
+for k, bid in enumerate(site_bonds[CENTER]):
+    M = msg_incoming(bid, CENTER)
+    cur = np.tensordot(cur.reshape(site_shape(CENTER) if k==0 else list(sh)), M, axes=([k],[0]))
+    cur = np.moveaxis(cur, -1, k)
+a_center = float(np.tensordot(cur, rho_Z(CENTER), axes=([-1],[0])).sum())
+print(f"  a_v[center] = {a_center:.6f}  (Julia: -6.618)")
+for sid in [32,33,34]:
+    sh2 = site_shape(sid)
+    cur2 = get_psi(sid).reshape(sh2)
+    for k, bid in enumerate(site_bonds[sid]):
+        M = msg_incoming(bid, sid)
+        cur2 = np.tensordot(cur2, M, axes=([k],[0]))
+        cur2 = np.moveaxis(cur2, -1, k)
+    a_v = float(np.tensordot(cur2, rho_all0(sid), axes=([-1],[0])).sum())
+    print(f"  a_v[site={sid}] = {a_v:.6f}")
 
 # inner(ψ, all-zero ρ)
 rho_all0 = lambda v: np.array([1.,0.,0.,1.])

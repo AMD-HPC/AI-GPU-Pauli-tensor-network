@@ -137,6 +137,68 @@ int main() {
         for(auto p:julia_msgs) if(p) HIP_CHECK(hipFree(p));
     }
 
+    // Print ALL 68 site phi values for Python validation
+    printf("PHI_DUMP_BEGIN\n");
+    {
+        const float rho_p[4]={1.f,0.f,0.f,+1.f};
+        const float rho_m[4]={1.f,0.f,0.f,-1.f};
+        const float rho_Z[4]={0.f,0.f,0.f, 1.f};
+        const int* dev = HEAVY_HEX_3x3_IDEAL_KICK_INITIAL_STATE;
+        for (auto& site : grid.sites) {
+            // Shape: (chi_bond0,...,chi_bondk, D)
+            std::vector<int> sh;
+            for (int d=0; d<MAX_DEGREE; d++)
+                if (site.bond_id[d]>=0) sh.push_back(grid.bonds[site.bond_id[d]].chi);
+            sh.push_back(D);
+            int tot=1; for(auto s:sh) tot*=s;
+            std::vector<float> t(tot);
+            hipMemcpy(t.data(), state.psi[site.id], tot*sizeof(float), hipMemcpyDeviceToHost);
+            const float* rho = (site.id==center) ? rho_Z : (dev[site.id]>=0 ? rho_p : rho_m);
+            int bvol=tot/D;
+            printf("site %d spin %d bvol %d chi", site.id, dev[site.id], bvol);
+            for(int d=0;d<MAX_DEGREE;d++) if(site.bond_id[d]>=0) printf(" %d",grid.bonds[site.bond_id[d]].chi);
+            printf(" phi");
+            for(int b=0;b<bvol;b++){float v=0;for(int d=0;d<D;d++) v+=t[b*D+d]*rho[d]; printf(" %.8f",v);}
+            printf("\n");
+        }
+    }
+    printf("PHI_DUMP_END\n");
+
+    // Dump autocorrelation messages (chi×chi) for gauge transform validation
+    printf("MSG_DUMP_BEGIN\n");
+    for (auto& bond : grid.bonds) {
+        int chi = bond.chi, chi2 = chi*chi;
+        std::vector<float> ma(chi2), mb(chi2);
+        hipMemcpy(ma.data(), state.messages[bond.msg_from_a()], chi2*sizeof(float), hipMemcpyDeviceToHost);
+        hipMemcpy(mb.data(), state.messages[bond.msg_from_b()], chi2*sizeof(float), hipMemcpyDeviceToHost);
+        printf("bond %d a %d b %d chi %d a2b", bond.id, bond.site_a, bond.site_b, chi);
+        for(int k=0;k<chi2;k++) printf(" %.8f", ma[k]);
+        printf(" b2a");
+        for(int k=0;k<chi2;k++) printf(" %.8f", mb[k]);
+        printf("\n");
+    }
+    printf("MSG_DUMP_END\n");
+
+    // Dump FULL psi tensors (with physical index) for gauge transform
+    printf("PSI_DUMP_BEGIN\n");
+    for (auto& site : grid.sites) {
+        std::vector<int> sh;
+        for (int d=0; d<MAX_DEGREE; d++)
+            if (site.bond_id[d]>=0) sh.push_back(grid.bonds[site.bond_id[d]].chi);
+        sh.push_back(D);
+        int tot=1; for(auto s:sh) tot*=s;
+        std::vector<float> t(tot);
+        hipMemcpy(t.data(), state.psi[site.id], tot*sizeof(float), hipMemcpyDeviceToHost);
+        printf("site %d spin %d chi", site.id, HEAVY_HEX_3x3_IDEAL_KICK_INITIAL_STATE[site.id]);
+        for(int d=0;d<MAX_DEGREE;d++) if(site.bond_id[d]>=0) printf(" %d",grid.bonds[site.bond_id[d]].chi);
+        printf(" bond");
+        for(int d=0;d<MAX_DEGREE;d++) if(site.bond_id[d]>=0) printf(" %d",site.bond_id[d]);
+        printf(" psi");
+        for(int k=0;k<tot;k++) printf(" %.8f", t[k]);
+        printf("\n");
+    }
+    printf("PSI_DUMP_END\n");
+
     // Print phi_32, phi_33, phi_34 for Python validation
     {
         const float rho_p[4]={1.f,0.f,0.f,+1.f};
