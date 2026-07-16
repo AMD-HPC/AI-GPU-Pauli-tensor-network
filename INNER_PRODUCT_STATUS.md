@@ -144,7 +144,34 @@ CRITICAL NEXT TEST (before full heavy-hex):
 
 This single-loop test is the DECISION POINT.
 
+## CONCRETE TARGET + DATA READY (2026-07-16 end)
+
+Julia dump_two_states.jl produces:
+  TARGET: inner(ψ_nl, ψ_noisy; alg="bp") = 0.980920  (real 2-state overlap!)
+  two_states_dump.txt: both states, shared site-index basis
+  (copied to /scratch/MPF/CppSim/two_states_dump.txt)
+
+This is a genuine MPF B-vector element. Match it → we can do A and B.
+
+test_two_state_overlap.py loads both states. Site shapes confirmed:
+  site 3 (center): (4,4,4,4) = 3 links + pauli, neighbors [33,34,35]
+  site 33: (4,4,4), neighbors [2,3]  ← note: Julia 1-based vertices
+
+## OPEN BUG TO FIX FIRST (link ordering)
+Julia orders tensor links by inds(t), NOT by sorted neighbor.
+Must map each tensor axis → correct bond by matching link dimensions
+to neighbor bond χ. Site 35 shape (1,4,4): first link χ=1 (bond to
+site 11? or 3?). Get this wrong → silently wrong BP.
+
+To fix: dump_two_states.jl should ALSO dump, per site, the neighbor
+vertex for each link index IN ORDER. Add link→neighbor mapping to dump.
+
 ## NEXT SESSION START HERE
+1. Fix dump: add per-link neighbor labels so Python knows axis→bond
+2. Build double-layer BP: bond index = (i_a, i_b), message = χa×χb object
+3. Match 0.980920
+4. Then also test single hexagon QR vs symmetric (gauge-covariance on loop)
+5. Port to C++
 Step 1: In test_inner_minimal.jl, add a TRUE two-state overlap:
   ψ_a = evolve 1 cycle noiseless
   ψ_b = evolve 1 cycle with γ=1.0 noise
