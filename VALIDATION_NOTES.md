@@ -238,6 +238,34 @@ for k,v in state.items():
 
 ## 6. `inner_op_state` — Current Status and Algorithm
 
+### Critical discovery (2026-07-16 afternoon)
+
+**Root cause of ~0 result:** CppSim's QR gauge concentrates Pauli content in bond
+dimension (messages), not site tensor physical index. After one Trotter step:
+- phi_center[0,0,0] = psi_center[0,0,0,d] · ρ = [0,-0.087,0,0] · [1,0,0,±1] = 0
+  → initial message [1,0,0,0] picks this zero → BP stuck → result ≈ 0
+
+Julia's symmetric gauge has non-zero content at chi-index 0 → works correctly.
+
+**test_inner_minimal.jl** (in Julia repo) validates step-by-step:
+- 2-site at t=0: all tests pass C=+1 ✓
+- heavy-hex t=1: Julia messages evolve [1,0,0,0]→[1.073,0.030,0.165,-0.268] in 1 sweep ✓
+- BilinearForm factors at center: ψ(4,4,4,4) + delta(4,4) + ρ(4,1,1,1)
+
+**What works (partially):**
+- bp_partitionfunction with rho ops [1,0,0,±1] + autocorr messages: -0.830/-0.821
+  Signs correct, ~15% off from targets -0.962/-0.679
+
+**Current attempt in inner_op_state.hpp:**
+- init chi-vector from |diag(autocorr_msg)| / L2-norm
+- phi_v BP with L2 normalization
+- Result not yet tested after lunch
+
+**Next ideas if current fails:**
+- Pre-transform ψ to symmetric gauge (absorb sqrt of messages into site tensors)
+  THEN run BilinearForm BP → phi_v has content at all chi-indices
+- This is the mathematically correct approach but requires accurate sqrt(M) computation
+
 ### Goal
 Implement `C(t) = inner(ψ(t), ρ; alg="bp")` matching Julia exactly.
 

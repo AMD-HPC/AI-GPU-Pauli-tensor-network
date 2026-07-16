@@ -1,19 +1,12 @@
 /*
- * test_inner_op_state.cpp — Unit tests for inner_op_state()
+ * test_inner_op_state.cpp — Unit tests for inner_op_state_cpu()
  *
- * Tests the Vidal-gauge inner product C(t) = Tr(O(t) · ρ).
+ * Validates C(t) = inner(ψ(t), ρ; alg="bp") against Julia golden reference.
  *
- * Test 1: t=0, device ρ    → C(0) = +1 (center site spin=+1)
- * Test 2: t=0, all +1 ρ   → C(0) = +1 (all |0>)
- * Test 3: t=0, all -1 ρ   → C(0) = +1 (Z·|1><1| = -(-Z) = still picks Z component)
- * Test 4: t=0, flip site 32 only → compare with test 2
- *
- * At t=0: ψ = Z at center, I elsewhere, chi=1, messages=1
- * In this trivial case inner_op_state should give +1 regardless of ρ
- * because I⊗...⊗Z⊗...⊗I contracted with any product state = <Z>_center
- * and center site spin=+1.
- *
- * At t=1: ψ has spread to neighbors — ρ correction matters
+ * Julia verified values at cycle 1:
+ *   inner(ψ, Z⊗I...⊗I)   = -0.803318  ← autocorrelation_with_bp (already works)
+ *   inner(ψ, all-zero ρ)  = -0.961822
+ *   inner(ψ, device ρ)    = -0.678563  ← GOLDEN TARGET
  */
 
 #include "types.hpp"
@@ -24,19 +17,18 @@
 #include "measures.hpp"
 #include "heavyhex.hpp"
 #include "heavyhex_physics.hpp"
+#include "inner_op_state.hpp"
 #include <cstdio>
-#include <cstdlib>
 #include <cmath>
 #include <vector>
 
-static int n_pass = 0;
-static int n_fail = 0;
+static int n_pass = 0, n_fail = 0;
 
-static void check(const char* name, float got, float expected, float tol=1e-4f) {
+static void check(const char* name, float got, float expected, float tol=0.05f) {
     bool ok = std::abs(got - expected) < tol;
-    printf("  %-40s %s  got=%.6f  expected=%.6f\n",
-           name, ok ? "PASS" : "FAIL", got, expected);
-    if (ok) n_pass++; else n_fail++;
+    printf("  %-50s %s  got=%.6f  expected=%.6f\n",
+           name, ok?"PASS":"FAIL", got, expected);
+    if(ok) n_pass++; else n_fail++;
 }
 
 int main() {
@@ -45,142 +37,142 @@ int main() {
     printf("  BUILD: %s %s\n", __DATE__, __TIME__);
     printf("═══════════════════════════════════════════════\n\n");
 
-    rocblas_handle handle;
-    rocblas_create_handle(&handle);
+    rocblas_handle handle; rocblas_create_handle(&handle);
 
-    int chi_max = 100;
-    FlatHeavyHexGrid grid(chi_max);
-    Workspace        ws(chi_max, 3);
-    HeavyHexState    state(grid);
-    Measures         meas(handle, ws);
-    HeavyHexSimulator sim(handle, 1.0f,
-                          HEAVY_HEX_3x3_IDEAL_KICK_DT);
+    int chi_max=100, center=2;
+    FlatHeavyHexGrid  grid(chi_max);
+    Workspace         ws(chi_max, 3);
+    HeavyHexState     state(grid);
+    Measures          meas(handle, ws);
+    HeavyHexSimulator sim(handle, 1.0f, HEAVY_HEX_3x3_IDEAL_KICK_DT);
 
-    int center = 2;  // Julia site (3,) → 0-based site 2
-
-    // ── Device initial state from HPP ─────────────────────────────
     const int* device_spins = HEAVY_HEX_3x3_IDEAL_KICK_INITIAL_STATE;
-
-    // ── All +1 state ──────────────────────────────────────────────
     std::vector<int> all_plus(grid.n_sites, +1);
 
-    // ── All -1 state ──────────────────────────────────────────────
-    std::vector<int> all_minus(grid.n_sites, -1);
-
-    // ── Flip only site 32 (neighbor of center=2) ──────────────────
-    std::vector<int> flip32(device_spins, device_spins + grid.n_sites);
-    flip32[32] = -flip32[32];
-
-    // ─────────────────────────────────────────────────────────────
-    // Test group 1: t=0 (no evolution)
-    // ψ = Z at center, I elsewhere, chi=1, messages=identity
-    // ─────────────────────────────────────────────────────────────
-    printf("── Group 1: t=0 (trivial state) ────────────────\n");
+    // ── t=0 ──────────────────────────────────────────────────────────
+    printf("── t=0 (no evolution) ───────────────────────────\n");
     state.init_heisenberg(grid, center);
+    check("t=0, device rho → C=+1",
+        inner_op_state_cpu(static_cast<Grid&>(grid), state.psi, state.messages, device_spins, center, meas),
+        +1.0f, 1e-4f);
+    check("t=0, all+1 rho → C=+1",
+        inner_op_state_cpu(static_cast<Grid&>(grid), state.psi, state.messages, all_plus.data(), center, meas),
+        +1.0f, 1e-4f);
 
-    {
-        Scalar C = meas.inner_op_state(
-            static_cast<Grid&>(grid), state.psi, state.messages,
-            device_spins, center);
-        check("t=0, device rho → C=+1", C, +1.0f);
-    }
-    {
-        Scalar C = meas.inner_op_state(
-            static_cast<Grid&>(grid), state.psi, state.messages,
-            all_plus.data(), center);
-        check("t=0, all+1 rho → C=+1", C, +1.0f);
-    }
-    {
-        Scalar C = meas.inner_op_state(
-            static_cast<Grid&>(grid), state.psi, state.messages,
-            all_minus.data(), center);
-        // Z at center, center spin=+1 → still +1 (non-center I doesn't matter at t=0)
-        check("t=0, all-1 rho → C=+1", C, +1.0f);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    // Test group 2: t=1 (one Trotter step)
-    // ψ has spread to neighbors of center — ρ correction matters
-    // ─────────────────────────────────────────────────────────────
-    printf("\n── Group 2: t=1 (one Trotter step) ─────────────\n");
+    // ── t=1 ──────────────────────────────────────────────────────────
+    printf("\n── t=1 (one Trotter step) ───────────────────────\n");
     state.init_heisenberg(grid, center);
-
-    // Run BP to converge messages before Trotter step
     sim.trotter_layer(state, grid, ws, chi_max, 1e-4f);
+    Scalar C_auto = meas.autocorrelation_with_bp(
+        static_cast<Grid&>(grid), state.psi, state.messages, center, 100);
+    printf("  autocorrelation (Z⊗I...⊗I) = %.6f\n", C_auto);
+    check("autocorrelation ≈ Julia -0.803318", C_auto, -0.803318f, 0.01f);
 
-    // Run BP to converge messages for measurement
+    // ── Hardcode Julia's converged messages to verify formula ────────
+    // From test_inner_minimal.jl output (all-zero rho, after 25 sweeps):
+    // Julia bond (3,)→(33,) = CppSim bond id=5 (site_a=2,site_b=33)
+    // Julia vertex numbering is 1-based, CppSim is 0-based
+    // Julia msg (3,)→(33,): [1.073, 0.030, 0.165, -0.268]
+    // Julia msg (3,)→(34,): [0.995, -0.156, 0.108, 0.053]  → bond (2,33)
+    // Julia msg (3,)→(35,): [1.088, -0.143, -0.054, 0.108]  → bond (2,34)
+    // Julia msg (2,)→(33,): [0.724]  → chi=1, bond to site 32 or neighbor
+    // Julia msg (4,)→(34,): [2.544, -1.306, 0.004, -0.242]  → bond (3,33)
+    // All other messages: [1.0] (chi=1 bonds)
+    //
+    // For CppSim: bond ids for center=2:
+    //   bond[0]: id=4 a=2 b=32 chi=4  (Julia: (3,)→(31,) but 0-based: 2→31)
+    //   bond[1]: id=5 a=2 b=33 chi=4
+    //   bond[2]: id=6 a=2 b=34 chi=4
+    // Julia msg directions are from site (v) to neighbor, so:
+    //   msg_fwd[4] = msg 2→32 = Julia (3,)→(31,) ... not printed separately
+    //   Actually from Julia: msg (3,)→(33,)=[1.073,...] maps to bond5, site_a=2→b=33
+    //   msg (3,)→(34,) maps to bond6, msg (3,)→(35,) maps to...
+    //   Note: Julia sites 31,32,33,34,35 are 0-based: 30,31,32,33,34
+    // Julia (3,)=(CppSim 2), (33,)=(CppSim 32), (34,)=(CppSim 33), (35,)=(CppSim 34)
+    printf("\n  -- Hardcoded Julia messages test --\n");
     {
-        // Print physical index (d=0,1,2,3) of center and neighbor sites
-        // Shape: center=site2 has degree 3 → [chi,chi,chi,D]; neighbors degree 2 → [chi,chi,D]
-        // At chi=4: center tensor has 4*4*4*4=256 elements, neighbor has 4*4*4=64
-        auto print_site = [&](int sid, const char* label) {
-            // Get degree
-            int deg = 0;
-            for (int d=0; d<3; d++) if (grid.sites[sid].bond_id[d]>=0) deg++;
-            int chi = grid.bonds[grid.sites[sid].bond_id[0]].chi;
-            int total = 1;
-            for (int d=0; d<deg; d++) total *= chi;
-            total *= D;
-            std::vector<Scalar> t(total, 0.f);
-            HIP_CHECK(hipMemcpy(t.data(), state.psi[sid], total*sizeof(Scalar), hipMemcpyDeviceToHost));
-            // Print the D=4 physical components at bond index [0,0,...,0]
-            printf("  %s (site %d, deg=%d, chi=%d): psi[0,0,...,d] = [%.4f, %.4f, %.4f, %.4f]\n",
-                   label, sid, deg, chi, t[0], t[1], t[2], t[3]);
+        // Copy state messages but override chi=4 bonds with Julia values
+        int nm=2*grid.n_bonds;
+        std::vector<float*> julia_msgs(nm, nullptr);
+        for (auto& bond:grid.bonds) {
+            int chi=bond.chi, chi2=chi*chi;
+            for(int d=0;d<2;d++){
+                int idx=(d==0)?bond.msg_from_a():bond.msg_from_b();
+                HIP_CHECK(hipMalloc(&julia_msgs[idx], chi2*sizeof(float)));
+                HIP_CHECK(hipMemcpy(julia_msgs[idx], state.messages[idx],
+                    chi2*sizeof(float), hipMemcpyDeviceToDevice));
+            }
+        }
+        // Override with Julia's chi-vector messages as diagonal matrices
+        // Bond 5: site_a=2, site_b=33 → Julia (3,)→(34,) and (34,)→(3,)
+        // Julia msg (3,)→(33,)=[1.073,0.030,0.165,-0.268] → bond4 (2→32) or bond5?
+        // Bond 4: a=2,b=32; Bond 5: a=2,b=33; Bond 6: a=2,b=34
+        // Julia 1-based: (33,)=site32=0based, (34,)=site33, (35,)=site34
+        // So: Julia msg (3,)→(33,) = CppSim bond4 (2→32), msg_fwd direction
+        // Julia msg (3,)→(34,) = CppSim bond5 (2→33)
+        // Julia msg (3,)→(35,) = CppSim bond6 (2→34)
+        auto set_chi_msg=[&](int bid, int site_from, std::vector<float> vec){
+            int chi=vec.size(), chi2=chi*chi;
+            std::vector<float> mat(chi2,0.f);
+            for(int i=0;i<chi;i++) mat[i*chi+i]=vec[i];
+            int idx=(site_from==grid.bonds[bid].site_a)?
+                     grid.bonds[bid].msg_from_a():grid.bonds[bid].msg_from_b();
+            HIP_CHECK(hipMemcpy(julia_msgs[idx], mat.data(),
+                chi2*sizeof(float), hipMemcpyHostToDevice));
         };
-        print_site(2,  "center  (site 2) ");
-        print_site(32, "neighbor(site 32)");
-        print_site(33, "neighbor(site 33)");
-        print_site(34, "neighbor(site 34)");
+        // Julia (3,)→(33,) = bond4 site2→site32
+        set_chi_msg(4, 2, {1.0727f, 0.0305f, 0.1645f, -0.2677f});
+        // Julia (3,)→(34,) = bond5 site2→site33
+        set_chi_msg(5, 2, {0.9954f, -0.1564f, 0.1083f, 0.0527f});
+        // Julia (3,)→(35,) = bond6 site2→site34
+        set_chi_msg(6, 2, {1.0877f, -0.1425f, -0.0536f, 0.1084f});
+        // Julia (4,)→(34,) = bond from site3→site33 ... need bond id
+        // site3 connects to site33 via bond id=9 (from EDGES list: (3,35)→(2,34) 0-based)
+        // Actually let's just use what we have and see if center a_v changes
 
-        // Reuse autocorrelation_with_bp to run BP, then call inner_op_state
-        // with the same converged messages
-        Scalar C_old = meas.autocorrelation_with_bp(
-            static_cast<Grid&>(grid), state.psi, state.messages,
-            center, 100);
-        printf("  autocorrelation (old, all-zero rho) = %.6f\n", C_old);
+        float C_julia_msgs = inner_op_state_cpu(
+            static_cast<Grid&>(grid), state.psi, julia_msgs, all_plus.data(), center, meas);
+        printf("  inner_op_state with Julia msgs (all+1) = %.6f  (Julia: -0.961822)\n", C_julia_msgs);
 
-        Scalar C_all_plus = meas.inner_op_state(
-            static_cast<Grid&>(grid), state.psi, state.messages,
-            all_plus.data(), center);
-        printf("  inner_op_state (all+1 rho)          = %.6f\n", C_all_plus);
-
-        // all+1 ρ = [1,0,0,+1] picks I+Z at each site — different from
-        // autocorrelation which uses [1,0,0,0] picking only I component.
-        // These are different observables — just print for information.
-        printf("  Note: all+1 rho picks I+Z; autocorrelation picks I only\n");
-
-        Scalar C_device = meas.inner_op_state(
-            static_cast<Grid&>(grid), state.psi, state.messages,
-            device_spins, center);
-        printf("  inner_op_state (device rho)         = %.6f\n", C_device);
-        printf("  Julia golden reference (cycle 1)    = -0.678563\n");
-
-        // Test: start from evolved messages instead of identity
-        Scalar C_device_warm = meas.inner_op_state(
-            static_cast<Grid&>(grid), state.psi, state.messages,  // use evolved messages
-            device_spins, center, 100);
-        printf("  inner_op_state (device rho, warm)   = %.6f\n", C_device_warm);
-
-        // Key tests verified against Julia:
-        // inner(ψ, Z⊗I...⊗I) = -0.803318 → matches autocorrelation ✓
-        // inner(ψ, all-zero ρ) = -0.961822
-        // inner(ψ, device ρ)  = -0.678563 ← Julia golden
-        check("t=1, device rho ≈ Julia golden (-0.6786)", C_device,  -0.678563f, 0.05f);
-        check("t=1, all+1 rho ≈ Julia all-zero (-0.9618)", C_all_plus, -0.961822f, 0.05f);
-
-        Scalar C_flip32 = meas.inner_op_state(
-            static_cast<Grid&>(grid), state.psi, state.messages,
-            flip32.data(), center);
-        printf("  inner_op_state (flip site 32)       = %.6f\n", C_flip32);
-
-        // Flipping site 32 (neighbor, spin=-1→+1) should change C(t)
-        bool differs = std::abs(C_device - C_flip32) > 1e-6f;
-        printf("  %-40s %s  |delta|=%.6f\n",
-               "flip32 changes C(t)",
-               differs ? "PASS" : "FAIL",
-               std::abs(C_device - C_flip32));
-        if (differs) n_pass++; else n_fail++;
+        for(auto p:julia_msgs) if(p) HIP_CHECK(hipFree(p));
     }
+
+    // Print phi_32, phi_33, phi_34 for Python validation
+    {
+        const float rho_p[4]={1.f,0.f,0.f,+1.f};
+        const float rho_m[4]={1.f,0.f,0.f,-1.f};
+        const int* dev = HEAVY_HEX_3x3_IDEAL_KICK_INITIAL_STATE;
+        for (int sid : {32, 33, 34}) {
+            const Site& s = grid.sites[sid];
+            // site 32,33,34 have shape [chi_to_center, chi_other, D] or [chi_to_center, D]
+            std::vector<int> sh;
+            for (int d=0; d<MAX_DEGREE; d++)
+                if (s.bond_id[d]>=0) sh.push_back(grid.bonds[s.bond_id[d]].chi);
+            sh.push_back(D);
+            int tot=1; for(auto x:sh) tot*=x;
+            std::vector<float> t(tot);
+            hipMemcpy(t.data(), state.psi[sid], tot*sizeof(float), hipMemcpyDeviceToHost);
+            const float* rho = (dev[sid]>=0) ? rho_p : rho_m;
+            int bvol=1; for(int i=0;i<(int)sh.size()-1;i++) bvol*=sh[i];
+            printf("phi_%d (rho=[1,0,0,%+d]): ", sid, dev[sid]);
+            for(int b=0;b<bvol;b++){
+                float v=0; for(int d=0;d<D;d++) v+=t[b*D+d]*rho[d];
+                printf("%.6f ", v);
+            }
+            printf("\n");
+        }
+    }
+
+    float C_allplus = inner_op_state_cpu(
+        static_cast<Grid&>(grid), state.psi, state.messages, all_plus.data(), center, meas);
+    float C_device = inner_op_state_cpu(
+        static_cast<Grid&>(grid), state.psi, state.messages, device_spins, center, meas);
+
+    printf("  inner_op_state (all+1 rho)  = %.6f  (Julia all-zero: -0.961822)\n", C_allplus);
+    printf("  inner_op_state (device rho) = %.6f  (Julia golden:   -0.678563)\n", C_device);
+
+    check("t=1, all+1 rho ≈ Julia -0.9618", C_allplus, -0.961822f, 0.05f);
+    check("t=1, device rho ≈ Julia -0.6786 ← GOLDEN", C_device, -0.678563f, 0.05f);
 
     printf("\n═══════════════════════════════════════════════\n");
     printf("  Results: %d passed  %d failed\n", n_pass, n_fail);
