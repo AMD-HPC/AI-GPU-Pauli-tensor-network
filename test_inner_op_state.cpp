@@ -242,7 +242,8 @@ int main() {
 
     // Self-overlap ⟨ψ_nl|ψ_nl⟩ (= Julia's ||ψ_nl||² ≈ 0.99991)
     float C_self = bilinear_form_bp(
-        static_cast<Grid&>(grid), state.psi, state.psi);
+        static_cast<Grid&>(grid), state.psi,
+        static_cast<Grid&>(grid), state.psi);
     printf("  bilinear_form_bp(ψ_nl,ψ_nl) = %.6f  (Julia: 0.99991)\n", C_self);
 
     // Noisy state for cross-overlap ⟨ψ_nl|ψ_noisy⟩
@@ -261,9 +262,11 @@ int main() {
         // Cross-overlap: ⟨ψ_nl|ψ_noisy⟩
         // Note: both use same grid structure at cycle 1
         float C_cross = bilinear_form_bp(
-            static_cast<Grid&>(grid), state.psi, state_n.psi);
+            static_cast<Grid&>(grid),  state.psi,
+            static_cast<Grid&>(grid2), state_n.psi);
         float C_self_n = bilinear_form_bp(
-            static_cast<Grid&>(grid2), state_n.psi, state_n.psi);
+            static_cast<Grid&>(grid2), state_n.psi,
+            static_cast<Grid&>(grid2), state_n.psi);
 
         printf("  bilinear_form_bp(ψ_nl,ψ_n)  = %.6f  (Julia: 0.98092)\n", C_cross);
         printf("  bilinear_form_bp(ψ_n,ψ_n)   = %.6f  (Julia: 0.96230)\n", C_self_n);

@@ -166,6 +166,41 @@ site 11? or 3?). Get this wrong → silently wrong BP.
 To fix: dump_two_states.jl should ALSO dump, per site, the neighbor
 vertex for each link index IN ORDER. Add link→neighbor mapping to dump.
 
+## Session 2026-07-17 evening
+
+**bilinear_form_bp.hpp** updated to handle different chi_a vs chi_b per bond.
+Now takes two grids: `bilinear_form_bp(grid_a, psi_a, grid_b, psi_b)`.
+T_v bond dim = chi_a × chi_b per bond.
+
+**Results** (cycle 1, chi_max=100):
+- `bilinear_form_bp(ψ_nl, ψ_nl)` = 0.461 (Julia: 0.9999) — gauge normalization
+- `bilinear_form_bp(ψ_n,  ψ_n)`  = 0.792 (Julia: 0.9623) — gauge normalization
+- `bilinear_form_bp(ψ_nl, ψ_n)`  = 0.001 (Julia: 0.9809) ← WRONG
+
+**Cross-overlap is ~0**: BP converges to degenerate fixed point when
+noiseless and noisy states have same chi=4 structure. The messages
+don't distinguish the two states properly.
+
+**Uniform coupling test**: Julia gives 0.9808 (same as heterogeneous 0.9809).
+Coupling heterogeneity is NOT the cause of normalization mismatch.
+
+**Cosine similarity** = C_cross / sqrt(C_nl × C_n) = 0.001 (should be 0.981).
+This means the BP fixed point is wrong, not just unnormalized.
+
+**Root cause hypothesis**: BP on phi_v (chi_a × chi_b messages) starts at
+identity which is wrong when chi_a and chi_b come from different states with
+different physical content. The messages must be initialized to reflect the
+actual bond strengths of BOTH states, not just one.
+
+**Next investigation**:
+- Print a_v[3] for the cross-overlap case → should be ~11.97 (Julia) but we get ~0
+- The message from site 33→3 for cross-overlap: what does BP converge to?
+- Compare with Julia's BLF messages for inner(ψ_nl, ψ_n)
+
+**Test scripts**:
+- test_uniform_coupling.sh: tests uniform J=1.0 (confirms coupling not the issue)
+- dump_uniform.jl: Julia with uniform couplings
+
 ## NEXT SESSION START HERE
 1. Fix dump: add per-link neighbor labels so Python knows axis→bond
 2. Build double-layer BP: bond index = (i_a, i_b), message = χa×χb object
