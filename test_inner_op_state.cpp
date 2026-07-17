@@ -18,6 +18,7 @@
 #include "heavyhex.hpp"
 #include "heavyhex_physics.hpp"
 #include "inner_op_state.hpp"
+#include "bilinear_form_bp.hpp"
 #include <cstdio>
 #include <cmath>
 #include <vector>
@@ -235,6 +236,42 @@ int main() {
 
     check("t=1, all+1 rho ≈ Julia -0.9618", C_allplus, -0.961822f, 0.05f);
     check("t=1, device rho ≈ Julia -0.6786 ← GOLDEN", C_device, -0.678563f, 0.05f);
+
+    // ── Test bilinear_form_bp ──────────────────────────────────────────
+    printf("\n── bilinear_form_bp tests ───────────────────────────────────\n");
+
+    // Self-overlap ⟨ψ_nl|ψ_nl⟩ (= Julia's ||ψ_nl||² ≈ 0.99991)
+    float C_self = bilinear_form_bp(
+        static_cast<Grid&>(grid), state.psi, state.psi);
+    printf("  bilinear_form_bp(ψ_nl,ψ_nl) = %.6f  (Julia: 0.99991)\n", C_self);
+
+    // Noisy state for cross-overlap ⟨ψ_nl|ψ_noisy⟩
+    // Evolve a second state WITH NOISE (gamma=1.0)
+    {
+        NoisyHeavyHexGrid  grid2(chi_max, 1.0f, false);
+        Workspace          ws2(chi_max, 3);
+        HeavyHexState      state_n(grid2);
+        NoisyHeavyHexSimulator sim_n(handle, 1.0f, HEAVY_HEX_3x3_IDEAL_KICK_DT);
+        state_n.init_heisenberg(grid2, center);
+        sim_n.trotter_layer(state_n, grid2, ws2, chi_max, 1e-4f);
+        // Run BP on noisy state
+        meas.autocorrelation_with_bp(
+            static_cast<Grid&>(grid2), state_n.psi, state_n.messages, center, 100);
+
+        // Cross-overlap: ⟨ψ_nl|ψ_noisy⟩
+        // Note: both use same grid structure at cycle 1
+        float C_cross = bilinear_form_bp(
+            static_cast<Grid&>(grid), state.psi, state_n.psi);
+        float C_self_n = bilinear_form_bp(
+            static_cast<Grid&>(grid2), state_n.psi, state_n.psi);
+
+        printf("  bilinear_form_bp(ψ_nl,ψ_n)  = %.6f  (Julia: 0.98092)\n", C_cross);
+        printf("  bilinear_form_bp(ψ_n,ψ_n)   = %.6f  (Julia: 0.96230)\n", C_self_n);
+        printf("  cosine similarity = %.6f  (Julia: 0.98092/sqrt(0.99991*0.96230)=0.99999)\n",
+               C_cross / std::sqrt(C_self * C_self_n));
+
+        check("cross-overlap ≈ Julia 0.98092", C_cross, 0.98092f, 0.05f);
+    }
 
     printf("\n═══════════════════════════════════════════════\n");
     printf("  Results: %d passed  %d failed\n", n_pass, n_fail);
