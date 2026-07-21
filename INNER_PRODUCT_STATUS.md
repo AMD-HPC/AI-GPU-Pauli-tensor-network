@@ -212,3 +212,456 @@ Step 1: In test_inner_minimal.jl, add a TRUE two-state overlap:
   ψ_b = evolve 1 cycle with γ=1.0 noise
   print inner(ψ_a, ψ_b; alg="bp")  ← this is a real A/B matrix element
 Then build double-layer BP in Python to match it.
+
+## Session 2026-07-17 late
+
+**Julia script confirmed**: gpu_run_simulation_tnqs_noisy_hardware_epsilon.jl
+computes A[i,j] = inner(ψ_i, ψ_j; alg="bp") and B[i] = inner(ψ_i, ψ_nl; alg="bp")
+where ψ_i are states evolved at different epsilon (Trotter step) values with
+fixed gamma=1.0 noise. This is the CORRECT MPF formulation — main_heavyhex_mpf
+was wrong (computed C_n(t), not true inner products).
+
+**kick bug fixed**: NoisyHeavyHexSimulator was missing the kick wave. After fix:
+- C_nl(t) signs: -0.803, +0.630, -0.584, +0.706, -0.845 (alternates ✓)
+- C_n(t) signs: -0.437, +0.089, -0.206, +0.149, ~0.000 (alternates ✓)
+- center site: fixed to site 2 in main_heavyhex_noisy (was 13)
+
+**bilinear_form_bp attempts** (all at cycle 1, chi_max=100):
+- Self NL: 0.461 (Julia 0.9999) — correct up to QR gauge normalization ✓
+- Self N:  0.461 (NoisyKickSimulator, Julia 0.9623) ✓
+- Cross:   -0.174, cosine -0.378 (Julia 0.9809) ← WRONG SIGN
+
+**sqrt gauge attempt**: pass msg_a, msg_b into bilinear_form_bp, absorb
+sqrt(diag(msg)) into each tensor's bond axis before building T_v.
+Result: -0.007, cosine -0.015. Made it worse — independent gauge transforms
+don't fix sign_num because they act on psi_a and psi_b separately, changing
+T_v signs arbitrarily.
+
+**Root cause (confirmed)**: sign_num=-1 in Bethe formula for the cross call.
+This means some a_v < 0 after BP converges. The BP fixed point is in the
+wrong basin — the identity initialization (M = I/chi) is a poor starting
+point for the double-layer cross network when the two states have opposite
+signs in some chi channels (independent QR runs).
+
+**QR positive-diagonal fix** (gate.hpp): added `fix_qr_sign_Q` and `fix_qr_sign_R`
+GPU kernels. After Householder QR, if R[i,i]<0 flip sign of Q[:,i] and R[i,:].
+This makes independent QR runs on nearly-identical states choose consistent signs.
+Result: sign_num flipped from -1 → +1. Cross = +0.230, cosine = +0.499.
+
+**Sqrt gauge absorption**: absorb sqrt(diag(msg_incoming)) into each tensor's
+bond axis before building T_v. Tried with and without QR fix. Made things worse
+(cosine dropped to 0.017). The absorption changes T_v itself, not just initialization.
+
+**Kronecker warm-start initialization**
+Replace M_fwd/M_bwd initialization from identity to kron(msg_a, msg_b):
+- M_fwd[bond](ia*cb+ib, ja*jb) = msg_a_fwd[bond](ia,ja) × msg_b_fwd[bond](ib,jb)
+- This is the factored approximation: assumes the two states are nearly independent
+- For weak noise (gamma=1.0), msg_a ≈ msg_b so kron ≈ msg² — a good warm start
+- Mimics what Julia does: both states already in BP-canonical gauge, so the
+  BilinearForm BP starts from the product of the two converged environments
+- The kron messages break the sign degeneracy by encoding the actual bond content
+
+**Implementation plan** (bilinear_form_bp.hpp):
+1. Add msg_a_gpu/msg_b_gpu optional parameters (already added for sqrt-gauge attempt)
+2. In message init (step 3): if msgs provided, set
+   M_fwd[b][ia*cb+ib] = ma_fwd[b][ia] * mb_fwd[b][ib]  (diagonal kron)
+   where ma_fwd[b][ia] = sqrt of diagonal element ia of msg_a_fwd[b]
+3. Keep max-abs normalization during BP sweeps
+4. Test: should give sign_num=+1 and cosine ≈ +0.98
+
+**Key insight**: Julia's compute_inner uses inner(ψ_i, ψ_j; alg="bp") which
+internally constructs BilinearForm BP initialized from the PRODUCT of each
+state's existing BP cache messages. We must replicate this initialization.
+
+**Kronecker warm-start result**: implemented kron(diag(msg_a), diag(msg_b))
+initialization. Zero effect — BP swept back to the same fixed point regardless
+of initialization. The loopy heavy-hex graph has a dominant fixed point.
+
+**Exact tree contraction** (Python, NoisyKickSimulator dumps after QR fix):
+- self_nl = 1.377, self_n = 1.370, cross = +0.954
+- Cosine exact tree = 0.695  (Julia: 0.981)
+- CppSim BP cosine  = 0.500  (50% of exact tree)
+- Physics gap (0.695 vs 0.981): NoisyKickSimulator PTM ≠ Julia's interleaved model
+- BP gap (0.500 vs 0.695): loop corrections on heavy-hex undercount cross term
+
+**Current state** (2026-07-17 end of session):
+- Self-overlaps: BP correct ✓ (0.461 each, consistent)
+- Cross-overlap sign: fixed by QR positive-diagonal convention ✓
+- Cross-overlap magnitude: 0.500 vs exact 0.695 vs Julia 0.981
+  - Physics mismatch: NoisyKickSimulator vs Julia's PTM model
+  - BP approximation error on loops: ~28% undercount
+
+**Decision**: proceed with MPF A/B matrix using bilinear_form_bp as implemented.
+The loop BP error is systematic and partially cancels in ratios. The QR sign fix
+makes cross terms positive and in the right ballpark. Full loop corrections
+(loopcorrections alg in Julia) would require O(2^k) work — deferred.
+
+## Session 2026-07-17 end-of-day — architecture decision
+
+**Key discovery from Julia source** (bilinearform.jl, inner.jl):
+- Julia's BilinearForm uses full chi_a × chi_b double-layer bond messages
+- Default message = delta tensor on (chi_ket, chi_op=1, chi_bra) indices
+- chi_op=1 because operator is product of delta tensors (identity on physical)
+- So messages ARE full Kronecker: chi_a × chi_b — not factored
+- BUT: at cycle 1 only 5 bonds have chi>1 (tree subgraph) → BP is exact and fast
+
+**The ρ insertion insight** (Paolo's observation):
+- ⟨φ|⟨ρ|ρ⟩|φ⟩ = ⟨φ|ρ⟩ × ⟨ρ|φ⟩ since ⟨ρ|ρ⟩=1 (pure state in PTM basis)
+- This gives A[i,j] = C_i × C_j → rank-1 matrix → MPF degenerates
+- Confirmed: ρ insertion cannot replace full bilinear form for MPF
+- BUT: it IS useful conceptually — autocorrelation IS ⟨ψ(t)|ρ⟩
+
+**Scalability analysis**:
+- A[i,j] = ⟨ψ_n_i|ψ_n_j⟩: chi_n × chi_n = 150×150 = 22K per bond → tractable
+- B[i]   = ⟨ψ_n_i|ψ_nl⟩:  chi_n × chi_nl = 150×1000 = 150K per bond → T_v at degree-3 site = 150K³ → INTRACTABLE with explicit T_v
+
+**The right approach for B[i]**:
+- Never build T_v explicitly
+- Use **factored contractions**: for each site, contract messages one bond at a time
+- Cost: O(chi_a² × chi_b × D) per site (choose a=larger state as environment)
+- For B[i]: use ψ_nl as environment (run BP on ψ_nl), contract ψ_n_i bond by bond
+- This is identical to `autocorrelation_with_bp` structure but with a TN operator
+- Alternatively: extend `bp_partitionfunction` to accept per-site tensor operators
+
+**The right approach for A[i,j]** (i≠j):
+- chi_n × chi_n messages — tractable with factored contractions
+- Cost: O(chi_n² × chi_n × D) = O(chi_n³ × D) per site
+- At chi_n=150: 150³×4 = 13M ops per site, 68 sites = 900M → feasible on CPU
+
+**Current main_heavyhex_mpf2.cpp status**:
+- Built and running ✓
+- A diagonal = 1.0 ✓ (normalization correct)
+- A off-diagonal inconsistent signs at higher chi → gauge problem in chi>1 bonds
+- B[i] signs inconsistent across gammas → same gauge problem
+- Uses explicit T_v → will not scale past chi~8
+
+## NEXT SESSION START HERE
+
+**Implement factored bilinear form BP** (no explicit T_v):
+
+For B[i] = ⟨ψ_n_i|ψ_nl⟩:
+- Run BP on ψ_nl (larger chi) to get converged messages msg_nl
+- For each site v: contract ψ_nl[v] and ψ_n_i[v] bond-by-bond using msg_nl
+  - Start with tmp[ia_0, ib_0, ..., ia_nb, ib_nb, d] = ψ_nl[v][ia...,d] × ψ_n_i[v][ib...,d]
+  - Absorb msg_nl[bond_k] into ia_k index one at a time → reduces to scalar
+  - Cost: O(chi_nl^(deg-1) × chi_n × D) per site
+- Bethe PF using same log-space formula
+
+For A[i,j] = ⟨ψ_n_i|ψ_n_j⟩:
+- Same factored approach, both chi_n → O(chi_n^deg × D) per site
+- At chi_n=150, deg=3: 150³×4 ≈ 13M per site × 68 = 900M → ~1s on CPU
+
+**Implementation plan**:
+1. Add `bilinear_form_factored(snap_a, snap_b)` to bilinear_form_bp.hpp
+   - No T_v construction
+   - Messages: separate chi_a-vector and chi_b-vector per bond direction
+   - Update rule: contract one bond at a time into message
+2. Update main_heavyhex_mpf2.cpp:
+   - B[i]: `bilinear_form_factored(snap_n[g], snap_nl)` with snap_nl as env
+   - A[i,j]: `bilinear_form_factored(snap_n[i], snap_n[j])`
+   - A[i,i]: `autocorrelation_with_bp` style (chi_n env, ψ_n_i as op)
+
+**Files to modify**:
+- include/bilinear_form_bp.hpp: add bilinear_form_factored
+- main_heavyhex_mpf2.cpp: use new function for all inner products
+
+**Simulators** (confirmed correct):
+- HeavyHexSimulator: IDEAL PTM + kick wave ✓
+- NoisyKickSimulator: NOISY PTM + kick wave ✓ (single PTM per bond, same structure)
+- QR positive-diagonal convention: gate.hpp fix_qr_sign kernels ✓
+
+## Session 2026-07-18 morning — CppSim bilinear status + Julia plan
+
+**CppSim bilinear form: DEFERRED**
+Two fundamental problems that cannot be solved with current approach:
+1. Sign chaos: degenerate chi channels in independent QR runs → A[i,j] wrong signs
+   - QR positive-diagonal fix helps dominant channel but not degenerate subspaces
+   - Common noiseless gauge reference (sqrt-gauge) doesn't fix inter-state signs
+2. Kronecker explosion: T_v at center site is (chi_nl×chi_n)^3
+   - chi=20: 64M entries → 107s per inner product
+   - chi=400/150: completely intractable
+   - Factored rank-1 messages don't capture inter-state correlations → wrong results
+
+**Decision**: bilinear form in CppSim requires full SVD canonicalization (like Julia)
+to resolve degenerate subspace sign ambiguity. Deferred to future work.
+main_heavyhex_mpf2.cpp committed as proof-of-concept; A/B values unreliable at chi>4.
+
+**Julia asymmetric sqrt gauge: NEXT (45 min session) — target PR #25**
+Goal: eliminate sqrt(Complex) in Julia's loopcorrections path.
+Current workaround: promote to ComplexF32, compute inner product, take real part.
+Proposed: split diagonal message m[i] into:
+  L[i] = sign(m[i]) × sqrt(|m[i]|)  → left tensor  (real, signed)
+  R[i] = sqrt(|m[i]|)               → right tensor (real, positive)
+This keeps Float32 throughout, halves memory, enables GPU loopcorrections.
+File to patch: find where sqrt(vn) fails in the Julia BilinearForm/loopcorrections path.
+Target: submit as PR #25 to amd-TensorNetworkQuantumSimulator.jl
+
+## JULIA SESSION START HERE (PR #25)
+Find and patch the sqrt(complex) workaround in Julia:
+1. grep for "complex" or "ComplexF32" in workloads/bp_mpf/src/
+2. Find the sqrt call that triggers DomainError on negative diagonal messages
+3. Implement asymmetric split L/R
+4. Test on 2-site example, then heavy_hex_3x3 cycle 1
+5. Submit PR #25
+
+## Session 2026-07-18 afternoon — architecture notes
+
+### Observable: C(t) is gauge-invariant
+C(t) = Tr(Z(t) ρ) is a physical observable — gauge-invariant by definition.
+QR gauge, sqrt gauge — same answer. This means:
+- CppSim autocorrelation_with_bp already gives correct C_nl(t) and C_n(t) ✓
+- Primary validation between Julia and CppSim = compare autocorrelation curves
+- No bilinear inner product needed for physics validation
+- epsilon (Julia) ≡ gamma (CppSim): both parametrize noise amplification for MPF
+
+### Inner products on GPU (future work)
+At chi=100+, CPU bilinear form is intractable (double-layer bond = chi²).
+Requires GPU kernel for T_v contractions + BP message updates on-device.
+Significant engineering effort — deferred after autocorrelation validation.
+
+### BP timing difference — FUNDAMENTAL architectural gap
+**Julia**: BP runs after each color class (sub-layer) gate application.
+- Messages updated incrementally — environment tracks state after each sub-layer
+- Chi grows gradually: BP truncates mid-Trotter at each color boundary
+- BP graph has 68_sites × N_gates nodes — many nodes, moderate chi
+
+**CppSim**: BP runs once after the full Trotter step (all 3 color classes).
+- Messages initialized from previous cycle's converged state
+- Tensors can grow chi freely during Trotter before BP truncates
+- BP graph has exactly 76 bonds — few nodes, potentially larger chi per bond
+
+**Consequences**:
+- Julia chi growth is slower (truncated per color class)
+- CppSim chi growth is faster (truncated once per cycle)
+- Julia and CppSim will have different chi at same cycle count
+- Autocorrelation comparison will show this truncation schedule difference
+- CppSim BP is cheaper per sweep (76 bonds vs hundreds of Julia nodes)
+- At large chi: CppSim BP scales better despite higher per-bond chi
+
+### Three-way Julia experiment (2026-07-18)
+Running Float32 / ComplexF32 / Float64 on 3 GPUs simultaneously.
+Script: run_pr25_experiments.sh
+Logs: logs/pr25_20260718_165312/
+Goal: validate Float32 gives same physics as ComplexF32 (PR #25 correctness)
+      and Float64 gives same physics as ComplexF64 (accuracy reference)
+Files saved with scalartype in filename: ..._Float32.dat, ..._ComplexF32.dat, ..._Float64.dat
+Compare with: julia --project compare_pr25.jl
+
+### PR #25 VALIDATED (2026-07-18)
+Three-way experiment (Float32 / ComplexF32 / Float64) at chi=14, 10 cycles:
+- All three give **bit-for-bit identical results** (|Δ| = 0.00e+00 all cycles)
+- Timing at chi=14: all ~285-300s/cycle — loopcorrections CPU enumeration dominates
+- Scalar type has zero impact on timing at chi=14
+- Branch pushed: feature/pr25-float32-sqrt-gauge on AMD-HPC repo
+
+### Chi convergence sweep (RUNNING as of 2026-07-18 17:53 UTC)
+Command: bash run_pr25_experiments.sh --cycles=10 --chisweep=14,28,50,100,0
+Logs: logs/pr25_chi{N}_TIMESTAMP/
+Expected: Float32 timing advantage appears at chi≥50 (tensor contractions dominate)
+Expected: OOM for ComplexF32/Float64 before Float32 at large chi
+
+## Session 2026-07-19 — PR #25 complete + timing results
+
+### Key timing result (chi=4, cycle 1, genuine scalar types):
+| Scalar type | Time | vs Float32 |
+|-------------|------|-----------|
+| Float32     | 343s | baseline  |
+| Float64     | 380s | +11%      |
+| ComplexF32  | 480s | **+40%**  |
+
+ComplexF32 is 40% SLOWER than Float32 — imaginary arithmetic costs real compute
+even though physics is real. Float32 is the clear winner.
+
+### Architecture confirmed (type checks):
+- Gates: Float32 (RST = real(ST)) for all scalar types ✓
+- ψ_noiseless: always Float32 (Pauli basis, always real) ✓
+- ρ: always Float32 (exact integers [1,0,0,±1], chi=1, no BP/SVD) ✓
+- ψ_noisy: uses ST (Float32/ComplexF32/Float64) — the actual experiment variable
+
+### ST vs RST design (clean):
+- ST  = scalar type for evolved quantum states
+- RST = real(ST) = real scalar type for gates, kick gates, rho
+- Physics is real in Pauli basis — only states use ST for the experiment
+
+### PR #25 fixes (all committed to feature/pr25-float32-sqrt-gauge):
+- beliefpropagationcache.jl: sqrt(vn) → sqrt(abs(vn))
+- loopcorrections_patch.jl: same fix for BilinearForm
+- utils.jl: pseudo_sqrt_inv_sqrt uses sqrt(abs(x)) — fixes GPU segfault
+- tnqs_noisy_epsilon_evolution.jl: scalartype param, remove ComplexF32 promo
+- TNQSNoisyConfig.jl: --scalartype, --cycles, --maxchi CLI args
+- gpu_run_simulation_tnqs_noisy_hardware_epsilon.jl: ST/RST, gate conversion,
+  maxdim fix, filename tag, type check diagnostics
+
+### Chi sweep RUNNING (2026-07-19 ~01:00 UTC):
+Machine 1: bash run_pr25_experiments.sh --cycles=10 --chisweep=10,30,0
+Machine 2: bash run_pr25_experiments.sh --cycles=10 --chisweep=30,50,70
+Logs in: logs/pr25_chi{N}_*/
+
+### Next session:
+1. Read chi sweep results — compare timing and z_expvals across chi
+2. Run compare_pr25.jl on Float32 vs Float64 (now genuinely different arithmetic)
+3. Build chi convergence curve: |C(chi) - C(uncapped)| per cycle
+4. Fix compare_pr25.jl label detection (shows C32 for both files)
+5. Consider updating damping factors load to not depend on num_cycles
+
+## Session 2026-07-19 morning — Chi convergence results
+
+### Chi convergence (noiseless C_nl, Float64 reference vs uncapped):
+| Chi | Error at cycle 10 | Status |
+|-----|-------------------|--------|
+| 10  | 9.0e-02 (9%)      | Too small |
+| 30  | 2.2e-02 (2%)      | Acceptable |
+| 50  | 4.6e-05 (~0%)     | Nearly converged |
+| 70  | 0.00e+00          | Fully converged |
+
+chi≥70 = ground truth for 10 cycles at ε=0.1-0.2.
+chi=50 is 99.9% converged — practical sweet spot.
+Convergence only appears at late cycles (3+) as entanglement builds.
+
+### Key physics insight:
+Small Trotter steps (ε=0.1-0.2) → weak entanglement per step → chi grows slowly.
+Noiseless uncapped chi only reaches ~92 at cycle 10 — not explosive.
+CppSim grows chi faster (single composed PTM, no intermediate truncation).
+
+### Scalar type precision (noisy C_n, ε=0.1):
+- Float32 vs Float64: |Δ| ~ 1e-6 to 1e-4 — excellent
+- ComplexF32 vs Float64: |Δ| ~ 1e-3 to 1e-2 — 100-1000x worse!
+- ComplexF32 is LESS accurate than Float32, AND 20% slower
+
+### Timing (all chi values, 10 cycles):
+Float32: ~52min | ComplexF32: ~64min (+23%) | Float64: ~61min (+17%)
+Timing flat across all chi — loopcorrections 100% chi-independent.
+
+### Tools:
+- parse_logs.py: extracts z_expvals, produces summary + CSV files
+- results_noiseless.csv, results_timing.csv, results_delta.csv
+
+### Key findings (complete):
+
+**1. Noiseless C_nl(t) is identical across all scalar types** — always Float32
+internally (Pauli basis is real). Scalar type only affects noisy states.
+
+**2. Chi convergence** (noiseless, Float64 reference):
+- chi=10: 9% error at cycle 10
+- chi=30: 2% error
+- chi=50: ~0% (converged)
+- chi=70: bit-for-bit identical to uncapped ← ground truth
+- Same for noisy states (less entanglement → easier to converge)
+
+**3. Scalar type precision on noisy C_n (chi=70, ε=0.1)**:
+- Float32 vs Float64: |Δ| ~ 1e-6 to 1e-4 — excellent
+- ComplexF32 vs Float64: |Δ| ~ 1e-3 to 1e-2 — 100-1000× worse
+- ComplexF32 is LESS accurate than Float32!
+
+**4. Timing (10 cycles, chi=70)**:
+- Float32: 52min | ComplexF32: 65min (+25%) | Float64: 60min (+15%)
+- Timing flat across all chi — loopcorrections 100% chi-independent
+
+**5. MPF coefficients**:
+- MPF solve always in ComplexF64 (hardcoded in pipeline)
+- Input C_n quality determines output: Float32 ≈ Float64, ComplexF32 diverges
+- At cycle 1: ComplexF32 MPF coeffs completely different (0.487 vs 0.293)
+  due to ill-conditioned A matrix amplifying 4e-3 C_n difference → 60% coeff diff
+- C_mpf(t) plot: Float32 tracks C_nl perfectly, ComplexF32 shows visible deviation
+
+**6. Architecture insight**:
+- Gates/rho use RST=real(ST) — always Float32 or Float64
+- States use ST — the experiment variable
+- MPF solve uses ComplexF64 — independent of ST
+- ρ is always Float32 (exact integers, chi=1, never goes through BP)
+
+### Analysis tools committed to branch:
+- parse_logs.py: summary table from logs
+- analyze_pr25.py: CSV + 8 plots (noiseless, noisy×3, MPF coeffs, MPF result, timing)
+- results_all.csv: single shareable table
+
+### Branch: feature/pr25-float32-sqrt-gauge (pushed)
+
+### Completed (2026-07-19/20):
+1. chi=20 copied and added to convergence table ✓
+2. results/MI100/ committed with README + plots + CSV ✓
+3. Branch feature/pr25-float32-sqrt-gauge shared ✓
+4. MPF extrapolation error plot added (plot_mpf_error.png) ✓
+5. Key conclusion: MPF error 2-18% per cycle, identical across all scalar types
+   → scalar type is NOT the bottleneck, MPF methodology is ✓
+6. README complete and standalone for external physicists ✓
+
+## Session 2026-07-21 — CppSim vs Julia Z(t) comparison
+
+### New files:
+- `build_ptm.py`: added `--epsilon`, `--gamma`, `--phi` CLI args; epsilon encoded in model tag
+- `include/heavyhex_ideal_kick_eps{005,008,009,010}_data.hpp`: IDEAL_KICK at 4 epsilon values
+- `include/heavyhex_noisy_eps{010,015,020}_data.hpp`: NOISY at 3 epsilon values, gamma=1.0 only
+- `main_heavyhex_eps_mpf.cpp`: new main computing C(t) for noiseless + 3 noisy states
+  Usage: `./main_heavyhex_eps_mpf [chi_max] [n_steps] [cutoff] [K]`
+  K = number of bond-gate sub-steps per cycle (default 1), kick applied once per cycle
+
+### Systematic difference CppSim vs Julia:
+| epsilon_nl | K | |Δnl| cycle 1 | |Δnl| late cycles |
+|------------|---|--------------|-----------------|
+| 0.10 | 1 | 1.60e-02 | ~5-8% |
+| 0.09 | 1 | 2.08e-02 | ~3-5% |
+| 0.08 | 1 | 2.50e-02 | ~2-4% |
+| 0.05 | 1 | 3.48e-02 | ~1% cycles 6-8 |
+| 0.05 | 2 | 2.61e-02 | ~3% uniform |
+
+### Key physical insight:
+- Gate composition PTM = G1·G2(α)·G3(α)·G4(δ) includes BCH cross-commutator terms
+- Julia applies Rxx, Ryy, Rzz separately → first-order Trotter, discards cross-terms
+- CppSim composed PTM → effective time step ε_eff > ε_nominal
+- This is O(ε²) Trotter error, confirmed by systematic behavior
+- K=2 (two half-steps + one kick) gives more uniform error across cycles
+- Remaining ~3% systematic offset is NOT Trotter error (doesn't grow with cycles)
+  → likely gate ordering within color class or measurement convention
+
+### Next investigation:
+1. Identify the remaining ~3% systematic offset source
+2. Compare single-bond gate PTM between CppSim and Julia directly
+3. Check gate ordering within color class
+
+## Future roadmap (2026-07-19 end of day)
+
+### Step 1: CppSim C(t) matches Julia Z(t)
+- Autocorrelation is gauge-invariant — clean validation path
+- Run CppSim with matched epsilon/phi/hardware noise parameters
+- Compare C_nl(t) and C_n(ε, t) cycle by cycle vs Julia Z(t) Float32
+- CppSim faster → larger chi, more cycles → demonstrates CppSim advantage
+- This alone is a beautiful publishable result
+
+### Scientific boundary for CppSim vs Julia comparison
+
+**Gauge-independent (valid to compare)**:
+- Z(t) = C_n(ε,t) autocorrelation — gauge invariant by definition
+- C_mpf(t) = Σ cᵢ·C_n(εᵢ) — projection back onto gauge-independent observables
+- If these match → physics and MPF methodology both validated
+
+**Gauge-dependent (NOT valid to compare)**:
+- A[i,j] = ⟨ψᵢ|ψⱼ⟩ inner products — depend on gauge choice
+- B[i] = ⟨ψᵢ|ψ_nl⟩ inner products — same
+- Individual MPF coefficients cᵢ — will differ between QR (CppSim) and sqrt (Julia) gauge
+
+**Key insight**: MPF is gauge-independent in principle (linear combination of gauge-
+independent Z(t) values), but gauge-sensitive in practice through the condition number
+of A. Well-conditioned A → gauge doesn't matter. Ill-conditioned A → gauge errors
+get amplified and break the cancellation.
+
+**Validation chain**:
+  CppSim Z(t) ≈ Julia Z(t)     ← gauge-independent physics check
+  CppSim C_mpf ≈ C_nl(t)       ← MPF methodology quality
+  |C_mpf - C_nl| → 0 as methodology improves (more ε, better conditioning)
+
+### Step 2: True cross inner products for epsilon-MPF in CppSim
+- ψ(ε₁) and ψ(ε₂) evolved with different time steps → genuinely different states
+- Different chi growth, different gauge → CANNOT use one state's messages as environment
+- Autocorrelation workaround (single-state messages) breaks down here
+- Need TRUE double-layer BP: both states contribute to environment equally
+  T_v[ia,ib] = Σ_d ψ(ε₁)[ia,d] × ψ(ε₂)[ib,d], messages chi_a × chi_b
+- At chi=70: double-layer bond = 70×70 = 4900 → BP on 76 bonds → feasible on GPU
+- Requires: GPU double-layer BP kernel + consistent QR gauge (positive diagonal)
+- Once solved: full epsilon-MPF in CppSim, faster than Julia, larger chi
+
+### Why cross inner products are fundamentally harder than autocorrelation
+- Autocorrelation: ρ has chi=1 → double-layer = chi_ψ × 1 = chi_ψ → tractable
+- Cross ⟨ψ(ε₁)|ψ(ε₂)⟩: both chi>1 → double-layer = chi_a × chi_b → GPU needed
+- QR sign problem: independent evolutions choose arbitrary gauge → need fix_qr_sign
+- Julia avoids this via SVD sqrt-gauge: tensors canonicalized to consistent gauge

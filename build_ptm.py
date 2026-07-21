@@ -331,18 +331,39 @@ def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=N
 def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    noise_json = sys.argv[1] if len(sys.argv) > 1 else \
-        os.path.join(script_dir, "data", "heavy_hex_3x3_gamma1.00-1.40-1.80_hardware.json")
-    graph_json = sys.argv[2] if len(sys.argv) > 2 else \
-        os.path.join(script_dir, "data", "graphs", "heavy_hex_3x3.json")
-    model      = sys.argv[3] if len(sys.argv) > 3 else "IDEAL_KICK"
-    out_file   = sys.argv[4] if len(sys.argv) > 4 else \
-        os.path.join(script_dir, "include", f"heavyhex_{model.lower()}_data.hpp")
-
+    # Parse --flag=value args first, then positional args
     epsilon = float(os.environ.get('EPSILON', '0.25'))
     phi     = float(os.environ.get('PHI',     '1.41371669'))
+    gamma_filter = None  # None = all gammas; '1.0' = gamma=1.0 only
+    positional = []
+    for arg in sys.argv[1:]:
+        if arg.startswith('--epsilon='):
+            epsilon = float(arg[10:])
+        elif arg.startswith('--phi='):
+            phi = float(arg[6:])
+        elif arg.startswith('--gamma='):
+            gamma_filter = arg[8:]
+        else:
+            positional.append(arg)
 
-    print(f"Model:      {model}")
+    noise_json = positional[0] if len(positional) > 0 else \
+        os.path.join(script_dir, "data", "heavy_hex_3x3_gamma1.00-1.40-1.80_hardware.json")
+    graph_json = positional[1] if len(positional) > 1 else \
+        os.path.join(script_dir, "data", "graphs", "heavy_hex_3x3.json")
+    model      = positional[2] if len(positional) > 2 else "IDEAL_KICK"
+    out_file   = positional[3] if len(positional) > 3 else None
+
+    # Encode epsilon in model name to avoid HPP symbol conflicts across epsilon values
+    # e.g. IDEAL_KICK + epsilon=0.1 → model_tag = "IDEAL_KICK_EPS010"
+    eps_tag = str(epsilon).replace('.', '')[:4].ljust(3, '0')  # "0.1"→"010", "0.15"→"015"
+    model_tag = f"{model}_EPS{eps_tag}"
+
+    # Default output uses model_tag so files don't overwrite each other
+    if out_file is None:
+        out_file = os.path.join(script_dir, "include",
+                                f"heavyhex_{model_tag.lower()}_data.hpp")
+
+    print(f"Model:      {model}  (tag: {model_tag})")
     print(f"Noise JSON: {noise_json}")
     print(f"Graph JSON: {graph_json}")
     print(f"Output:     {out_file}")
@@ -363,10 +384,16 @@ def main():
             delta = delta_map.get(key, 1.0)
             ptm = build_bond_ptm(model, alpha, delta, phi, None)
             ptms.append(list(ptm.flatten(order='F')))
-        print(f"  {model}: {n_bonds} PTMs computed")
-        write_hpp(out_file, model, ['ideal'], {'ideal': ptms}, epsilon, phi, graph_data)
+        print(f"  {model_tag}: {n_bonds} PTMs computed")
+        write_hpp(out_file, model_tag, ['ideal'], {'ideal': ptms}, epsilon, phi, graph_data)
     else:
         gammas, noise_per_gamma = load_noise(noise_json)
+        if gamma_filter is not None:
+            # Keep only the closest gamma to the requested value
+            target = float(gamma_filter)
+            best = min(gammas, key=lambda g: abs(float(g)-target))
+            gammas = [best]
+            print(f"  Filtering to gamma={best} (requested {gamma_filter})")
         ptms_by_gamma = {}
         for gamma_str in gammas:
             ptms = []
@@ -382,7 +409,7 @@ def main():
                 ptms.append(list(ptm.flatten(order='F')))
             ptms_by_gamma[gamma_str] = ptms
             print(f"  gamma={gamma_str}: {n_bonds} PTMs computed")
-        write_hpp(out_file, model, gammas, ptms_by_gamma, epsilon, phi, graph_data)
+        write_hpp(out_file, model_tag, gammas, ptms_by_gamma, epsilon, phi, graph_data)
 
 if __name__ == '__main__':
     main()

@@ -108,6 +108,18 @@ main_heavyhex_mpf: main_heavyhex_mpf.cpp $(HEADERS) include/heavyhex.hpp include
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_mpf main_heavyhex_mpf.cpp $(LIBS) -lpthread
 	@echo "Built main_heavyhex_mpf"
 
+main_heavyhex_mpf2: main_heavyhex_mpf2.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp include/bilinear_form_bp.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_mpf2 main_heavyhex_mpf2.cpp $(LIBS) -lpthread
+	@echo "Built main_heavyhex_mpf2"
+
+main_heavyhex_eps_mpf: main_heavyhex_eps_mpf.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_data.hpp \
+	include/heavyhex_noisy_eps015_data.hpp \
+	include/heavyhex_noisy_eps020_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_eps_mpf main_heavyhex_eps_mpf.cpp $(LIBS)
+	@echo "Built main_heavyhex_eps_mpf"
+
 test_overlap_cpu: test/test_overlap_cpu.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp include/heavyhex_noise_data.hpp include/overlap_cpu.hpp include/measures.hpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test/test_overlap_cpu test/test_overlap_cpu.cpp $(LIBS) -lopenblas
 	@echo "Built test/test_overlap_cpu"
