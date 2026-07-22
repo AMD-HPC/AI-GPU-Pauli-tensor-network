@@ -267,10 +267,10 @@ int main(int argc, char** argv) {
     };
 
     // ── Header ────────────────────────────────────────────────────────────────
-    printf("%-5s  %-10s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-6s  %-6s  t(s)\n",
+    printf("%-5s  %-10s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-6s  %-6s  t(s)\n",
            "Step","C_nl","Julia_nl","|Δnl|",
            "C_n(0.1)","|Δ0.1|","C_n(0.15)","|Δ0.15|","C_n(0.2)","|Δ0.2|",
-           "chi_nl","chi_n");
+           "C_mpf","|Δmpf|","chi_nl","chi_n");
 
     for (int step = 1; step <= n_steps; step++) {
         double t0 = now_ms();
@@ -299,6 +299,42 @@ int main(int argc, char** argv) {
         for (auto& b : grid_nl.bonds)     chi_nl_max = std::max(chi_nl_max, b.chi);
         for (auto& b : grids_n[0]->bonds) chi_n_max  = std::max(chi_n_max,  b.chi);
 
+        // ── MPF extrapolation: fit C_n(ε,t) = c0 + c1·ε² + c2·ε⁴ ──────────
+        // Three points (ε=0.1, 0.15, 0.2) → solve 3×3 Vandermonde in ε²
+        float eps2[N_EPS], eps4[N_EPS];
+        for (int e = 0; e < N_EPS; e++) {
+            eps2[e] = EPSILONS[e] * EPSILONS[e];
+            eps4[e] = eps2[e] * eps2[e];
+        }
+        // Build 3×3 system A·x = b where x = [c0, c1, c2]
+        float A[3][3] = {
+            {1.f, eps2[0], eps4[0]},
+            {1.f, eps2[1], eps4[1]},
+            {1.f, eps2[2], eps4[2]}
+        };
+        float b3[3] = {C_n[0], C_n[1], C_n[2]};
+        float x[3] = {0.f, 0.f, 0.f};
+        // Gaussian elimination
+        for (int col = 0; col < 3; col++) {
+            int pivot = col;
+            for (int row = col+1; row < 3; row++)
+                if (fabsf(A[row][col]) > fabsf(A[pivot][col])) pivot = row;
+            for (int k = 0; k < 3; k++) { float tmp=A[col][k]; A[col][k]=A[pivot][k]; A[pivot][k]=tmp; }
+            float tmp=b3[col]; b3[col]=b3[pivot]; b3[pivot]=tmp;
+            if (fabsf(A[col][col]) > 1e-10f)
+                for (int row = col+1; row < 3; row++) {
+                    float f = A[row][col] / A[col][col];
+                    for (int k = col; k < 3; k++) A[row][k] -= f * A[col][k];
+                    b3[row] -= f * b3[col];
+                }
+        }
+        for (int row = 2; row >= 0; row--) {
+            x[row] = b3[row];
+            for (int k = row+1; k < 3; k++) x[row] -= A[row][k] * x[k];
+            if (fabsf(A[row][row]) > 1e-10f) x[row] /= A[row][row];
+        }
+        float C_mpf = x[0];  // c0 = extrapolated value at ε=0
+
         float jul_nl = (step<=10) ? julia_nl[step-1] : 0.f;
         printf("%-5d  %+10.6f  %+10.6f  %8.2e",
                step, C_nl, jul_nl, fabsf(C_nl-jul_nl));
@@ -306,7 +342,8 @@ int main(int argc, char** argv) {
             float jul = (step<=10) ? julia_n[e][step-1] : 0.f;
             printf("  %+10.6f  %8.2e", C_n[e], fabsf(C_n[e]-jul));
         }
-        printf("  %-6d  %-6d  %.2f\n", chi_nl_max, chi_n_max, (now_ms()-t0)/1000.0);
+        printf("  %+10.6f  %8.2e  %-6d  %-6d  %.2f\n",
+               C_mpf, fabsf(C_mpf-C_nl), chi_nl_max, chi_n_max, (now_ms()-t0)/1000.0);
         fflush(stdout);
     }
 

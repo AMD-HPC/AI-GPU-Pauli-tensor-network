@@ -619,6 +619,69 @@ internally (Pauli basis is real). Scalar type only affects noisy states.
 2. Compare single-bond gate PTM between CppSim and Julia directly
 3. Check gate ordering within color class
 
+## Session 2026-07-21 afternoon — MPF in CppSim
+
+### Key findings:
+
+**CppSim vs Julia C(t) agreement**:
+- Systematic ~1.6% offset at cycle 1 (chi=4, exact) → pure gate composition (BCH)
+- Offset grows to ~5-11% at late cycles as chi saturates
+- This is a KNOWN SYSTEMATIC BIAS, not random — acceptable for MPF
+
+**Why MPF error is similar in Julia and CppSim (~3-21%)**:
+- Julia MPF error: 3% (cycle 1) → 21% (cycle 10)
+- CppSim MPF error: 2.5% (cycle 1) → 12% (cycle 10)  
+- Both dominated by MPF methodology: only 3 epsilon points, ill-conditioned at late cycles
+- The bias between CppSim and Julia cancels in MPF extrapolation
+
+**Critical discovery — noise separation**:
+- In CppSim current implementation: C_n(ε=0.1) ≈ C_nl at cycle 1 — noise has almost no effect!
+- Reason: noise is BAKED INTO the PTM as G1·Mn·G2·Mn·G3·Mn·G4
+- As ε→0, gates vanish but noise PTM stays → wrong physics for epsilon-MPF
+- In Julia: noise is a SEPARATE LAYER applied after gates → correct separation
+- Fix needed: apply gates and noise separately in CppSim (like Julia)
+
+**CppSim advantages for MPF**:
+- Much faster than Julia → can afford more epsilon points
+- Flexible epsilon spacing → better conditioned linear system
+- Larger chi accessible → smaller truncation error
+- More cycles feasible → longer time evolution
+
+### Plan:
+
+**Step 1 — Fix noise separation** (critical):
+Restructure NoisySimEps to apply:
+1. Gates (IDEAL PTM at eps_i) per color class
+2. Noise channel (Mn, gamma=1.0) separately after gates
+This matches Julia's structure and gives proper C_n(ε) separation.
+
+**Step 2 — Explore epsilon spacing**:
+Generate HPPs at eps = 0.05, 0.10, 0.15, 0.20, 0.25 (5 points)
+Run MPF with 5 points → better conditioned A matrix → smaller extrapolation error
+
+**Step 3 — Chi convergence for MPF**:
+Compare C_mpf at chi=30, 50, 70 → show MPF converges with chi
+
+**Step 4 — Update paper**:
+- CppSim epsilon-MPF results with proper noise separation
+- Comparison with Julia at matched physics
+- MPF error vs chi and vs number of epsilon points
+
+### Files:
+- `main_heavyhex_eps_mpf.cpp`: noiseless + 3 noisy + MPF extrapolation column
+  Usage: `./main_heavyhex_eps_mpf [chi_max] [n_steps] [cutoff] [K]`
+- `build_ptm.py`: `--epsilon`, `--gamma`, `--phi` CLI args
+- HPPs: IDEAL_KICK at eps=0.05/0.08/0.09/0.10, NOISY at eps=0.10/0.15/0.20
+
+## NEXT SESSION START HERE
+Fix noise separation in CppSim epsilon-MPF:
+- Current: G1·Mn·G2·Mn·G3·Mn·G4 (noise baked in, wrong for epsilon-MPF)
+- Target:  G1·G2·G3·G4 (IDEAL gates at epsilon) then Mn applied separately
+- This requires: IDEAL PTMs at eps=0.10/0.15/0.20 + separate noise channel
+- Already have: heavyhex_ideal_kick_eps010.hpp and separate noise PTMs
+- Implement: NoisySimEpsFixed that applies gates then noise sequentially
+Then run 5-point epsilon sweep and compare MPF error with Julia
+
 ## Future roadmap (2026-07-19 end of day)
 
 ### Step 1: CppSim C(t) matches Julia Z(t)
