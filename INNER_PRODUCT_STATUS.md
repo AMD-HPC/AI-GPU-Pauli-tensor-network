@@ -693,7 +693,31 @@ Compare C_mpf at chi=30, 50, 70 → show MPF converges with chi
 - With IDEAL_KICK HPPs: C_n(0.1) = C_nl exactly (no extra truncation) → only 2 independent MPF points
 - MPF overshoots because linear system is degenerate
 
-## NEXT SESSION START HERE
+## Session 2026-07-22 — PTM equivalence verified
+
+### test_ptm_equivalence.py results (all PASS):
+
+1. **Sequential == Composed PTM**: error 4.93e-32 — machine precision exact
+   G1 @ G2 @ G3 @ G4 @ state == compose([G1,G2,G3,G4]) @ state ✓
+
+2. **Epsilon scaling confirmed**:
+   - alpha = coupling × epsilon: -0.054, -0.108, -0.162, -0.216 for eps=0.05,0.10,0.15,0.20
+   - delta = coupling: always -1.079, independent of epsilon
+   - ZI→ZI decreases with epsilon: 0.997, 0.988, 0.974, 0.954
+
+3. **Julia Rxx·Ryy·Rzz == CppSim G1·G2·G3·G4**: error 5.65e-16 — machine precision ✓
+   Both are mathematically identical gate decompositions.
+
+### Conclusion:
+The ~1.6% systematic offset between CppSim and Julia C(t) at cycle 1
+is NOT from gate definition or PTM composition — both are provably equivalent.
+
+Source must be one of:
+- BP environment between color classes (Julia updates after each sub-layer)
+- Bond ordering within a color class
+- Observable/measurement convention
+
+### NEXT SESSION START HERE
 
 **Julia diagnostic** (single bond, 2-site system):
 Compare C(t) from:
