@@ -753,11 +753,64 @@ for each color class (layer). This is per-bond, per-layer hardware characterizat
   but needs the correct hardware noise file
 
 ### NEXT SESSION START HERE:
-1. Switch CppSim to use `gamma1.00-2.00-3.00_hardware.json` noise file
-2. Regenerate NOISY HPPs at eps=0.10/0.15/0.20 with correct noise file
-3. Run main_heavyhex_eps_mpf and check if C_n matches Julia's values
-4. The ~0.040 difference at cycle 1 should be reproduced in CppSim
-   once the correct per-bond hardware noise PTMs are used
+
+## Two separate unexplained gaps (2026-07-22 afternoon)
+
+### Gap 1: C_nl vs C_n(ε=0.1) = 0.040 — EXPLAINED ✓
+Source: real hardware noise per-bond, per-layer PTMs
+gamma=1.0 is NOT identity: 43/228 bond-layer pairs have significant noise
+Fix: use gamma1.00-2.00-3.00_hardware.json noise file in CppSim
+
+### Gap 2: Julia C_nl=-0.910 vs CppSim C_nl=-0.926 — UNEXPLAINED ✗
+Both noiseless, same gates (IDEAL eps=0.10), same phi, same initial state.
+
+**Ruled out so far:**
+- Gate composition (Python: Julia==CppSim to 5.65e-16) ✗
+- SVD truncation (cutoff=0 still -0.909243 in Julia) ✗
+- Intermediate BP updates (update_cache=false: -0.909877 same) ✗
+- Measurement algorithm (bp vs loopcorrections: same) ✗
+- Bond coupling (affects both equally) ✗
+
+**Remaining candidates:**
+1. Bond ordering within color class
+   - Julia applies bonds in graph iteration order
+   - CppSim applies bonds in color[c] vector order
+   - Even though mathematically same, with frozen messages the ORDER matters
+
+2. Heisenberg picture direction (U vs U†)
+   - CppSim PTM convention: M_S[i,j] = Tr(Pi U Pj U†)/4
+   - Julia: may use opposite convention — need to verify
+
+3. rho convention for measurement
+   - Julia rho = [1,0,0,1] for all sites (all |0⟩)
+   - CppSim: same? Check IDEAL_KICK_INITIAL_STATE vs Julia rho
+
+4. phi_ref vs phi
+   - Julia config has phi_ref=π/2=1.5708 (damping factors file)
+   - But evolution uses phi=1.41371669
+   - CppSim uses phi=1.41371669 ✓
+
+**Plan for next session:**
+
+**Step A**: Verify rho convention
+- Print rho[site] for a few sites in Julia and CppSim
+- If different → rho is the source
+
+**Step B**: Verify bond ordering
+- Print which bonds are applied in which order in Julia color class 0
+- Compare with CppSim grid.colors[0] bond order
+- If different → apply in same order and retest
+
+**Step C**: Verify PTM direction
+- Compare Julia's single-gate result on one bond to CppSim PTM applied to same state
+- Use dump_ptm_json.py output and apply manually in Julia
+
+**Step D**: Fix CppSim noise file
+- Use gamma1.00-2.00-3.00_hardware.json
+- Regenerate NOISY HPPs at eps=0.10/0.15/0.20
+- Run main_heavyhex_eps_mpf → C_n should match Julia's -0.8699
+
+**Priority**: Step D first (quick win, fix C_n gap), then A/B/C for C_nl gap
 
 ### NEXT SESSION START HERE
 
