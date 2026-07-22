@@ -812,6 +812,46 @@ Both noiseless, same gates (IDEAL eps=0.10), same phi, same initial state.
 
 **Priority**: Step D first (quick win, fix C_n gap), then A/B/C for C_nl gap
 
+## Abstract MPF structure (2026-07-22 evening)
+
+### The bond gate (same structure for BOTH MPF strategies):
+```
+G_bond = G1 · Mn(γ, bond, layer) · G2(α) · Mn(γ, bond, layer) · G3(α) · Mn(γ, bond, layer) · G4(δ)
+```
+Where:
+- α = coupling × ε  (time step, scales XX+YY rotation)
+- δ = coupling       (ZZ rotation, fixed — does NOT scale with ε)
+- Mn(γ, bond, layer) = per-bond, per-layer hardware noise PTM from JSON
+- γ = noise scaling factor
+
+### Heavy-hex structure is IDENTICAL for both strategies:
+- 68 sites, 76 bonds, 3 color classes
+- Same bond ordering within each color class
+- Same interleaving: gate → noise → gate → noise → gate → noise → gate
+- Same kick gate Rx(2φ) once per site after all color classes
+
+### The ONLY difference: which parameter is the MPF knob
+
+| | Gamma-MPF | Epsilon-MPF |
+|--|-----------|-------------|
+| Fixed | α (ε fixed, e.g. 0.25) | Mn (γ=1.0 fixed) |
+| Varied | γ = 1.0, 2.0, 3.0 | ε = 0.1, 0.15, 0.2 |
+| Extrapolate to | γ → 0 (zero noise) | ε → 0 (continuous time) |
+| Noise file | gamma1.00-1.40-1.80 or 1.00-2.00-3.00 | gamma1.00-2.00-3.00 (γ=1.0 only) |
+| Julia script | gpu_run_simulation_tnqs_noisy_hardware_gamma.jl | gpu_run_simulation_tnqs_noisy_hardware_epsilon.jl |
+
+### CppSim status:
+- Composed PTM G1·Mn·G2·Mn·G3·Mn·G4 already has correct structure ✓
+- Gamma-MPF: `main_heavyhex_mpf.cpp` (old, uses gamma1.00-1.40-1.80, partially wrong)
+- Epsilon-MPF: `main_heavyhex_eps_mpf.cpp` (new, needs correct noise file)
+- Both need: `gamma1.00-2.00-3.00_hardware.json` for proper comparison with Julia
+
+### Fresh eyes tasks:
+1. Regenerate NOISY HPPs using gamma1.00-2.00-3.00_hardware.json at eps=0.1/0.15/0.2
+2. Run epsilon-MPF → C_n should match Julia's -0.8699
+3. Understand remaining C_nl gap (-0.910 vs -0.926) — bond ordering? PTM direction?
+4. Eventually: implement gamma-MPF in main_heavyhex_eps_mpf for comparison
+
 ### NEXT SESSION START HERE
 
 **Julia diagnostic** (single bond, 2-site system):
