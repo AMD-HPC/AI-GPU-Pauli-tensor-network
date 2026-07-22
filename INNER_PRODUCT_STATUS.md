@@ -717,6 +717,48 @@ Source must be one of:
 - Bond ordering within a color class
 - Observable/measurement convention
 
+## Session 2026-07-22 — Key discovery: per-bond hardware noise PTM
+
+### The noise JSON structure:
+```
+gamma → layer (color 0,1,2) → bond → 16×16 hardware noise PTM
+```
+
+Each physical bond on the heavy-hex chip has its own MEASURED 16×16 PTM
+for each color class (layer). This is per-bond, per-layer hardware characterization.
+
+### gamma=1.0 is NOT identity:
+- 43 out of 228 bond-layer combinations have significant non-identity noise
+- Some bonds have max off-diagonal elements up to 0.9999 (layer 1, bond (53,)→(24,))
+- Layer 1 and Layer 2 have the most non-identity bonds
+- This is real hardware noise from device characterization
+
+### What this means for epsilon-MPF:
+- C_nl vs C_n(ε=0.1) difference of ~0.040 IS real physical noise, not artifact
+- gamma=1.0 PTM ≠ identity → real noise channel applied between sub-gates
+- Previous analysis (SVD truncation, BP gauge artifact) was WRONG as primary source
+- The noise model is physics-based, not computational
+
+### Experiments that RULED OUT other sources:
+1. cutoff=0, maxchi=4: diff still 0.040 → NOT truncation
+2. alg="bp" vs alg="loopcorrections": same diff → NOT measurement algorithm
+3. Extra BP sweeps: diff=0.0 → NOT BP convergence
+4. PTM composition: Python verified exact → NOT gate definition
+
+### CppSim implication:
+- We were loading `gamma1.00-1.40-1.80_hardware.json` but Julia uses `gamma1.00-2.00-3.00_hardware.json`
+- The per-bond noise PTMs may differ between these two files
+- Need to use the SAME noise file as Julia for proper comparison
+- CppSim NOISY PTM = G1·Mn·G2·Mn·G3·Mn·G4 already has the right structure
+  but needs the correct hardware noise file
+
+### NEXT SESSION START HERE:
+1. Switch CppSim to use `gamma1.00-2.00-3.00_hardware.json` noise file
+2. Regenerate NOISY HPPs at eps=0.10/0.15/0.20 with correct noise file
+3. Run main_heavyhex_eps_mpf and check if C_n matches Julia's values
+4. The ~0.040 difference at cycle 1 should be reproduced in CppSim
+   once the correct per-bond hardware noise PTMs are used
+
 ### NEXT SESSION START HERE
 
 **Julia diagnostic** (single bond, 2-site system):
