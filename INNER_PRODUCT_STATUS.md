@@ -846,6 +846,16 @@ Where:
 - Epsilon-MPF: `main_heavyhex_eps_mpf.cpp` (new, needs correct noise file)
 - Both need: `gamma1.00-2.00-3.00_hardware.json` for proper comparison with Julia
 
+### The THREE knobs of MPF:
+1. **ε (Trotter step)** — time discretization error → epsilon-MPF → Z(t) autocorrelations
+2. **γ (noise strength)** — hardware noise amplification → gamma-MPF → Z(t) autocorrelations
+3. **Gauge + inner products** — A[i,j]=⟨ψᵢ|ψⱼ⟩, B[i]=⟨ψᵢ|ψ_nl⟩ → full MPF matrix
+   This is gauge-dependent, requires double-layer BP or consistent gauge choice
+   DEFERRED — the hard unsolved problem in CppSim
+
+Knobs 1 and 2 give gauge-invariant C(t) curves → can compare CppSim vs Julia directly
+Knob 3 gives the full MPF linear system → needs cross inner products → gauge problem
+
 ### Fresh eyes tasks:
 1. Regenerate NOISY HPPs using gamma1.00-2.00-3.00_hardware.json at eps=0.1/0.15/0.2
 2. Run epsilon-MPF → C_n should match Julia's -0.8699
