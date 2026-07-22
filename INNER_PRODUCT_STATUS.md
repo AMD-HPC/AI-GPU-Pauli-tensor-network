@@ -673,7 +673,43 @@ Compare C_mpf at chi=30, 50, 70 → show MPF converges with chi
 - `build_ptm.py`: `--epsilon`, `--gamma`, `--phi` CLI args
 - HPPs: IDEAL_KICK at eps=0.05/0.08/0.09/0.10, NOISY at eps=0.10/0.15/0.20
 
+## Session 2026-07-21 late — Julia epsilon-MPF noise discovery
+
+**Key discovery**: Julia's gamma=1.0 noise PTM is IDENTITY (all zeros off-diagonal, all ones diagonal).
+- Confirmed: `Max off-diagonal: 0.0`, `Is identity: true`
+- Julia epsilon-MPF is NOT noise mitigation — it's pure Trotter error extrapolation
+- C_nl vs C_n(0.1) differ (~5%) despite same epsilon and identity noise
+- Only explanation: extra SVD truncation steps from 228 identity gate applications
+
+**What Julia actually does**:
+- C_nl: eps=0.1 gates, NO noise PTM applied
+- C_n(0.1): eps=0.1 gates + 228 identity noise PTM applications (extra SVD truncation each)
+- C_n(0.15): eps=0.15 gates + same extra truncation pattern
+- C_n(0.20): eps=0.20 gates + same extra truncation pattern
+
+**MPF exploits**: Trotter error variation (eps) + truncation schedule difference (identity gates)
+
+**CppSim status**:
+- With IDEAL_KICK HPPs: C_n(0.1) = C_nl exactly (no extra truncation) → only 2 independent MPF points
+- MPF overshoots because linear system is degenerate
+
 ## NEXT SESSION START HERE
+
+**Julia diagnostic** (single bond, 2-site system):
+Compare C(t) from:
+1. Julia sequence: Rxx(α) → SVD → Ryy(α) → SVD → Rzz(δ) → SVD → identity_noise → SVD
+2. Julia composed: single PTM = Rxx·Ryy·Rzz in one shot → one SVD
+
+If they differ → SVD between sub-gates IS the source of C_nl vs C_n separation
+If same → look elsewhere (observable convention, etc.)
+
+Script to write: `test_single_bond_ptm.jl` in Julia repo
+- Create 2-site chain
+- Apply gates sequentially vs composed
+- Compare C(t) after 1 and 2 steps
+
+Then: design CppSim MPF that exploits Trotter error variation properly
+
 Fix noise separation in CppSim epsilon-MPF:
 - Current: G1·Mn·G2·Mn·G3·Mn·G4 (noise baked in, wrong for epsilon-MPF)
 - Target:  G1·G2·G3·G4 (IDEAL gates at epsilon) then Mn applied separately

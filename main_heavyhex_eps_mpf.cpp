@@ -27,13 +27,13 @@
 #include "heavyhex.hpp"
 #include "heavyhex_physics.hpp"
 
-// Epsilon-specific HPPs
-// Noiseless: eps=0.10, K=1 (one full step per cycle)
+// Epsilon-MPF: all states are IDEAL_KICK at different epsilon values
+// Julia's gamma=1.0 noise PTM is identity — pure Trotter error extrapolation
+// Noiseless reference: eps=0.10
 #include "heavyhex_ideal_kick_eps010_data.hpp"
-// Noisy: eps=0.10, 0.15, 0.20, gamma=1.0
-#include "heavyhex_noisy_eps010_data.hpp"
-#include "heavyhex_noisy_eps015_data.hpp"
-#include "heavyhex_noisy_eps020_data.hpp"
+// "Noisy" states: eps=0.10, 0.15, 0.20 (Trotter error varies, same physics)
+#include "heavyhex_ideal_kick_eps015_data.hpp"
+#include "heavyhex_ideal_kick_eps020_data.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -201,10 +201,10 @@ struct NoisySimEps {
     }
 };
 
-// PTM accessor functions for each epsilon
-static const float* ptm_eps010(int bond_id) { return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA1_0[bond_id]; }
-static const float* ptm_eps015(int bond_id) { return HEAVY_HEX_3x3_NOISY_EPS015_GAMMA1_0[bond_id]; }
-static const float* ptm_eps020(int bond_id) { return HEAVY_HEX_3x3_NOISY_EPS020_GAMMA1_0[bond_id]; }
+// PTM accessor functions — IDEAL_KICK at each epsilon (gamma=1.0 is identity)
+static const float* ptm_eps010(int bond_id) { return HEAVY_HEX_3x3_IDEAL_KICK_EPS010[bond_id]; }
+static const float* ptm_eps015(int bond_id) { return HEAVY_HEX_3x3_IDEAL_KICK_EPS015[bond_id]; }
+static const float* ptm_eps020(int bond_id) { return HEAVY_HEX_3x3_IDEAL_KICK_EPS020[bond_id]; }
 
 int main(int argc, char** argv) {
     int   chi_max = (argc>1) ? atoi(argv[1]) : 70;
@@ -235,11 +235,11 @@ int main(int argc, char** argv) {
     static constexpr int N_EPS = 3;
     static constexpr float EPSILONS[N_EPS] = {0.1f, 0.15f, 0.2f};
     PtmFunc ptm_fns[N_EPS] = {ptm_eps010, ptm_eps015, ptm_eps020};
-    // Kick PTM from noiseless HPP (phi=1.41371669, independent of epsilon)
+    // Kick PTM: phi is fixed, same for all epsilon values
     const float* site_ptms[N_EPS] = {
         HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,
-        HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,
-        HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM
+        HEAVY_HEX_3x3_IDEAL_KICK_EPS015_SITE_PTM,
+        HEAVY_HEX_3x3_IDEAL_KICK_EPS020_SITE_PTM
     };
 
     FlatHeavyHexGrid* grids_n[N_EPS];
