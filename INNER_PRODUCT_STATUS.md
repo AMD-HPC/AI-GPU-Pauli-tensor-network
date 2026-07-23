@@ -926,12 +926,28 @@ The regression extrapolates to zero physical evolution — C_mpf≈initial value
 - **Epsilon-MPF as implemented**: physically wrong (wrong time reference) ← needs redesign
 - **Analyze script**: `analyze_sweep.py` — run on any sweep log dir
 
-### Sweep plan (next session):
-- chi: 140, 200 (find convergence knee — chi not converged at 120)
-- cutoff: 1e-3, 1e-4 (1e-2 too aggressive)
-- cycles: 20-30 (see further saturation)
-- Gamma-MPF only (epsilon-MPF needs redesign)
-- Already have: chi=30/50/70/120 in logs/sweep_20260723_173437/
+### Sweep results complete (2026-07-23 evening):
+
+**Chi convergence found**: chi=140 ≈ chi=200 (Δ=6e-4) → knee between 120-140
+**Poor man's MPF**: A,B from Z(t) correlations — gauge-invariant, no inner products needed
+  - Gamma: 2-3 orders better than polynomial up to cycle 12
+  - Epsilon: 13× better at cycle 10 vs polynomial
+  - Comparable to Julia's full loopcorrections MPF at early cycles
+  - CppSim does 20 cycles while Julia does 1 → CppSim is the exploration workhorse
+
+**Key insight**: poor man's MPF scaffold:
+  NOW:  A[i,j] = Σ_t C_n(γᵢ,t) × C_n(γⱼ,t)  [Z(t) correlations]
+  LATER: A[i,j] = ⟨ψᵢ|ψⱼ⟩                    [quantum inner products]
+  Same solver, same structure — swap matrix construction when inner products ready
+
+### Next session:
+1. Revisit heavy-hex paper with new MPF insights
+   - CppSim gamma-MPF + poor man's coefficients as main result
+   - Comparison with Julia baseline
+   - Chi convergence study (chi=140 sufficient for 20 cycles at ε=0.1)
+2. Inner product implementation (GPU double-layer BP)
+   - Will it improve over poor man's MPF?
+   - Likely only matters at late cycles where Z(t) correlations degrade
 
 ### Build commands:
 ```bash
