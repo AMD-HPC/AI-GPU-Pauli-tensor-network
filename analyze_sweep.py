@@ -201,11 +201,10 @@ gamma_keys  = sorted([c for c in all_cutoffs], key=float)  # use cutoff as proxy
 
 # For gamma-MPF: we have C_n at gamma=1,2,3 (all at same chi/cutoff)
 # Collect C_n per gamma and C_nl from the best chi/cutoff run
-if mpf_type == 'gamma':
-    # Use fixed best cutoff, vary chi as proxy for "different noise levels" → wrong
-    # Actually for gamma: each log is same chi/cutoff but different gamma
-    # The gamma info is in the Z(t) columns of each log
-    # Parse C_n(γ=1), C_n(γ=2), C_n(γ=3) from the log directly
+if mpf_type in ('gamma', 'eps'):
+    # Parse C_n per noise/epsilon level from the log directly
+    # For gamma: columns are C_n(γ=1), C_n(γ=2), C_n(γ=3)
+    # For eps:   columns are C_n(ε=0.1), C_n(ε=0.15), C_n(ε=0.2)
 
     d = logs.get((mpf_type, best_chi, best_cutoff), {})
     if d:
@@ -269,18 +268,86 @@ if mpf_type == 'gamma':
                           f"{abs(C_poly-C_nl_arr[idx]):10.2e}  {delta_pm[idx]:10.2e}")
 
                 # Plot comparison
-                if HAS_MPL:
-                    fig3, ax3 = plt.subplots(figsize=(10,6))
-                    ax3.plot(N_steps, np.abs(C_nl_arr), 'k-', lw=2.5, label='|C_nl| (noiseless)')
-                    ax3.plot(N_steps, np.abs([d[s][1] for s in N_steps]), 'b--', lw=2,
-                             label='|C_mpf| polynomial fit')
-                    ax3.plot(N_steps, np.abs(C_mpf_pm), 'r-', lw=2,
-                             label="|C_mpf| poor man's (Z(t) corr)")
-                    ax3.set_xlabel('Cycle', fontsize=13)
-                    ax3.set_ylabel('|C(t)|', fontsize=13)
-                    ax3.set_title(f"Poor man's MPF vs polynomial (chi={best_chi}, cut={best_cutoff})", fontsize=13)
-                    ax3.legend(fontsize=10)
-                    ax3.grid(True, alpha=0.3)
+                # Run poor man's MPF for ALL (chi, cutoff) combinations for band plot
+                pm_results = {}  # (chi, cutoff) → C_mpf_pm array
+                for chi_v in all_chi:
+                    for cut_v in all_cutoffs:
+                        lf = f"{log_dir}/main_heavyhex_{mpf_type}_mpf_chi{chi_v}_cut{cut_v}.log"
+                        if not os.path.exists(lf): continue
+                        d_v = logs.get((mpf_type, chi_v, cut_v), {})
+                        if not d_v: continue
+                        steps_v = sorted(d_v.keys())
+                        C_nl_v = np.array([d_v[s][0] for s in steps_v])
+                        gd_v = [[] for _ in range(n_gammas)]
+                        with open(lf) as ff:
+                            for line in ff:
+                                parts = line.split()
+                                if len(parts) < 12 or not parts[0].isdigit(): continue
+                                try:
+                                    for g in range(n_gammas):
+                                        gd_v[g].append(float(parts[4 + g*2]))
+                                except: pass
+                        if not all(len(gd_v[g]) == len(steps_v) for g in range(n_gammas)): continue
+                        C_n_v = [np.array(gd_v[g]) for g in range(n_gammas)]
+                        A_v = np.zeros((n_gammas, n_gammas))
+                        B_v = np.zeros(n_gammas)
+                        for i in range(n_gammas):
+                            B_v[i] = np.dot(C_n_v[i], C_nl_v)
+                            for j in range(n_gammas):
+                                A_v[i,j] = np.dot(C_n_v[i], C_n_v[j])
+                        M_v = np.zeros((n_gammas+1, n_gammas+1))
+                        M_v[:n_gammas,:n_gammas] = A_v
+                        M_v[:n_gammas,n_gammas] = 1.0
+                        M_v[n_gammas,:n_gammas] = 1.0
+                        rhs_v = np.zeros(n_gammas+1)
+                        rhs_v[:n_gammas] = B_v; rhs_v[n_gammas] = 1.0
+                        try:
+                            sol_v = np.linalg.solve(M_v, rhs_v)
+                            c_v = sol_v[:n_gammas]
+                            pm_results[(chi_v, cut_v)] = (steps_v, sum(c_v[g]*C_n_v[g] for g in range(n_gammas)), C_nl_v)
+                        except: pass
+
+                if HAS_MPL and pm_results:
+                    fig3, axes3 = plt.subplots(1, 2, figsize=(16, 6))
+
+                    # Left: C_nl reference + poor man's band
+                    ax3l = axes3[0]
+                    # Band across all (chi,cutoff)
+                    pm_band = []
+                    for c_idx in range(len(N_steps)):
+                        vals = [np.abs(pm_results[k][1][c_idx]) for k in pm_results if c_idx < len(pm_results[k][1])]
+                        pm_band.append(vals)
+                    bx = [N_steps[i] for i,v in enumerate(pm_band) if v]
+                    blo = [min(v) for v in pm_band if v]
+                    bhi = [max(v) for v in pm_band if v]
+                    if blo: ax3l.fill_between(bx, blo, bhi, alpha=0.2, color='red', label="poor man's band (all chi/cut)")
+                    # Best line
+                    steps_b, C_pm_b, C_nl_b = pm_results[(best_chi, best_cutoff)]
+                    ax3l.plot(steps_b, np.abs(C_nl_b), 'k-', lw=2.5, label='|C_nl|')
+                    ax3l.plot(steps_b, np.abs(C_pm_b), 'r-', lw=2, label=f"|C_mpf| poor man's chi={best_chi}")
+                    ax3l.plot(N_steps, np.abs([d[s][1] for s in N_steps]), 'b--', lw=1.5, label='|C_mpf| polynomial')
+                    ax3l.set_xlabel('Cycle', fontsize=13); ax3l.set_ylabel('|C(t)|', fontsize=13)
+                    ax3l.set_title(f"{mpf_type.capitalize()}-MPF: Poor man's vs polynomial", fontsize=13)
+                    ax3l.legend(fontsize=9); ax3l.grid(True, alpha=0.3)
+
+                    # Right: |Δmpf| comparison
+                    ax3r = axes3[1]
+                    pm_err_band = []
+                    for c_idx in range(len(N_steps)):
+                        C_nl_ref = np.abs(pm_results[(best_chi, best_cutoff)][2][c_idx]) if c_idx < len(pm_results[(best_chi, best_cutoff)][2]) else None
+                        if C_nl_ref is None: pm_err_band.append([]); continue
+                        vals = [abs(np.abs(pm_results[k][1][c_idx]) - C_nl_ref) for k in pm_results if c_idx < len(pm_results[k][1])]
+                        pm_err_band.append(vals)
+                    blo_e = [min(v) for v in pm_err_band if v]
+                    bhi_e = [max(v) for v in pm_err_band if v]
+                    bx_e  = [N_steps[i] for i,v in enumerate(pm_err_band) if v]
+                    if blo_e: ax3r.fill_between(bx_e, blo_e, bhi_e, alpha=0.2, color='red', label="poor man's error band")
+                    ax3r.plot(steps_b, np.abs(np.abs(C_pm_b) - np.abs(C_nl_b)), 'r-', lw=2, label=f"poor man's chi={best_chi}")
+                    ax3r.plot(N_steps, [abs(d[s][2]) for s in N_steps], 'b--', lw=1.5, label='polynomial')
+                    ax3r.set_xlabel('Cycle', fontsize=13); ax3r.set_ylabel('|Δmpf|', fontsize=13)
+                    ax3r.set_title("MPF error: poor man's vs polynomial", fontsize=13)
+                    ax3r.legend(fontsize=9); ax3r.grid(True, alpha=0.3); ax3r.set_yscale('log')
+
                     fig3.tight_layout()
                     fig3.savefig(f"{log_dir}/plot_poorman_mpf.png", dpi=150)
                     plt.close(fig3)
