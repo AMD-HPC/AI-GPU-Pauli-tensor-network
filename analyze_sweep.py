@@ -183,3 +183,107 @@ for cutoff in all_cutoffs:
         last_step = max(d.keys())
         C_nl, C_mpf, d_mpf, chi_nl, chi_n, t_s = d[last_step]
         print(f"{chi:>6}  {cutoff:>8}  {last_step:>6}  {C_nl:+12.6f}  {C_mpf:+12.6f}  {d_mpf:10.2e}  {chi_nl:>10}")
+
+# ── Poor man's MPF: build A,B from Z(t) correlations ─────────────────────────
+# A[i,j] = Σ_t C_n(γᵢ,t) × C_n(γⱼ,t)   (correlation matrix of noisy curves)
+# B[i]   = Σ_t C_n(γᵢ,t) × C_nl(t)      (correlation with noiseless)
+# Solve: min ||Ax - B||² s.t. Σxᵢ=1, Σ|xᵢ|≤condition_number
+# C_mpf_pm(t) = Σᵢ xᵢ × C_n(γᵢ, t)
+print(f"\n{'='*70}")
+print("Poor man's MPF: A,B from Z(t) correlations (gauge-invariant)")
+print(f"Scaffold for full A[i,j]=⟨ψᵢ|ψⱼ⟩ when inner products are available")
+print('='*70)
+
+# Use best (largest chi, finest cutoff) for the poor man's MPF
+best_cutoff = '1e-4' if '1e-4' in all_cutoffs else all_cutoffs[0]
+best_chi    = max(all_chi)
+gamma_keys  = sorted([c for c in all_cutoffs], key=float)  # use cutoff as proxy for states
+
+# For gamma-MPF: we have C_n at gamma=1,2,3 (all at same chi/cutoff)
+# Collect C_n per gamma and C_nl from the best chi/cutoff run
+if mpf_type == 'gamma':
+    # Use fixed best cutoff, vary chi as proxy for "different noise levels" → wrong
+    # Actually for gamma: each log is same chi/cutoff but different gamma
+    # The gamma info is in the Z(t) columns of each log
+    # Parse C_n(γ=1), C_n(γ=2), C_n(γ=3) from the log directly
+
+    d = logs.get((mpf_type, best_chi, best_cutoff), {})
+    if d:
+        N_steps = sorted(d.keys())
+        C_nl_arr = np.array([d[s][0] for s in N_steps])
+
+        # Re-read log to get C_n per gamma
+        logfile = f"{log_dir}/main_heavyhex_{mpf_type}_mpf_chi{best_chi}_cut{best_cutoff}.log"
+        C_n_gammas = []  # list of arrays, one per gamma
+        n_gammas = 3
+        gamma_data = [[] for _ in range(n_gammas)]
+        with open(logfile) as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 12 or not parts[0].isdigit(): continue
+                try:
+                    # C_n columns: parts[4], 6, 8
+                    for g in range(n_gammas):
+                        gamma_data[g].append(float(parts[4 + g*2]))
+                except: pass
+
+        if all(len(gamma_data[g]) == len(N_steps) for g in range(n_gammas)):
+            C_n_arr = [np.array(gamma_data[g]) for g in range(n_gammas)]
+
+            # Build A and B
+            ng = n_gammas
+            A = np.zeros((ng, ng))
+            B = np.zeros(ng)
+            for i in range(ng):
+                B[i] = np.dot(C_n_arr[i], C_nl_arr)
+                for j in range(ng):
+                    A[i,j] = np.dot(C_n_arr[i], C_n_arr[j])
+
+            print(f"\nUsing chi={best_chi}, cutoff={best_cutoff}, {len(N_steps)} cycles")
+            print(f"A matrix (correlation):\n{np.round(A,4)}")
+            print(f"B vector: {np.round(B,4)}")
+
+            # Solve with constraint sum(x)=1
+            # Use least-squares with equality constraint via Lagrange multiplier
+            # Augmented system: [A, 1; 1^T, 0] [x; λ] = [B; 1]
+            n = ng
+            M = np.zeros((n+1, n+1))
+            M[:n,:n] = A
+            M[:n,n] = 1.0
+            M[n,:n] = 1.0
+            rhs = np.zeros(n+1)
+            rhs[:n] = B
+            rhs[n] = 1.0
+            try:
+                sol = np.linalg.solve(M, rhs)
+                c = sol[:n]
+                print(f"Coefficients (poor man's): {np.round(c,4)}  sum={c.sum():.4f}")
+
+                # Apply to get C_mpf_pm per cycle
+                C_mpf_pm = sum(c[g] * C_n_arr[g] for g in range(ng))
+                delta_pm = np.abs(C_mpf_pm - C_nl_arr)
+                print(f"\n{'Cycle':>6}  {'C_nl':>10}  {'C_mpf(poly)':>12}  {'C_mpf(pm)':>12}  {'|Δ(poly)|':>10}  {'|Δ(pm)|':>10}")
+                for idx, s in enumerate(N_steps):
+                    C_poly = d[s][1]
+                    print(f"{s:>6}  {C_nl_arr[idx]:+10.6f}  {C_poly:+12.6f}  {C_mpf_pm[idx]:+12.6f}  "
+                          f"{abs(C_poly-C_nl_arr[idx]):10.2e}  {delta_pm[idx]:10.2e}")
+
+                # Plot comparison
+                if HAS_MPL:
+                    fig3, ax3 = plt.subplots(figsize=(10,6))
+                    ax3.plot(N_steps, np.abs(C_nl_arr), 'k-', lw=2.5, label='|C_nl| (noiseless)')
+                    ax3.plot(N_steps, np.abs([d[s][1] for s in N_steps]), 'b--', lw=2,
+                             label='|C_mpf| polynomial fit')
+                    ax3.plot(N_steps, np.abs(C_mpf_pm), 'r-', lw=2,
+                             label="|C_mpf| poor man's (Z(t) corr)")
+                    ax3.set_xlabel('Cycle', fontsize=13)
+                    ax3.set_ylabel('|C(t)|', fontsize=13)
+                    ax3.set_title(f"Poor man's MPF vs polynomial (chi={best_chi}, cut={best_cutoff})", fontsize=13)
+                    ax3.legend(fontsize=10)
+                    ax3.grid(True, alpha=0.3)
+                    fig3.tight_layout()
+                    fig3.savefig(f"{log_dir}/plot_poorman_mpf.png", dpi=150)
+                    plt.close(fig3)
+                    print(f"Written: {log_dir}/plot_poorman_mpf.png")
+            except np.linalg.LinAlgError as e:
+                print(f"Linear system singular: {e}")
