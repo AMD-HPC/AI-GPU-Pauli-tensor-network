@@ -885,12 +885,53 @@ Knob 3 gives the full MPF linear system → needs cross inner products → gauge
 - Noise varies smoothly → clean linear extrapolation
 - No Trotter error mixing with noise signal
 
+## Session 2026-07-23 afternoon — Sweep results + epsilon-MPF physics clarification
+
+### Gamma-MPF sweep results (chi=30/50/70/120/140/200, cutoff=1e-2/3/4, 20 cycles):
+
+**Key findings**:
+- cutoff=1e-2: chi saturates at ~28-59, results identical across chi_max → cutoff dominates
+- cutoff=1e-3 ≈ cutoff=1e-4: physics converged between these values
+- chi NOT converged at cycle 20: chi=120 still saturating → need chi=140/200 to see knee
+- C_mpf error at cycle 20: 5.8% (chi=30) → 8.5% (chi=120) — grows with chi saturation
+- Gamma-MPF is physically correct: extrapolates noise at FIXED physical time T=n_cycles×ε
+
+**Plots**: `logs/sweep_20260723_173437/plot_cnl_cmpf_bands.png`
+
+### Epsilon-MPF sweep results (chi=30/50/70/120, cutoff=1e-2/3/4, 20 cycles):
+
+**Key finding: PHYSICALLY WRONG extrapolation!**
+- C_mpf ≈ 0.93 at cycle 20 vs C_nl ≈ 0.78 → |Δmpf| = 1.2-1.6e-01 (2× worse than gamma)
+- C_mpf barely decays — looks like initial value
+
+**Why**: epsilon-MPF polynomial fit:
+  C_n(ε,t) = c₀ + c₁ε² + c₂ε⁴, extrapolate to ε=0
+
+At FIXED n_cycles=20:
+  ε=0.1 → physical time T=2.0
+  ε=0.15 → physical time T=3.0
+  ε=0.2 → physical time T=4.0
+  ε=0 → physical time T=0.0 ← ZERO TIME!
+
+The regression extrapolates to zero physical evolution — C_mpf≈initial value≈1. Not useful.
+
+**Correct epsilon-MPF** would fix physical time T and vary n_cycles:
+  T=2.0: ε=0.1 (20 cycles), ε=0.05 (40 cycles), ε=0.025 (80 cycles)
+  This is a different, more expensive experiment.
+
+**Plots**: `logs/sweep_20260723_174149/plot_cnl_cmpf_bands.png`
+
+### Final verdict:
+- **Gamma-MPF**: physically correct, 4.4s/10 cycles, 7-8% MPF error ← USE THIS
+- **Epsilon-MPF as implemented**: physically wrong (wrong time reference) ← needs redesign
+- **Analyze script**: `analyze_sweep.py` — run on any sweep log dir
+
 ### Sweep plan (next session):
-- chi: 30, 50, 70, 120
-- cutoff: 1e-2, 1e-3, 1e-4
-- cycles: 20 (to see saturation)
-- Both gamma-MPF and epsilon-MPF
-- Run on 2 GPUs + hidden machine
+- chi: 140, 200 (find convergence knee — chi not converged at 120)
+- cutoff: 1e-3, 1e-4 (1e-2 too aggressive)
+- cycles: 20-30 (see further saturation)
+- Gamma-MPF only (epsilon-MPF needs redesign)
+- Already have: chi=30/50/70/120 in logs/sweep_20260723_173437/
 
 ### Build commands:
 ```bash

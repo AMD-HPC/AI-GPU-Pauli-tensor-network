@@ -13,7 +13,7 @@ MODE="${1:-all}"
 LOG_DIR="$SCRIPT_DIR/logs/sweep_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"
 
-CHI_VALUES=(30 50 70 120)
+CHI_VALUES=(30 50 70 120 140 200)
 CUTOFFS=(1e-2 1e-3 1e-4)
 N_CYCLES=20
 
