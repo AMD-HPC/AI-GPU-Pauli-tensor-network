@@ -856,11 +856,58 @@ Where:
 Knobs 1 and 2 give gauge-invariant C(t) curves → can compare CppSim vs Julia directly
 Knob 3 gives the full MPF linear system → needs cross inner products → gauge problem
 
-### Fresh eyes tasks:
-1. Regenerate NOISY HPPs using gamma1.00-2.00-3.00_hardware.json at eps=0.1/0.15/0.2
-2. Run epsilon-MPF → C_n should match Julia's -0.8699
-3. Understand remaining C_nl gap (-0.910 vs -0.926) — bond ordering? PTM direction?
-4. Eventually: implement gamma-MPF in main_heavyhex_eps_mpf for comparison
+## Session 2026-07-23 — Epsilon and Gamma MPF complete
+
+### New files:
+- `main_heavyhex_gamma_mpf.cpp`: gamma-MPF (fixed ε=0.1, varying γ=1.0/2.0/3.0)
+- `main_heavyhex_eps_mpf.cpp`: updated with BP stats (#sweeps, bp_ms)
+- `run_sweep.sh`: systematic sweep over chi, cutoff, cycles
+- HPPs: NOISY at eps=0.1/0.15/0.2 × gamma=1.0/2.0/3.0 from gamma1.00-2.00-3.00_hardware.json
+
+### Key findings:
+
+**Per-bond per-layer noise PTMs**:
+- JSON structure: gamma → layer(0,1,2) → bond → 16×16 PTM
+- Each bond uses Mn from its OWN color class layer
+- Same Mn applied 3 times in G1·Mn·G2·Mn·G3·Mn·G4 composition
+- Lightcone bonds 4,5,6 (connected to center) have weak noise (diag~0.99)
+  → explains small C_nl vs C_n difference at cycle 1 in CppSim
+- Julia's larger difference comes from BP canonicalization gauge effect
+
+**Gamma-MPF results (chi=70, cutoff=2e-3, 10 cycles)**:
+- C_mpf error: 1.19e-07 (cycle 1) → 1.44e-02 (cycle 10) ← 100-1000× better than epsilon-MPF!
+- 4.4s total for 10 cycles ← very fast
+- BP: 5-9 sweeps to convergence, 26-107ms BP time per cycle
+- Chi converged at 70 (same as Julia)
+
+**Gamma-MPF >> Epsilon-MPF** for extrapolation quality because:
+- Same time step → well-conditioned A matrix
+- Noise varies smoothly → clean linear extrapolation
+- No Trotter error mixing with noise signal
+
+### Sweep plan (next session):
+- chi: 30, 50, 70, 120
+- cutoff: 1e-2, 1e-3, 1e-4
+- cycles: 20 (to see saturation)
+- Both gamma-MPF and epsilon-MPF
+- Run on 2 GPUs + hidden machine
+
+### Build commands:
+```bash
+make PHYS_DIM=4 main_heavyhex_gamma_mpf  # gamma-MPF
+make PHYS_DIM=4 main_heavyhex_eps_mpf    # epsilon-MPF
+
+./main_heavyhex_gamma_mpf [chi_max] [n_steps] [cutoff]
+./main_heavyhex_eps_mpf   [chi_max] [n_steps] [cutoff]
+
+bash run_sweep.sh gamma    # gamma sweep
+bash run_sweep.sh epsilon  # epsilon sweep
+bash run_sweep.sh all      # both
+```
+
+### Data files needed (copy from Julia repo):
+- `data/heavy_hex_3x3_gamma1.00-2.00-3.00_hardware.json` ✓
+- `data/graphs/heavy_hex_3x3.json` ✓
 
 ### NEXT SESSION START HERE
 

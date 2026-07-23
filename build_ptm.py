@@ -157,13 +157,15 @@ def build_bond_ptm(model, alpha, delta, phi, noise_ptm_16x16):
     alpha : coupling × epsilon  (Rzz angle for gates2, gates3)
     delta : coupling            (Rzz angle for gates4)
     phi   : kick angle
-    noise_ptm_16x16 : 16×16 numpy array (from hardware JSON), None for ideal
+    noise_ptm_16x16: 16×16 numpy array for this bond's color class, or None for ideal
+                     Applied as: G1 · Mn · G2 · Mn · G3 · Mn · G4
+                     Same Mn used three times — it's the hardware noise for this
+                     bond's color class, applied between each sub-gate pair
     """
     G1 = PTM_gates1()
     G2 = PTM_gates2(alpha)
     G3 = PTM_gates3(alpha)
     G4 = PTM_gates4(delta)
-    K  = PTM_kick(phi)
     Mn = np.array(noise_ptm_16x16, dtype=float) if noise_ptm_16x16 is not None else None
 
     # Note: kick is NOT baked into bond PTM — applied separately per site
@@ -216,18 +218,21 @@ def load_noise(noise_path):
     with open(noise_path) as f:
         d = json.load(f)
     gammas = sorted(d.keys(), key=float)
-    # noise_per_gamma[gamma_str][bond_id] = 16×16 numpy array
+    # noise_per_gamma[gamma_str][layer_idx][bond_id] = 16×16 numpy array
+    # Each bond has a separate noise PTM per color class (layer 0, 1, 2)
     noise_per_gamma = {}
     for gamma_str in gammas:
         layers_data = d[gamma_str]
-        ptm_per_bond = {}
+        layers_dict = {}
         for layer_idx, layer_bonds in layers_data.items():
+            ptm_per_bond = {}
             for edge_key, ptm in layer_bonds.items():
                 u, v = parse_edge_key(edge_key)
                 bond_id = edge_to_bond.get((u,v))
                 if bond_id is not None:
                     ptm_per_bond[bond_id] = np.array(ptm, dtype=float)
-        noise_per_gamma[gamma_str] = ptm_per_bond
+            layers_dict[int(layer_idx)] = ptm_per_bond
+        noise_per_gamma[gamma_str] = layers_dict
     return gammas, noise_per_gamma
 
 # ── HPP writer ─────────────────────────────────────────────────────────────────
@@ -353,10 +358,13 @@ def main():
     model      = positional[2] if len(positional) > 2 else "IDEAL_KICK"
     out_file   = positional[3] if len(positional) > 3 else None
 
-    # Encode epsilon in model name to avoid HPP symbol conflicts across epsilon values
-    # e.g. IDEAL_KICK + epsilon=0.1 → model_tag = "IDEAL_KICK_EPS010"
+    # Encode epsilon and gamma in model name to avoid HPP symbol conflicts
+    # e.g. NOISY + epsilon=0.1 + gamma=2.0 → model_tag = "NOISY_EPS010_GAMMA2"
     eps_tag = str(epsilon).replace('.', '')[:4].ljust(3, '0')  # "0.1"→"010", "0.15"→"015"
     model_tag = f"{model}_EPS{eps_tag}"
+    if gamma_filter is not None:
+        gam_tag = gamma_filter.replace('.', '')[:4].rstrip('0').rstrip('.')
+        model_tag = f"{model_tag}_GAMMA{gam_tag}"
 
     # Default output uses model_tag so files don't overwrite each other
     if out_file is None:
@@ -395,20 +403,31 @@ def main():
             gammas = [best]
             print(f"  Filtering to gamma={best} (requested {gamma_filter})")
         ptms_by_gamma = {}
+        # Build bond → color class mapping from graph JSON
+        # Each bond belongs to exactly one color class (0, 1, or 2)
+        bond_color = {}
+        for layer_idx, layer_bonds in noise_per_gamma[gammas[0]].items():
+            for bond_id in layer_bonds:
+                bond_color[bond_id] = layer_idx
+
         for gamma_str in gammas:
             ptms = []
+            layers_dict = noise_per_gamma[gamma_str]  # {layer_idx: {bond_id: Mn}}
             for bond_id, (u, v) in enumerate(EDGES):
                 key = (min(u,v), max(u,v))
                 alpha = alpha_map.get(key, epsilon)
                 delta = delta_map.get(key, 1.0)
-                Mn = noise_per_gamma[gamma_str].get(bond_id)
-                if Mn is None:
+                # Get the noise PTM for this bond's color class
+                color = bond_color.get(bond_id, None)
+                if color is not None and bond_id in layers_dict.get(color, {}):
+                    Mn = layers_dict[color][bond_id]
+                else:
                     print(f"  WARNING: no noise PTM for bond {bond_id} gamma={gamma_str}")
                     Mn = np.eye(16)
                 ptm = build_bond_ptm(model, alpha, delta, phi, Mn)
                 ptms.append(list(ptm.flatten(order='F')))
             ptms_by_gamma[gamma_str] = ptms
-            print(f"  gamma={gamma_str}: {n_bonds} PTMs computed")
+            print(f"  gamma={gamma_str}: {n_bonds} PTMs computed (per-bond color-class noise)")
         write_hpp(out_file, model_tag, gammas, ptms_by_gamma, epsilon, phi, graph_data)
 
 if __name__ == '__main__':

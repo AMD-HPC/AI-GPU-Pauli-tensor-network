@@ -27,13 +27,14 @@
 #include "heavyhex.hpp"
 #include "heavyhex_physics.hpp"
 
-// Epsilon-MPF: all states are IDEAL_KICK at different epsilon values
-// Julia's gamma=1.0 noise PTM is identity — pure Trotter error extrapolation
-// Noiseless reference: eps=0.10
+// Epsilon-MPF: noiseless reference + 3 noisy states at different epsilon
+// Noiseless: IDEAL_KICK at eps=0.10 (no noise)
 #include "heavyhex_ideal_kick_eps010_data.hpp"
-// "Noisy" states: eps=0.10, 0.15, 0.20 (Trotter error varies, same physics)
-#include "heavyhex_ideal_kick_eps015_data.hpp"
-#include "heavyhex_ideal_kick_eps020_data.hpp"
+// Noisy: NOISY PTM (G1·Mn·G2·Mn·G3·Mn·G4) at eps=0.10/0.15/0.20, gamma=1.0
+// Uses gamma1.00-2.00-3.00_hardware.json — real per-bond hardware noise
+#include "heavyhex_noisy_eps010_data.hpp"
+#include "heavyhex_noisy_eps015_data.hpp"
+#include "heavyhex_noisy_eps020_data.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -201,10 +202,10 @@ struct NoisySimEps {
     }
 };
 
-// PTM accessor functions — IDEAL_KICK at each epsilon (gamma=1.0 is identity)
-static const float* ptm_eps010(int bond_id) { return HEAVY_HEX_3x3_IDEAL_KICK_EPS010[bond_id]; }
-static const float* ptm_eps015(int bond_id) { return HEAVY_HEX_3x3_IDEAL_KICK_EPS015[bond_id]; }
-static const float* ptm_eps020(int bond_id) { return HEAVY_HEX_3x3_IDEAL_KICK_EPS020[bond_id]; }
+// PTM accessor functions — NOISY PTM (G1·Mn·G2·Mn·G3·Mn·G4) per epsilon, gamma=1.0
+static const float* ptm_eps010(int bond_id) { return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA1_0[bond_id]; }
+static const float* ptm_eps015(int bond_id) { return HEAVY_HEX_3x3_NOISY_EPS015_GAMMA1_0[bond_id]; }
+static const float* ptm_eps020(int bond_id) { return HEAVY_HEX_3x3_NOISY_EPS020_GAMMA1_0[bond_id]; }
 
 int main(int argc, char** argv) {
     int   chi_max = (argc>1) ? atoi(argv[1]) : 70;
@@ -235,11 +236,11 @@ int main(int argc, char** argv) {
     static constexpr int N_EPS = 3;
     static constexpr float EPSILONS[N_EPS] = {0.1f, 0.15f, 0.2f};
     PtmFunc ptm_fns[N_EPS] = {ptm_eps010, ptm_eps015, ptm_eps020};
-    // Kick PTM: phi is fixed, same for all epsilon values
+    // Kick PTM: phi is fixed — same for all epsilon values
     const float* site_ptms[N_EPS] = {
         HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,
-        HEAVY_HEX_3x3_IDEAL_KICK_EPS015_SITE_PTM,
-        HEAVY_HEX_3x3_IDEAL_KICK_EPS020_SITE_PTM
+        HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,
+        HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM
     };
 
     FlatHeavyHexGrid* grids_n[N_EPS];
@@ -267,10 +268,10 @@ int main(int argc, char** argv) {
     };
 
     // ── Header ────────────────────────────────────────────────────────────────
-    printf("%-5s  %-10s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-6s  %-6s  t(s)\n",
+    printf("%-5s  %-10s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-10s  %-8s  %-6s  %-6s  %4s  %6s  t(s)\n",
            "Step","C_nl","Julia_nl","|Δnl|",
            "C_n(0.1)","|Δ0.1|","C_n(0.15)","|Δ0.15|","C_n(0.2)","|Δ0.2|",
-           "C_mpf","|Δmpf|","chi_nl","chi_n");
+           "C_mpf","|Δmpf|","chi_nl","chi_n","#sw","bp_ms");
 
     for (int step = 1; step <= n_steps; step++) {
         double t0 = now_ms();
@@ -285,15 +286,18 @@ int main(int argc, char** argv) {
             sims_n[e]->apply_kick(*states_n[e], *grids_n[e]);
         }
 
+        double t_bp_nl=0; int sw_nl=0; float delta_nl=0;
         float C_nl = meas.autocorrelation_with_bp(
             static_cast<Grid&>(grid_nl), state_nl.psi, state_nl.messages,
-            center, BP_SWEEPS);
+            center, BP_SWEEPS, &t_bp_nl, nullptr, &sw_nl, &delta_nl);
 
         float C_n[N_EPS];
+        double t_bp_n[N_EPS]={0,0,0}; int sw_n[N_EPS]={0,0,0}; float delta_n[N_EPS]={0,0,0};
         for (int e = 0; e < N_EPS; e++)
             C_n[e] = meas.autocorrelation_with_bp(
                 static_cast<Grid&>(*grids_n[e]), states_n[e]->psi,
-                states_n[e]->messages, center, BP_SWEEPS);
+                states_n[e]->messages, center, BP_SWEEPS,
+                &t_bp_n[e], nullptr, &sw_n[e], &delta_n[e]);
 
         int chi_nl_max = 1, chi_n_max = 1;
         for (auto& b : grid_nl.bonds)     chi_nl_max = std::max(chi_nl_max, b.chi);
@@ -342,8 +346,9 @@ int main(int argc, char** argv) {
             float jul = (step<=10) ? julia_n[e][step-1] : 0.f;
             printf("  %+10.6f  %8.2e", C_n[e], fabsf(C_n[e]-jul));
         }
-        printf("  %+10.6f  %8.2e  %-6d  %-6d  %.2f\n",
-               C_mpf, fabsf(C_mpf-C_nl), chi_nl_max, chi_n_max, (now_ms()-t0)/1000.0);
+        printf("  %+10.6f  %8.2e  %-6d  %-6d  %4d  %6.1f  %.2f\n",
+               C_mpf, fabsf(C_mpf-C_nl), chi_nl_max, chi_n_max,
+               sw_nl, t_bp_nl, (now_ms()-t0)/1000.0);
         fflush(stdout);
     }
 

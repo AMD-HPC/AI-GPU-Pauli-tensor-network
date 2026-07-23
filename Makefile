@@ -112,6 +112,14 @@ main_heavyhex_mpf2: main_heavyhex_mpf2.cpp $(HEADERS) include/heavyhex.hpp inclu
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_mpf2 main_heavyhex_mpf2.cpp $(LIBS) -lpthread
 	@echo "Built main_heavyhex_mpf2"
 
+main_heavyhex_gamma_mpf: main_heavyhex_gamma_mpf.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_gamma1_data.hpp \
+	include/heavyhex_noisy_eps010_gamma2_data.hpp \
+	include/heavyhex_noisy_eps010_gamma3_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_gamma_mpf main_heavyhex_gamma_mpf.cpp $(LIBS)
+	@echo "Built main_heavyhex_gamma_mpf"
+
 main_heavyhex_eps_mpf: main_heavyhex_eps_mpf.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
 	include/heavyhex_noisy_eps010_data.hpp \
