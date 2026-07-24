@@ -1,9 +1,10 @@
 \begin{thebibliography}{1}
 
 \bibitem{heavyhex-topology}
-TODO.
-\newblock Todo: Heavy-hex lattice topology reference, 2021.
-\newblock To be filled.
+C.~Chamberland, G.~Zhu, T.~J. Yoder, J.~B. Hertzberg, and A.~W. Cross.
+\newblock Topological and subsystem codes on low-degree graphs with flag
+  qubits.
+\newblock {\em PRX Quantum}, 2:030345, 2021.
 
 \bibitem{tindall2023gauging}
 J.~Tindall and M.~Fishman.
@@ -27,9 +28,9 @@ M.~S. Rudolph and J.~Tindall.
   networks, 2025.
 
 \bibitem{mpf-ref}
-TODO.
-\newblock Todo: Multi-product formula reference, 2026.
-\newblock To be filled.
+G.~H. Low, V.~Kliuchnikov, and N.~Wiebe.
+\newblock Well-conditioned multi-product formulas for hardware-friendly
+  {Hamiltonian} simulation, 2019.
 
 \bibitem{dalberto2026cppsim}
 Paolo D'Alberto.
