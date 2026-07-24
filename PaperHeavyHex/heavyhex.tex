@@ -68,12 +68,12 @@ Heavy-hex is the lattice topology used in superconducting quantum processors
 a natural 3-coloring of its bonds, enabling parallel gate application within
 each color class.
 
-Classical tensor network (TN) simulation of quantum circuits on heavy-hex graphs
+Classical tensor network simulation of quantum circuits on heavy-hex graphs
 serves two purposes: (i) validation of quantum computations for small system sizes
 where exact simulation is feasible
 \cite{tindall2023gauging,tindall2024eagle,tindall2025disordered,rudolph2025simulating},
 and (ii) computation of noise-free reference values for quantum error mitigation
-protocols such as the Multi-Product Formula (MPF) \cite{mpf-ref}.
+protocols such as the multi-product formula (MPF) \cite{mpf-ref}.
 
 In this paper we show that CppSim \cite{dalberto2026cppsim}, originally developed for
 rectangular 2D Ising dynamics, extends naturally to heavy-hex topology with
@@ -145,67 +145,37 @@ This was verified against a Julia reference implementation.
 
 We extend the simulation to include hardware noise channels characterized on the
 target device. In the Pauli transfer matrix (PTM) formalism, a noise channel $\mathcal{E}$
-acting on a two-site operator is represented as a $16\times16$ real matrix:
-\begin{equation}
-    E_{ij} = \frac{1}{d}\,\mathrm{Tr}\!\left(P_i^\dagger\,\mathcal{E}(P_j)\right)
-\end{equation}
+acting on a two-site operator is represented as a $16\times16$ real matrix
+$E_{ij} = d^{-1}\,\mathrm{Tr}(P_i^\dagger\,\mathcal{E}(P_j))$,
 where $\{P_i\}$ is the two-site Pauli basis.
-Since both the Pauli operators and hardware noise channels are Hermitian-preserving,
-$E$ is real throughout, consistent with our float32 simulation.
+Since both operators and noise channels are Hermitian-preserving, $E$ is real
+throughout, consistent with our float32 simulation.
 
-\subsection{Per-bond noise PTMs}
-
-Noise PTMs are loaded from hardware characterization data
-(\texttt{heavy\_hex\_3x3\_gamma$\gamma$\_hardware.json})
-for three noise scaling factors $\gamma \in \{1.0, 1.4, 1.8\}$:
-\begin{itemize}
-    \item $\gamma = 1.0$: hardware noise as measured on the real device
-    \item $\gamma = 1.4,\, 1.8$: amplified noise for MPF zero-noise extrapolation
-          (achieved in practice via pulse stretching)
-\end{itemize}
-Each bond carries its own PTM reflecting local gate fidelity.
-The PTMs are dominated by diagonal entries (dephasing-type channels),
-with off-diagonal elements contributing less than $0.2\%$ of the total weight.
-
-\subsection{Noise interleaving approximation}
-
-In the target hardware circuit, noise is applied after each elementary gate
-(approximately 25 gates per color class for this graph).
-In our simulation, we approximate this by raising each bond's PTM to the
-$n$-th power before application, where $n$ controls the effective noise strength:
+Each bond implements the two-qubit interaction through a hardware decomposition
+$U_{\mathrm{bond}} = R_{xx}(\alpha)\cdot R_{yy}(\alpha)\cdot R_{zz}(\delta)$,
+where $\alpha = -J_{\langle ij\rangle}\cdot\varepsilon$ scales with the bond coupling
+and Trotter step $\varepsilon$, while $\delta = -J_{\langle ij\rangle}$ is
+independent of $\varepsilon$.
+Noise is interleaved after each sub-gate, and the full noisy gate for bond $b$
+in its color class is:
 \begin{equation}
-    E_{\mathrm{eff}} = E^n
+    \mathrm{PTM}_{\mathrm{noisy}}^{(b)} =
+    G_1 \cdot M_n^{(b)} \cdot G_2(\alpha_b) \cdot M_n^{(b)}
+    \cdot G_3(\alpha_b) \cdot M_n^{(b)} \cdot G_4(\delta_b)
 \end{equation}
-Table~\ref{tab:noise_power} shows the effect on the noisy bond dimension $\chi_n$
-at cycle 10 for different values of $n$.
+where $M_n^{(b)}$ is the hardware noise PTM for bond $b$ in its color class,
+and $G_1$--$G_4$ implement the hardware sub-layers.
+After all color classes, a kick gate $R_x(2\phi)$ is applied once per site
+($\phi = 1.41371669$).
 
-\begin{table}[h]
-\centering
-\caption{Noisy bond dimension $\chi_n$ at cycle 10 vs noise power $n$
-(chi cap=430, $\gamma=1.0$, center=site 2).
-Julia reference: $\chi_n \approx 166$.}
-\label{tab:noise_power}
-\begin{tabular}{rrl}
-\toprule
-$n$ & $\chi_n$ (cycle 10) & Note \\
-\midrule
- 1  & 410 & Once per color class (CppSim default) \\
- 3  & 316 & Once per sublayer group \\
-25  & 146 & Once per gate (Julia-equivalent) \\
-\bottomrule
-\end{tabular}
-\end{table}
+The noise characterization is fully parametric: a configuration file specifies
+an independent $16\times16$ PTM for each (bond, color class) pair and noise
+scaling factor $\gamma \in \{1.0, 2.0, 3.0\}$ ($\gamma=1.0$: hardware noise
+as measured; $\gamma=2.0, 3.0$: amplified for MPF extrapolation).
+This single composed PTM is pre-computed per bond at build time,
+so runtime applies exactly one matrix--vector product per bond per Trotter step —
+the same cost as the noiseless simulation.
 
-With $n=25$, the noisy bond dimension closely matches the Julia reference
-implementation ($\chi_n \approx 146$ vs $\approx 166$), confirming that
-noise applied after each individual gate is the physically appropriate model
-for this hardware circuit.
-
-The noisy state requires significantly less memory than the noiseless state:
-at cycle 10, $\chi_n = 146$ vs $\chi_{\mathrm{nl}} = 400$, corresponding to
-approximately $1.2$\,GB vs $21$\,GB of GPU memory.
-This asymmetry enables the two-GPU MPF architecture described in
-Section~\ref{sec:perf}.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Autocorrelation and Chi Convergence}
@@ -278,7 +248,7 @@ regardless of $\chi$ truncation at the boundary.
 \section{Performance}
 \label{sec:perf}
 
-We report wall-clock times on a 32\,GB GPU using Householder QR and float32 arithmetic.
+We report wall-clock times on a 32\,GB GPU using Householder QR decomposition (QR) and float32 arithmetic.
 All timings are per Trotter cycle at saturated bond dimension.
 
 \subsection{Chi scaling}
