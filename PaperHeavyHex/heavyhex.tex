@@ -13,6 +13,8 @@
 \usepackage{xcolor}
 \usepackage{microtype}
 \usepackage{abstract}
+\usepackage{tikz}
+\usetikzlibrary{positioning,shapes.geometric}
 \renewcommand{\abstractnamefont}{\normalfont\bfseries}
 \renewcommand{\abstracttextfont}{\normalfont\small}
 
@@ -43,20 +45,21 @@
 
 \begin{abstract}
 We extend CppSim, a high-performance C++/HIP tensor network simulator,
-to the heavy-hex lattice
-geometry used in superconducting quantum processors.
-The heavy-hex graph — a honeycomb of degree-2 and degree-3 sites with
+to the heavy-hex lattice geometry used in superconducting quantum processors.
+The heavy-hex graph — a bipartite graph of degree-2 and degree-3 sites with
 a natural 3-color gate schedule — is implemented as a drop-in grid class
 with no changes to the gate application or belief propagation (BP) kernels.
-We simulate the isotropic Heisenberg model
-$H = J\sum_{\langle ij\rangle}(\mathbf{X}_i\mathbf{X}_j +
-\mathbf{Y}_i\mathbf{Y}_j + \mathbf{Z}_i\mathbf{Z}_j)$
-in the Heisenberg picture using Pauli transfer matrices,
-and study the autocorrelation $C(t) = \langle Z_c(t)Z_c(0)\rangle$
-and operator lightcone on the \texttt{heavy\_hex\_3x3} graph (68 sites, 76 bonds).
-We demonstrate chi convergence at $\chi=200$ ($|\mathrm{error}|<10^{-4}$,
-reference $\chi=430$) on a 32\,GB GPU, and show a $\sim$10$\times$
-speedup over a Julia/AMDGPU.jl reference at saturated bond dimension.
+We simulate the isotropic Heisenberg model on the \texttt{heavy\_hex\_3x3}
+graph (68 sites, 76 bonds) in the Heisenberg picture using Pauli transfer
+matrices (PTMs), and study the autocorrelation $C(t) = \langle Z_c(t)Z_c(0)\rangle$
+and operator lightcone.
+We incorporate a fully parametric hardware noise model: per-bond, per-color-class
+$16\times 16$ PTMs are loaded from device characterization data and interleaved
+with unitary gates, with noise scaling factor $\gamma \in \{1.0, 2.0, 3.0\}$
+for multi-product formula (MPF) extrapolation to zero noise.
+Chi convergence is demonstrated at $\chi=200$ ($|\mathrm{error}|<10^{-4}$,
+reference $\chi=430$) on a 32\,GB GPU, with a $\sim$10$\times$ wall-clock
+speedup over a Julia/AMDGPU.jl reference implementation at saturated bond dimension.
 \end{abstract}
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -80,64 +83,106 @@ rectangular 2D Ising dynamics, extends naturally to heavy-hex topology with
 minimal code changes. The hot-path kernels — gate application, BP,
 workspace management — are topology-agnostic and require no modification.
 Only the grid construction and Hamiltonian gate matrix need to be defined
-for the new geometry.
+for the new geometry. We further incorporate a fully parametric hardware noise
+model via Pauli transfer matrices, and demonstrate gamma-MPF extrapolation
+to zero noise using three noise amplification levels $\gamma \in \{1, 2, 3\}$.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Heavy-Hex Lattice and Hamiltonian}
 \label{sec:grid}
 
-We describe the graph topology, its implementation in CppSim, and the
-Hamiltonian gate matrix used for time evolution.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[scale=0.72,
+    junction/.style={circle,draw,fill=blue!20,minimum size=8pt,inner sep=0pt},
+    arm/.style={circle,draw,fill=orange!30,minimum size=6pt,inner sep=0pt},
+    c0/.style={thick,red},
+    c1/.style={thick,blue!70},
+    c2/.style={thick,green!60!black}]
+% One hexagonal unit cell of the heavy-hex graph
+% Junctions at corners, arm sites on edges
+% Color 0: horizontal top, Color 1: horizontal bottom, Color 2: vertical
+\def\dx{1.4}\def\dy{1.0}
+% Junctions
+\node[junction] (J00) at (0,0) {};
+\node[junction] (J10) at (2*\dx,0) {};
+\node[junction] (J01) at (0,2*\dy) {};
+\node[junction] (J11) at (2*\dx,2*\dy) {};
+% Arm sites
+\node[arm] (A0t) at (\dx,0) {};       % top horizontal arm
+\node[arm] (A0b) at (\dx,2*\dy) {};   % bottom horizontal arm
+\node[arm] (A0l) at (0,\dy) {};       % left vertical arm
+\node[arm] (A0r) at (2*\dx,\dy) {};   % right vertical arm
+% Color 0 bonds (horizontal bottom)
+\draw[c0] (J00) -- (A0t) -- (J10);
+% Color 1 bonds (horizontal top)
+\draw[c1] (J01) -- (A0b) -- (J11);
+% Color 2 bonds (vertical)
+\draw[c2] (J00) -- (A0l) -- (J01);
+\draw[c2] (J10) -- (A0r) -- (J11);
+% Legend
+\node[right] at (2*\dx+0.3,0.3) {\small\textcolor{red}{color 0}};
+\node[right] at (2*\dx+0.3,2*\dy-0.3) {\small\textcolor{blue!70}{color 1}};
+\node[right] at (2*\dx+0.3,\dy) {\small\textcolor{green!60!black}{color 2}};
+\node[below right,font=\small] at (J00) {junction};
+\node[above right,font=\small,orange!70!black] at (A0t) {arm};
+\end{tikzpicture}
+\caption{One unit cell of the heavy-hex graph. Junction sites (blue, degree 3)
+connect via arm sites (orange, degree 2). Bonds are 3-edge-colorable (red, blue, green),
+enabling parallel gate application within each color class.}
+\label{fig:heavyhex}
+\end{figure}
 
-\subsection{Graph structure}
-
-The \texttt{heavy\_hex\_$n_x \times n_y$} graph has:
-\begin{itemize}
-    \item $(n_x+1)(n_y+1)$ \emph{junction} sites (degree 3)
-    \item remaining \emph{arm} sites (degree 2) connecting adjacent junctions
-    \item $2n_x n_y + n_x + n_y$ bonds total
-\end{itemize}
-
+The \texttt{heavy\_hex\_$n_x \times n_y$} graph (Fig.~\ref{fig:heavyhex}) has
+$n_x \cdot n_y$ \emph{junction} sites of degree 3 and
+$(2n_xn_y + n_x + n_y)$ arm sites of degree 2,
+for a total of $(3n_xn_y + n_x + n_y)$ sites and $(2n_xn_y + n_x + n_y)$ bonds.
 For $n_x = n_y = 3$: 16 junction sites, 52 arm sites, 76 bonds.
 The graph is bipartite and 3-edge-colorable — bonds partition into 3 color
 classes of sizes 25, 25, 26, corresponding to the natural gate layers
-of the hardware gate schedule.
+of the hardware schedule.
 
-Site tensors have shapes $[\chi^2, D]$ (arm) and $[\chi^3, D]$ (junction),
+Site tensors carry the evolved Pauli operator in the Heisenberg picture,
+with shapes $[\chi^2, D]$ (arm) and $[\chi^3, D]$ (junction),
 where $D=4$ is the Pauli basis dimension $\{I, X, Y, Z\}$.
-The memory cost is dominated by junction sites:
-$16 \times \chi^3 \times D \times 4$\,B (float32).
-
-\subsection{Implementation}
-
 The \texttt{FlatHeavyHexGrid} class inherits from \texttt{Grid} and populates
-the same \texttt{Site}/\texttt{Bond}/\texttt{Gate} data structures used by the
-rectangular grid. The color class assignment follows the hardware gate schedule
-(JSON layers 0, 1, 2). No changes are required in \texttt{gate.hpp},
-\texttt{measures.hpp}, or \texttt{workspace.hpp} beyond parametrizing the
-workspace by \texttt{max\_degree=3} instead of 4.
-
-\subsection{Hamiltonian and gate matrix}
+the same \texttt{Site}/\texttt{Bond}/\texttt{Gate} data structures as the
+rectangular grid, with no changes to the gate, belief propagation, or
+workspace kernels.
 
 We simulate the isotropic Heisenberg (XXX) model:
 \begin{equation}
     H = J \sum_{\langle ij \rangle} \bigl(X_i X_j + Y_i Y_j + Z_i Z_j\bigr)
 \end{equation}
-with uniform coupling $J = 1$ and time step $\delta t = 0.1$.
+with bond-specific coupling $J_{\langle ij\rangle}$ from device characterization
+and Trotter step $\varepsilon$.
+In the Heisenberg picture, the two-site gate
+$U = e^{-i\varepsilon J(X\otimes X + Y\otimes Y + Z\otimes Z)}$
+is a $4\times4$ unitary acting on the two-qubit Hilbert space $\mathbb{C}^2\otimes\mathbb{C}^2$.
+To track operator dynamics we work in the two-site Pauli basis
+$\{P_\mu \otimes P_\nu\}$ with $P_\mu \in \{I,X,Y,Z\}$,
+which has $4\times4 = 16$ elements — hence the state vector at each bond has
+dimension 16, and the gate acts as a $16\times16$ real Pauli transfer matrix (PTM)
+via $O \mapsto U^\dagger O\, U$.
+Here and below we use the physics shorthand $AB \equiv A\otimes B$,
+so $IX \equiv I\otimes X$, $YZ \equiv Y\otimes Z$, etc.
 
-In the Heisenberg picture with Pauli basis, the two-site gate
-$U = e^{-i\theta(X\otimes X + Y\otimes Y + Z\otimes Z)}$
-($\theta = J\delta t$) is represented by a $16\times 16$ real
-Pauli transfer matrix (PTM) with block structure:
-\begin{align}
-    \{II, XX, YY, ZZ\} &\to \text{invariant (diagonal = 1)} \\
-    \{IX, XI, YZ, ZY\} &\to \text{$4\times 4$ mixing block} \\
-    \{IY, YI, XZ, ZX\} &\to \text{$4\times 4$ mixing block} \\
-    \{IZ, ZI, XY, YX\} &\to \text{$4\times 4$ mixing block}
-\end{align}
-with elements $\alpha = \cos^2(2\theta)$, $\beta = \sin^2(2\theta)$,
-$\gamma = \sin(2\theta)\cos(2\theta)$.
-This was verified against a Julia reference implementation.
+The PTM is block-diagonal because the XXX interaction conserves the
+\emph{Pauli commutation signature}: for any two-site operator $O$,
+if $[H, O] = 0$ then $U^\dagger O\, U = O$ (invariant).
+The four operators $\{II, XX, YY, ZZ\}$ all commute with $H$,
+forming a $4\times4$ identity block.
+The remaining 12 operators decompose into three invariant
+\emph{mixing} subspaces of size 4, determined by which single-site
+Pauli is ``odd'' under the symmetry.
+For example, the commutators of $H$ with each of
+$\{IX, XI, YZ, ZY\}$ produce linear combinations
+within that same set, so it is closed under the adjoint action
+and evolves as a $4\times4$ rotation matrix.
+Cyclic permutation $X\!\to\!Y\!\to\!Z\!\to\!X$ yields the other two blocks
+$\{IY,YI,XZ,ZX\}$ and $\{IZ,ZI,XY,YX\}$.
+In total the PTM is block-diagonal with one $4\times4$ identity block
+and three $4\times4$ rotation blocks, all real.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Hardware Noise Model}
@@ -187,13 +232,14 @@ The autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle$ is computed
 via the Bethe approximation \cite{tindall2023gauging,evenbly2026loop} after each Trotter step.
 We study convergence with respect to the bond dimension $\chi$ by running
 nine simulations with $\chi \in \{50, 100, 150, 200, 250, 300, 350, 400, 430\}$
-over 30 Trotter steps at cutoff $10^{-4}$.
+over 30 Trotter steps at Trotter step $\varepsilon = 0.25$ and cutoff $10^{-4}$.
 
 \begin{figure}[h]
     \centering
     \includegraphics[width=0.80\columnwidth]{ct_convergence.png}
     \caption{Autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle$ for
-    $\chi = 50, 100, 150, 200, 250, 300, 350, 400, 430$ over 30 Trotter steps.
+    $\chi = 50, 100, 150, 200, 250, 300, 350, 400, 430$ over 30 Trotter steps
+    at $\varepsilon=0.25$.
     The oscillatory behaviour is a genuine quantum recurrence of the XXX model
     on the finite heavy-hex graph. Curves for $\chi \geq 150$ are visually
     indistinguishable, indicating convergence.}
@@ -210,6 +256,13 @@ $|{\rm error}| < 10^{-4}$ on this graph at 10 cycles.
 The non-monotonic behaviour of $C(t)$ — a decrease followed by partial
 recovery — is a genuine quantum recurrence of the XXX model on the degree-3
 lattice, confirmed by its independence from $\chi$.
+
+To put the MPF results of Section~\ref{sec:mpf} in perspective: the
+gamma-MPF simulations use $\varepsilon=0.1$, so 10 Trotter cycles
+correspond to physical time $T = 10 \times 0.1 = 1.0$, which maps to
+only 4 steps on the axis of Figure~\ref{fig:ct} (where $\varepsilon=0.25$).
+The MPF operates entirely within the initial decay regime, well before
+the quantum recurrence sets in around step 10.
 
 
 
@@ -322,29 +375,32 @@ The full 10-cycle gamma-MPF computation at $\chi=70$ completes in under 5\,s on 
 \section{Conclusion}
 \label{sec:conclusion}
 
-We have demonstrated that CppSim, a C++/HIP tensor network simulator,
-extends to the heavy-hex lattice with minimal code changes.
-The topology-agnostic gate and BP kernels accept any \texttt{Grid}-derived
-class; the heavy-hex extension requires only a new site/bond/color construction
-and a $16\times16$ Pauli transfer matrix for the XXX Hamiltonian.
+Our design maintains the original idea of being topology-agnostic: gate
+and belief propagation kernels require no modification; only a new
+grid class and Hamiltonian gate matrix are needed for the new geometry.
+To showcase different physics, we incorporate a fully parametric hardware
+noise model: each bond carries an independent $16\times16$ Pauli transfer
+matrix per color class, loaded from device characterization data and
+reduced into a single matrix--vector product per bond — at no additional
+runtime cost over the noiseless case. This approach captures bond
+interactions without assumptions on computation order, and is
+mathematically equivalent to sequential gate application.
 
-On a 32\,GB GPU, the $3\times3$ heavy-hex graph (68 sites, 76 bonds)
-is simulated with bond dimension $\chi \leq 430$.
-The autocorrelation $C(t)$ converges at $\chi = 200$
-($|\mathrm{error}| < 10^{-4}$ relative to $\chi=430$) for 10 Trotter cycles.
-The non-monotonic behaviour of $C(t)$ — a quantum recurrence of the
-isotropic Heisenberg model on the finite graph — is confirmed independent
-of $\chi$ and is therefore a physical prediction of the simulation.
-We demonstrate a $\sim$10$\times$ speedup over a Julia/AMDGPU.jl reference
-\cite{rudolph2025simulating} at saturated bond dimension.
+Our goal is to provide a framework where physics can be expressed
+directly for GPU, maintaining the intuitive formulation of the
+Julia/AMDGPU.jl reference \cite{rudolph2025simulating} while
+explicitly exploiting parallelism and performance.
+For quantum error mitigation via the gamma multi-product formula
+\cite{mpf-ref}, CppSim completes 20 Trotter cycles in a fraction of
+the time of current implementations, enabling fast and systematic
+exploration of the parameter space.
 
-The operator lightcone, computed as a byproduct with no additional cost,
-visualizes operator spreading on the hexagonal lattice and defines the
-computational window within which the simulation is exact.
-
-Future work will extend to larger graphs on higher-memory hardware,
-and implement interleaved BP to match the online approach of
-\cite{tindall2023gauging} and eliminate BP trap effects.
+Future work will extend to larger graphs, implement the full quantum
+inner product coefficient matrix via GPU double-layer belief
+propagation, and explore the joint epsilon--gamma MPF for simultaneous
+Trotter and noise extrapolation.
+We are also interested in extending the lightcone prediction and
+modeling to the noisy setting using the same methodology.
 
 \begin{figure}[t]
     \centering
