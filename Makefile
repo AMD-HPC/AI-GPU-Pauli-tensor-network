@@ -112,6 +112,14 @@ main_heavyhex_mpf2: main_heavyhex_mpf2.cpp $(HEADERS) include/heavyhex.hpp inclu
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_mpf2 main_heavyhex_mpf2.cpp $(LIBS) -lpthread
 	@echo "Built main_heavyhex_mpf2"
 
+test_blf_gpu: test_blf_gpu.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_gamma1_data.hpp \
+	include/bilinear_form_bp.hpp \
+	include/bilinear_form_bp_gpu.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test_blf_gpu test_blf_gpu.cpp $(LIBS)
+	@echo "Built test_blf_gpu"
+
 main_heavyhex_gamma_mpf: main_heavyhex_gamma_mpf.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
 	include/heavyhex_noisy_eps010_gamma1_data.hpp \
