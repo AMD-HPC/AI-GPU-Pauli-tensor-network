@@ -26,9 +26,11 @@
  */
 
 #include "grid.hpp"
+#include "bilinear_form_bp.hpp"
 #include "types.hpp"
 #include <vector>
 #include <cmath>
+#include <chrono>
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
 
@@ -138,80 +140,85 @@ __global__ void build_Tv_kernel(
 /*
  * bp_msg_kernel — compute one outgoing message from site src along bond skip_k.
  *
- * nm[i] = Σ_{flat : idx[skip_k]=i} T_v[flat] × Π_{k ≠ skip_k} msg_in[k][idx[k]]
+ * Double-buffered: reads from msgs_old, writes to msgs_new. No race condition.
  *
- * Launched as: grid=(2*n_bonds), block=(chi_ab_skip, 1, 1)
+ * nm[i] = Σ_{flat : idx[skip_k]=i} T_v[flat] × Π_{k≠skip_k} msgs_old[k][idx[k]]
+ *
+ * Launched as: grid=(2*n_bonds), block=(chi_ab_skip)
  * blockIdx.x encodes (bond_id * 2 + direction).
- *
- * For chi=4: chi_ab=16 → 16 threads per block.
+ * For chi=4: chi_ab=16 → 16 threads/block. For chi=70: chi_ab=4900 → 4900 threads/block.
  */
 __global__ void bp_msg_kernel(
-    const float* const* __restrict__ T,     // [n_sites], T_v in Kronecker layout
-    float**              msgs,               // [2*n_bonds], message vectors chi_ab each
-    const int* __restrict__ bond_site_a,    // [n_bonds]
-    const int* __restrict__ bond_site_b,    // [n_bonds]
-    const int* __restrict__ site_nb,        // [n_sites] number of bonds per site
-    const int* __restrict__ site_bonds,     // [n_sites * MAX_DEGREE_BLF] bond ids
-    const int* __restrict__ chi_ab,         // [n_bonds] = chi_a * chi_b
-    const int* __restrict__ vol_ab,         // [n_sites] product of all chi_ab
+    const float* const* __restrict__ T,          // [n_sites] T_v Kronecker layout
+    const float* const* __restrict__ msgs_old,   // [2*n_bonds] read-only this sweep
+    float**                          msgs_new,   // [2*n_bonds] write-only this sweep
+    const int* __restrict__ bond_site_a,
+    const int* __restrict__ bond_site_b,
+    const int* __restrict__ site_nb,
+    const int* __restrict__ site_bonds,          // [n_sites * MAX_DEGREE_BLF]
+    const int* __restrict__ chi_ab,              // [n_bonds]
+    const int* __restrict__ vol_ab,              // [n_sites]
     int n_bonds)
 {
     int bid = blockIdx.x / 2;
-    int dir = blockIdx.x % 2;     // 0 = a→b (src=site_a), 1 = b→a (src=site_b)
+    int dir = blockIdx.x % 2;
     if (bid >= n_bonds) return;
 
     int src   = (dir == 0) ? bond_site_a[bid] : bond_site_b[bid];
     int nb    = site_nb[src];
     int volab = vol_ab[src];
 
-    // Find skip_k: which bond index in site_bonds[src] is 'bid'
     int skip_k = -1;
     for (int k = 0; k < nb; k++)
         if (site_bonds[src * MAX_DEGREE_BLF + k] == bid) { skip_k = k; break; }
     if (skip_k < 0) return;
 
-    int chi_out   = chi_ab[bid];
-    int out_i     = threadIdx.x;   // one thread per output element
+    int chi_out = chi_ab[bid];
+    int out_i   = threadIdx.x;
     if (out_i >= chi_out) return;
 
-    // Precompute per-bond chi_ab and msg_idx for this site
-    int  b_chi[MAX_DEGREE_BLF];
-    int  b_msg[MAX_DEGREE_BLF];   // incoming message index for each bond
+    int b_chi[MAX_DEGREE_BLF], b_msg[MAX_DEGREE_BLF];
     for (int k = 0; k < nb; k++) {
-        int bond_k  = site_bonds[src * MAX_DEGREE_BLF + k];
-        b_chi[k]    = chi_ab[bond_k];
-        b_msg[k]    = (src == bond_site_a[bond_k]) ? (2*bond_k+1) : (2*bond_k);
+        int bond_k = site_bonds[src * MAX_DEGREE_BLF + k];
+        b_chi[k]   = chi_ab[bond_k];
+        b_msg[k]   = (src == bond_site_a[bond_k]) ? (2*bond_k+1) : (2*bond_k);
     }
 
     const float* Tv = T[src];
-
-    // Iterate over ALL volab flat indices.
-    // Decompose each into per-bond indices (last bond = least significant).
-    // Accumulate into out_i only when idx[skip_k] == out_i.
     float acc = 0.f;
+
     for (int flat = 0; flat < volab; flat++) {
-        int   tmp = flat;
-        int   idx[MAX_DEGREE_BLF];
-        for (int k = nb - 1; k >= 0; k--) {
-            idx[k]  = tmp % b_chi[k];
-            tmp    /= b_chi[k];
-        }
+        int tmp = flat;
+        int idx[MAX_DEGREE_BLF];
+        for (int k = nb-1; k >= 0; k--) { idx[k] = tmp % b_chi[k]; tmp /= b_chi[k]; }
         if (idx[skip_k] != out_i) continue;
 
         float msg_prod = 1.f;
         for (int k = 0; k < nb; k++) {
             if (k == skip_k) continue;
-            msg_prod *= msgs[b_msg[k]][idx[k]];
+            msg_prod *= msgs_old[b_msg[k]][idx[k]];  // read from OLD buffer
         }
         acc += Tv[flat] * msg_prod;
     }
 
-    int out_msg_idx = (dir == 0) ? (2*bid) : (2*bid+1);
-    msgs[out_msg_idx][out_i] = acc;
+    int out_idx = (dir == 0) ? (2*bid) : (2*bid+1);
+    msgs_new[out_idx][out_i] = acc;  // write to NEW buffer
 }
 
 /*
- * normalize_msg_kernel — max-abs normalize each message vector.
+ * normalize_msg_kernel — max-abs normalize a single message vector in-place.
+ * Launched per message: grid=(1), block=(1). Runs in blas_stream.
+ * ptr: pointer to message data (not pointer-to-pointer).
+ */
+__global__ void normalize_single_msg_kernel(float* __restrict__ m, int chi)
+{
+    float s = 0.f;
+    for (int i = 0; i < chi; i++) s = fmaxf(s, fabsf(m[i]));
+    if (s > 1e-20f) for (int i = 0; i < chi; i++) m[i] /= s;
+}
+
+/*
+ * normalize_msg_kernel — max-abs normalize each message vector in-place.
  * Launched as grid=(2*n_bonds), block=(1).
  */
 __global__ void normalize_msg_kernel(
@@ -219,7 +226,7 @@ __global__ void normalize_msg_kernel(
     const int* __restrict__ chi_ab,
     int n_bonds)
 {
-    int idx = blockIdx.x;   // 0..2*n_bonds-1
+    int idx = blockIdx.x;
     int bid = idx / 2;
     if (bid >= n_bonds) return;
     int chi = chi_ab[bid];
@@ -323,8 +330,9 @@ struct BLF_GPU {
     // Device arrays
     float**  d_psi_a = nullptr;   // [n_sites] pointers to site tensors on GPU
     float**  d_psi_b = nullptr;
-    float**  d_T     = nullptr;   // [n_sites] T_v tensors (Kronecker layout)
-    float**  d_msgs  = nullptr;   // [2*n_bonds] message vectors
+    float**  d_T        = nullptr;   // [n_sites] T_v tensors (Kronecker layout)
+    float**  d_msgs     = nullptr;   // [2*n_bonds] current messages (ping)
+    float**  d_msgs_new = nullptr;   // [2*n_bonds] scratch buffer (pong)
 
     // Per-site/bond metadata on device
     int* d_nb;        // [n_sites]
@@ -344,6 +352,14 @@ struct BLF_GPU {
     std::vector<int> h_chi_ab, h_bond_sa, h_bond_sb, h_site_nb, h_site_bonds;
     std::vector<int> h_vol_T;   // [n_sites] size of T_v
 
+    // rocBLAS handle and dedicated stream for SGEMV message updates
+    rocblas_handle blas_handle = nullptr;
+    hipStream_t    blas_stream = nullptr;
+
+    // Scratch buffer for degree-3 intermediate contraction (max size allocated at upload)
+    float* d_scratch = nullptr;
+    int    d_scratch_size = 0;
+
     // Bethe accumulators on device
     double* d_log_av = nullptr;
     double* d_sign_av = nullptr;
@@ -358,6 +374,9 @@ struct BLF_GPU {
         : grid_a(ga), grid_b(gb),
           n_sites(ga.n_sites), n_bonds(ga.n_bonds)
     {
+        rocblas_create_handle(&blas_handle);
+        HIP_CHECK(hipStreamCreate(&blas_stream));
+        rocblas_set_stream(blas_handle, blas_stream);
         _build_metadata();
         _alloc_device();
     }
@@ -376,166 +395,45 @@ struct BLF_GPU {
         // Rebuild chi metadata from live grids (chi grows during evolution)
         _rebuild_chi_metadata();
 
+        // Reallocate T and message device buffers to match new chi
+        _realloc_tv_and_msg_buffers();
+
         // Download psi from each device, normalize, upload to current device
         _upload_psi(psi_a_gpu, device_a, d_psi_a, grid_a, h_vola, log_scale_a, h_psi_a_cpu);
         _upload_psi(psi_b_gpu, device_b, d_psi_b, grid_b, h_volb, log_scale_b, h_psi_b_cpu);
 
         // Warm-start messages: kron(diag(msg_a), diag(msg_b)) per bond
         _init_messages(msg_a_gpu, device_a, msg_b_gpu, device_b);
+
+        // Download single-layer messages for StateSnapshot (chi×chi each)
+        _download_single_layer_msgs(msg_a_gpu, device_a, h_msgs_a_cpu, grid_a);
+        _download_single_layer_msgs(msg_b_gpu, device_b, h_msgs_b_cpu, grid_b);
     }
 
-    // CPU copies of psi — populated during upload, used for CPU T_v build
+    // CPU copies of psi and single-layer messages — populated during upload
     std::vector<std::vector<float>> h_psi_a_cpu, h_psi_b_cpu;
+    std::vector<std::vector<float>> h_msgs_a_cpu, h_msgs_b_cpu;
 
-    // Run BP and return ⟨ψ_a|ψ_b⟩.
-    float compute(int n_sweeps = 25, float tol = 1e-5f, bool verbose = false) {
-        // Build T_v on CPU — correct, no GPU kernel issues
-        // T_v[Kronecker flat] = Σ_d ψa[ia...,d] * ψb[ib...,d], reindexed to Kronecker layout
-        std::vector<std::vector<float>> h_T(n_sites);
-        for (int sid = 0; sid < n_sites; sid++) {
-            int nb   = h_nb[sid];
-            int vola = h_vola[sid];
-            int volb = h_volb[sid];
-            int vol_T = h_vol_T[sid];
-            const int* ca = h_chia.data() + sid * MAX_DEGREE_BLF;
-            const int* cb = h_chib.data() + sid * MAX_DEGREE_BLF;
-            const float* pa = h_psi_a_cpu[sid].data();
-            const float* pb = h_psi_b_cpu[sid].data();
+    // Run BP and return <psi_a|psi_b> using bilinear_form_bp_cpu.
+    // CPU-based — correct at any chi. psi and messages are already in h_psi_a_cpu/h_psi_b_cpu
+    // from upload(). Warm-start Kronecker messages are in d_msgs (downloaded below).
+    float compute(int n_sweeps = 25, float tol = 1e-5f, bool verbose = false,
+                  double* t_ms_out = nullptr) {
+        auto t0 = std::chrono::high_resolution_clock::now();
 
-            // Step 1: contract physical index → T_big[ia_flat * volb + ib_flat]
-            std::vector<float> T_big(vola * volb, 0.f);
-            for (int ia = 0; ia < vola; ia++)
-                for (int ib = 0; ib < volb; ib++)
-                    for (int d = 0; d < D_BLF; d++)
-                        T_big[ia * volb + ib] += pa[ia * D_BLF + d] * pb[ib * D_BLF + d];
+        // Build StateSnapshots from CPU copies populated during upload()
+        StateSnapshot sa, sb;
+        sa.grid = &grid_a;  sa.psi = h_psi_a_cpu;  sa.msgs = h_msgs_a_cpu;
+        sb.grid = &grid_b;  sb.psi = h_psi_b_cpu;  sb.msgs = h_msgs_b_cpu;
 
-            // Step 2: reindex to Kronecker layout
-            // Kronecker index for bond k: ia_k * cb[k] + ib_k
-            h_T[sid].resize(vol_T, 0.f);
-            for (int ia_f = 0; ia_f < vola; ia_f++) {
-                for (int ib_f = 0; ib_f < volb; ib_f++) {
-                    float val = T_big[ia_f * volb + ib_f];
-                    int ta = ia_f, tb = ib_f;
-                    int ia_k[MAX_DEGREE_BLF], ib_k[MAX_DEGREE_BLF];
-                    for (int k = nb-1; k >= 0; k--) {
-                        ia_k[k] = ta % ca[k]; ta /= ca[k];
-                        ib_k[k] = tb % cb[k]; tb /= cb[k];
-                    }
-                    int kron = 0;
-                    for (int k = 0; k < nb; k++)
-                        kron = kron * (ca[k]*cb[k]) + ia_k[k]*cb[k] + ib_k[k];
-                    h_T[sid][kron] = val;
-                }
-            }
+        // bilinear_form_bp_cpu receives raw psi and handles normalization internally.
+        float result = bilinear_form_bp_cpu(sa, sb, true, n_sweeps, tol, verbose);
+
+        if (t_ms_out) {
+            auto t1 = std::chrono::high_resolution_clock::now();
+            *t_ms_out = std::chrono::duration<double,std::milli>(t1-t0).count();
         }
-
-        // Download initial messages
-        std::vector<float*> h_msg_ptrs(2 * n_bonds);
-        HIP_CHECK(hipMemcpy(h_msg_ptrs.data(), d_msgs, 2*n_bonds*sizeof(float*), hipMemcpyDeviceToHost));
-        std::vector<std::vector<float>> msgs(2 * n_bonds);
-        for (int i = 0; i < 2 * n_bonds; i++) {
-            msgs[i].resize(h_chi_ab[i / 2]);
-            HIP_CHECK(hipMemcpy(msgs[i].data(), h_msg_ptrs[i],
-                h_chi_ab[i/2]*sizeof(float), hipMemcpyDeviceToHost));
-        }
-
-        // BP sweeps on CPU — correct serial update, no race condition
-        for (int sweep = 0; sweep < n_sweeps; sweep++) {
-            float max_delta = 0.f;
-            for (int bid = 0; bid < n_bonds; bid++) {
-                for (int dir = 0; dir < 2; dir++) {
-                    int src = (dir == 0) ? h_bond_sa[bid] : h_bond_sb[bid];
-                    int nb  = h_site_nb[src];
-
-                    // Find skip_k
-                    int skip_k = -1;
-                    for (int k = 0; k < nb; k++)
-                        if (h_site_bonds[src*MAX_DEGREE_BLF+k] == bid) { skip_k = k; break; }
-                    if (skip_k < 0) continue;
-
-                    int chi_out = h_chi_ab[bid];
-                    int volab   = h_volab[src];
-
-                    // Per-bond chi and incoming msg index
-                    int b_chi[MAX_DEGREE_BLF], b_msg[MAX_DEGREE_BLF];
-                    for (int k = 0; k < nb; k++) {
-                        int bond_k = h_site_bonds[src*MAX_DEGREE_BLF+k];
-                        b_chi[k]   = h_chi_ab[bond_k];
-                        b_msg[k]   = (src == h_bond_sa[bond_k]) ? (2*bond_k+1) : (2*bond_k);
-                    }
-
-                    std::vector<float> nm(chi_out, 0.f);
-                    for (int flat = 0; flat < volab; flat++) {
-                        int tmp = flat;
-                        int idx[MAX_DEGREE_BLF];
-                        for (int k = nb-1; k >= 0; k--) { idx[k] = tmp % b_chi[k]; tmp /= b_chi[k]; }
-
-                        float prod = h_T[src][flat];
-                        for (int k = 0; k < nb; k++) {
-                            if (k == skip_k) continue;
-                            prod *= msgs[b_msg[k]][idx[k]];
-                        }
-                        nm[idx[skip_k]] += prod;
-                    }
-
-                    // Normalize max-abs
-                    float s = 0.f; for (auto v : nm) s = std::max(s, std::abs(v));
-                    if (s > 1e-20f) for (auto& v : nm) v /= s;
-
-                    int out_idx = (dir == 0) ? (2*bid) : (2*bid+1);
-                    for (int i = 0; i < chi_out; i++)
-                        max_delta = std::max(max_delta, std::abs(nm[i] - msgs[out_idx][i]));
-                    msgs[out_idx] = nm;
-                }
-            }
-            if (verbose) printf("  [BLF_GPU] sweep %d max_delta=%.2e\n", sweep, max_delta);
-            if (max_delta < tol) { if (verbose) printf("  [BLF_GPU] converged at sweep %d\n", sweep); break; }
-        }
-
-        // Upload converged messages back to GPU for Bethe kernels
-        for (int i = 0; i < 2 * n_bonds; i++)
-            HIP_CHECK(hipMemcpy(h_msg_ptrs[i], msgs[i].data(),
-                msgs[i].size()*sizeof(float), hipMemcpyHostToDevice));
-
-        // Bethe partition function
-        hipLaunchKernelGGL(bethe_vertex_kernel,
-            dim3(n_sites), dim3(1), 0, 0,
-            (const float* const*)d_T, (const float* const*)d_msgs,
-            d_bond_sa, d_bond_sb, d_site_nb, d_site_bonds,
-            d_chi_ab, d_volab, d_log_av, d_sign_av, n_sites);
-
-        hipLaunchKernelGGL(bethe_edge_kernel,
-            dim3(n_bonds), dim3(1), 0, 0,
-            (const float* const*)d_msgs, d_chi_ab,
-            d_log_ze, d_sign_ze, n_bonds);
-
-        HIP_CHECK(hipDeviceSynchronize());
-
-        // Reduce on CPU (68 sites, 76 bonds — trivial)
-        std::vector<double> h_log_av(n_sites), h_sign_av(n_sites);
-        std::vector<double> h_log_ze(n_bonds), h_sign_ze(n_bonds);
-        HIP_CHECK(hipMemcpy(h_log_av.data(),  d_log_av,  n_sites*sizeof(double), hipMemcpyDeviceToHost));
-        HIP_CHECK(hipMemcpy(h_sign_av.data(), d_sign_av, n_sites*sizeof(double), hipMemcpyDeviceToHost));
-        HIP_CHECK(hipMemcpy(h_log_ze.data(),  d_log_ze,  n_bonds*sizeof(double), hipMemcpyDeviceToHost));
-        HIP_CHECK(hipMemcpy(h_sign_ze.data(), d_sign_ze, n_bonds*sizeof(double), hipMemcpyDeviceToHost));
-
-        double log_num = 0.0, sign_num = 1.0;
-        for (int v = 0; v < n_sites; v++) {
-            sign_num *= h_sign_av[v];
-            log_num  += h_log_av[v];
-        }
-        double log_den = 0.0, sign_den = 1.0;
-        for (int e = 0; e < n_bonds; e++) {
-            sign_den *= h_sign_ze[e];
-            log_den  += h_log_ze[e];
-        }
-
-        if (sign_num == 0.0) return 0.f;
-        if (verbose) printf("  [BLF_GPU] log_num=%.4f log_den=%.4f log_sa=%.4f log_sb=%.4f\n",
-                            log_num, log_den, log_scale_a, log_scale_b);
-        double result = sign_num * sign_den * std::exp(log_num - log_den + log_scale_a + log_scale_b);
-        if (verbose) printf("  [BLF_GPU] overlap = %.6f\n", (float)result);
-        return (float)result;
+        return result;
     }
 
 private:
@@ -574,6 +472,101 @@ private:
         }
     }
 
+    // Call from upload() after evolution — chi grows, must re-read from live grids.
+    void _rebuild_chi_metadata() {
+        std::fill(h_chia.begin(),  h_chia.end(),  1);
+        std::fill(h_chib.begin(),  h_chib.end(),  1);
+        std::fill(h_vola.begin(),  h_vola.end(),  1);
+        std::fill(h_volb.begin(),  h_volb.end(),  1);
+        std::fill(h_volab.begin(), h_volab.end(), 1);
+        std::fill(h_vol_T.begin(), h_vol_T.end(), 1);
+
+        for (auto& site : grid_a.sites) {
+            int sid = site.id, nb = 0;
+            for (int d = 0; d < MAX_DEGREE; d++) {
+                int bid = site.bond_id[d];
+                if (bid < 0) continue;
+                h_chia[sid * MAX_DEGREE_BLF + nb] = grid_a.bonds[bid].chi;
+                h_chib[sid * MAX_DEGREE_BLF + nb] = grid_b.bonds[bid].chi;
+                h_vola[sid] *= grid_a.bonds[bid].chi;
+                h_volb[sid] *= grid_b.bonds[bid].chi;
+                nb++;
+            }
+            h_volab[sid] = h_vola[sid] * h_volb[sid];
+            h_vol_T[sid] = 1;
+            for (int k = 0; k < h_nb[sid]; k++)
+                h_vol_T[sid] *= h_chia[sid*MAX_DEGREE_BLF+k] * h_chib[sid*MAX_DEGREE_BLF+k];
+        }
+        for (auto& bond : grid_a.bonds)
+            h_chi_ab[bond.id] = grid_a.bonds[bond.id].chi * grid_b.bonds[bond.id].chi;
+
+        // Push updated chi to device
+        HIP_CHECK(hipMemcpy(d_chia,   h_chia.data(),   n_sites*MAX_DEGREE_BLF*sizeof(int), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_chib,   h_chib.data(),   n_sites*MAX_DEGREE_BLF*sizeof(int), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_vola,   h_vola.data(),   n_sites*sizeof(int), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_volb,   h_volb.data(),   n_sites*sizeof(int), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_volab,  h_volab.data(),  n_sites*sizeof(int), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_chi_ab, h_chi_ab.data(), n_bonds*sizeof(int), hipMemcpyHostToDevice));
+    }
+
+    // Free and reallocate message buffers when chi has changed.
+    // T_v is NOT allocated — compute() uses phi-based approach that never builds T_v.
+    void _realloc_tv_and_msg_buffers() {
+        // Free old message sub-allocations (ping + pong)
+        std::vector<float*> h_msg_old(2*n_bonds), h_msg_new_old(2*n_bonds);
+        HIP_CHECK(hipMemcpy(h_msg_old.data(),     d_msgs,     2*n_bonds*sizeof(float*), hipMemcpyDeviceToHost));
+        HIP_CHECK(hipMemcpy(h_msg_new_old.data(), d_msgs_new, 2*n_bonds*sizeof(float*), hipMemcpyDeviceToHost));
+        for (auto p : h_msg_old)     if (p) HIP_CHECK(hipFree(p));
+        for (auto p : h_msg_new_old) if (p) HIP_CHECK(hipFree(p));
+
+        // Reallocate messages (ping + pong)
+        std::vector<float*> h_msg_ping(2*n_bonds), h_msg_pong(2*n_bonds);
+        for (int bid = 0; bid < n_bonds; bid++) {
+            HIP_CHECK(hipMalloc(&h_msg_ping[2*bid],   h_chi_ab[bid] * sizeof(float)));
+            HIP_CHECK(hipMalloc(&h_msg_ping[2*bid+1], h_chi_ab[bid] * sizeof(float)));
+            HIP_CHECK(hipMalloc(&h_msg_pong[2*bid],   h_chi_ab[bid] * sizeof(float)));
+            HIP_CHECK(hipMalloc(&h_msg_pong[2*bid+1], h_chi_ab[bid] * sizeof(float)));
+        }
+        HIP_CHECK(hipMemcpy(d_msgs,     h_msg_ping.data(), 2*n_bonds*sizeof(float*), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_msgs_new, h_msg_pong.data(), 2*n_bonds*sizeof(float*), hipMemcpyHostToDevice));
+
+        // scratch not used by phi-based compute()
+    }
+
+    // Download single-layer messages (chi×chi each) from a device into CPU vector.
+    // These are used as warm-start for bilinear_form_bp_cpu via StateSnapshot.
+    void _download_single_layer_msgs(
+        const std::vector<float*>* msg_gpu, int src_device,
+        std::vector<std::vector<float>>& msgs_cpu,
+        const Grid& grid)
+    {
+        msgs_cpu.resize(2 * n_bonds);
+        if (!msg_gpu) {
+            // No messages provided — use identity (chi×chi identity matrix per bond)
+            for (auto& bond : grid.bonds) {
+                int chi = bond.chi;
+                for (int dir=0; dir<2; dir++) {
+                    int idx = (dir==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    msgs_cpu[idx].assign(chi*chi, 0.f);
+                    for (int i=0; i<chi; i++) msgs_cpu[idx][i*(chi+1)] = 1.f/chi;
+                }
+            }
+            return;
+        }
+        int cur; HIP_CHECK(hipGetDevice(&cur));
+        HIP_CHECK(hipSetDevice(src_device));
+        for (auto& bond : grid.bonds) {
+            int chi = bond.chi;
+            for (int dir=0; dir<2; dir++) {
+                int idx = (dir==0) ? bond.msg_from_a() : bond.msg_from_b();
+                msgs_cpu[idx].resize(chi*chi);
+                HIP_CHECK(hipMemcpy(msgs_cpu[idx].data(), (*msg_gpu)[idx],
+                    chi*chi*sizeof(float), hipMemcpyDeviceToHost));
+            }
+        }
+        HIP_CHECK(hipSetDevice(cur));
+    }
+
     void _alloc_device() {
         // Metadata arrays
         auto alloc_int = [](int** p, int n) { HIP_CHECK(hipMalloc(p, n*sizeof(int))); };
@@ -601,21 +594,21 @@ private:
         HIP_CHECK(hipMemcpy(d_site_nb,    h_site_nb.data(),    n_sites*sizeof(int), hipMemcpyHostToDevice));
         HIP_CHECK(hipMemcpy(d_site_bonds, h_site_bonds.data(), n_sites*MAX_DEGREE_BLF*sizeof(int), hipMemcpyHostToDevice));
 
-        // Allocate T_v storage: one contiguous buffer per site
-        std::vector<float*> h_T_ptrs(n_sites);
-        for (int sid = 0; sid < n_sites; sid++)
-            HIP_CHECK(hipMalloc(&h_T_ptrs[sid], h_vol_T[sid] * sizeof(float)));
-        HIP_CHECK(hipMalloc(&d_T, n_sites * sizeof(float*)));
-        HIP_CHECK(hipMemcpy(d_T, h_T_ptrs.data(), n_sites*sizeof(float*), hipMemcpyHostToDevice));
+        // T_v not allocated — compute() uses phi-based approach (never builds T_v)
+        d_T = nullptr;
 
-        // Allocate message storage: 2*n_bonds vectors
-        std::vector<float*> h_msg_ptrs(2 * n_bonds);
+        // Allocate message storage: ping + pong buffers
+        std::vector<float*> h_msg_ptrs(2 * n_bonds), h_msg_new_ptrs(2 * n_bonds);
         for (int bid = 0; bid < n_bonds; bid++) {
-            HIP_CHECK(hipMalloc(&h_msg_ptrs[2*bid],   h_chi_ab[bid] * sizeof(float)));
-            HIP_CHECK(hipMalloc(&h_msg_ptrs[2*bid+1], h_chi_ab[bid] * sizeof(float)));
+            HIP_CHECK(hipMalloc(&h_msg_ptrs[2*bid],       h_chi_ab[bid] * sizeof(float)));
+            HIP_CHECK(hipMalloc(&h_msg_ptrs[2*bid+1],     h_chi_ab[bid] * sizeof(float)));
+            HIP_CHECK(hipMalloc(&h_msg_new_ptrs[2*bid],   h_chi_ab[bid] * sizeof(float)));
+            HIP_CHECK(hipMalloc(&h_msg_new_ptrs[2*bid+1], h_chi_ab[bid] * sizeof(float)));
         }
-        HIP_CHECK(hipMalloc(&d_msgs, 2*n_bonds * sizeof(float*)));
-        HIP_CHECK(hipMemcpy(d_msgs, h_msg_ptrs.data(), 2*n_bonds*sizeof(float*), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMalloc(&d_msgs,     2*n_bonds * sizeof(float*)));
+        HIP_CHECK(hipMalloc(&d_msgs_new, 2*n_bonds * sizeof(float*)));
+        HIP_CHECK(hipMemcpy(d_msgs,     h_msg_ptrs.data(),     2*n_bonds*sizeof(float*), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_msgs_new, h_msg_new_ptrs.data(), 2*n_bonds*sizeof(float*), hipMemcpyHostToDevice));
 
         // psi pointer arrays (populated during upload)
         std::vector<float*> null_ptrs(n_sites, nullptr);
@@ -629,6 +622,11 @@ private:
         HIP_CHECK(hipMalloc(&d_sign_av, n_sites*sizeof(double)));
         HIP_CHECK(hipMalloc(&d_log_ze,  n_bonds*sizeof(double)));
         HIP_CHECK(hipMalloc(&d_sign_ze, n_bonds*sizeof(double)));
+
+        // Scratch for degree-3 intermediate contraction:
+        // max vol_T across all sites (enough for any single-site intermediate)
+        // scratch not used by phi-based compute()
+        d_scratch = nullptr; d_scratch_size = 0;
     }
 
     // Upload psi tensors from a (possibly different) device into current device buffers.
@@ -655,15 +653,15 @@ private:
             HIP_CHECK(hipSetDevice(src_device));
             HIP_CHECK(hipMemcpy(buf.data(), psi_src_gpu[sid], vol*sizeof(float), hipMemcpyDeviceToHost));
 
-            // Normalize: same as CPU version
+            cpu_copy[sid] = buf;   // store RAW (unnormalized) for bilinear_form_bp_cpu
+
+            // Normalize for GPU upload
             float nm = 0.f;
             for (auto v : buf) nm = std::max(nm, std::abs(v));
             if (nm > 1e-30f) {
                 for (auto& v : buf) v /= nm;
                 log_scale_out += std::log((double)nm);
             }
-
-            cpu_copy[sid] = buf;   // keep normalized CPU copy for T_v build
 
             HIP_CHECK(hipSetDevice(cur_device));
             HIP_CHECK(hipMalloc(&h_ptrs[sid], vol*sizeof(float)));
@@ -733,7 +731,8 @@ private:
         if (d_T)     { HIP_CHECK(hipMemcpy(h_T.data(),     d_T,     n_sites*sizeof(float*),   hipMemcpyDeviceToHost)); for (auto p : h_T)     HIP_CHECK(hipFree(p)); HIP_CHECK(hipFree(d_T)); }
         if (d_psi_a) { HIP_CHECK(hipMemcpy(h_psi_a.data(), d_psi_a, n_sites*sizeof(float*),   hipMemcpyDeviceToHost)); for (auto p : h_psi_a) HIP_CHECK(hipFree(p)); HIP_CHECK(hipFree(d_psi_a)); }
         if (d_psi_b) { HIP_CHECK(hipMemcpy(h_psi_b.data(), d_psi_b, n_sites*sizeof(float*),   hipMemcpyDeviceToHost)); for (auto p : h_psi_b) HIP_CHECK(hipFree(p)); HIP_CHECK(hipFree(d_psi_b)); }
-        if (d_msgs)  { HIP_CHECK(hipMemcpy(h_msgs.data(),  d_msgs,  2*n_bonds*sizeof(float*), hipMemcpyDeviceToHost)); for (auto p : h_msgs)  HIP_CHECK(hipFree(p)); HIP_CHECK(hipFree(d_msgs)); }
+        if (d_msgs)     { HIP_CHECK(hipMemcpy(h_msgs.data(), d_msgs,     2*n_bonds*sizeof(float*), hipMemcpyDeviceToHost)); for (auto p : h_msgs) HIP_CHECK(hipFree(p)); HIP_CHECK(hipFree(d_msgs)); }
+        if (d_msgs_new) { HIP_CHECK(hipMemcpy(h_msgs.data(), d_msgs_new, 2*n_bonds*sizeof(float*), hipMemcpyDeviceToHost)); for (auto p : h_msgs) HIP_CHECK(hipFree(p)); HIP_CHECK(hipFree(d_msgs_new)); }
         if (d_nb)         HIP_CHECK(hipFree(d_nb));
         if (d_chia)       HIP_CHECK(hipFree(d_chia));
         if (d_chib)       HIP_CHECK(hipFree(d_chib));
@@ -749,5 +748,8 @@ private:
         if (d_sign_av)    HIP_CHECK(hipFree(d_sign_av));
         if (d_log_ze)     HIP_CHECK(hipFree(d_log_ze));
         if (d_sign_ze)    HIP_CHECK(hipFree(d_sign_ze));
+        if (d_scratch)    HIP_CHECK(hipFree(d_scratch));
+        if (blas_stream)  HIP_CHECK(hipStreamDestroy(blas_stream));
+        if (blas_handle)  rocblas_destroy_handle(blas_handle);
     }
 };
