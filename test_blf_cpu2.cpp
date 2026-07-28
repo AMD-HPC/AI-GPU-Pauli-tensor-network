@@ -82,6 +82,7 @@ struct SimN {
 
 int main(int argc, char** argv) {
     int chi_max = argc>1 ? atoi(argv[1]) : 4;
+    int n_steps = argc>2 ? atoi(argv[2]) : 1;
     float cutoff = 1e-4f;
     int center = 2, device = 0;
 
@@ -93,17 +94,17 @@ int main(int argc, char** argv) {
     HeavyHexState snl(gnl); Measures meas(handle,wnl);
     SimNL simnl(handle);
     snl.init_heisenberg(gnl,center);
-    simnl.step(snl,gnl,wnl,chi_max,cutoff);
+    for (int i=0; i<n_steps; i++) simnl.step(snl,gnl,wnl,chi_max,cutoff);
     float C_nl = meas.autocorrelation_with_bp(static_cast<Grid&>(gnl),snl.psi,snl.messages,center,100);
-    printf("C_nl(1)=%.6f\n",C_nl);
+    printf("C_nl(%d)=%.6f\n",n_steps,C_nl);
 
     FlatHeavyHexGrid gn1(chi_max); Workspace wn1(chi_max,3);
     HeavyHexState sn1(gn1);
     SimN simn(handle);
     sn1.init_heisenberg(gn1,center);
-    simn.step(sn1,gn1,wn1,chi_max,cutoff);
+    for (int i=0; i<n_steps; i++) simn.step(sn1,gn1,wn1,chi_max,cutoff);
     float C_n1 = meas.autocorrelation_with_bp(static_cast<Grid&>(gn1),sn1.psi,sn1.messages,center,100);
-    printf("C_n1(1)=%.6f\n",C_n1);
+    printf("C_n1(%d)=%.6f\n",n_steps,C_n1);
 
     StateSnapshot snap_nl, snap_n1;
     snap_nl.download(static_cast<Grid&>(gnl), snl.psi, snl.messages, device);
@@ -120,9 +121,14 @@ int main(int argc, char** argv) {
     float A00_new = BLF2::compute(snap_nl, snap_nl, 25, 1e-5f);
     float B0_new  = BLF2::compute(snap_nl, snap_n1, 25, 1e-5f);
     printf("A[0,0]=%.6f  B[0]=%.6f  t=%.2fs\n", A00_new, B0_new, (now_ms()-t0)/1000.0);
+    printf("Diff A[0,0]: %.2e  Diff B[0]: %.2e\n",
+           std::abs(A00_new-A00_ref), std::abs(B0_new-B0_ref));
 
-    printf("\nDiff A[0,0]: %.2e\n", std::abs(A00_new-A00_ref));
-    printf("Diff B[0]:   %.2e\n", std::abs(B0_new-B0_ref));
+    // Also test noisy-noisy pairs (not in reference comparison)
+    printf("\n--- Noisy-noisy self overlaps ---\n");
+    t0=now_ms();
+    float A11 = BLF2::compute(snap_n1, snap_n1, 25, 1e-5f);
+    printf("A[1,1]=<n1|n1>=%.6f  t=%.2fs\n", A11, (now_ms()-t0)/1000.0);
 
     rocblas_destroy_handle(handle);
     return 0;

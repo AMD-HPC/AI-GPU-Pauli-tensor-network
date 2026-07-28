@@ -261,7 +261,8 @@ int main(int argc, char** argv) {
             HIP_CHECK(hipSetDevice(1));
             double t_A=0, t_B=0, t_pair=0;
             for (int i=0; i<N_GAMMA; i++) {
-                A_ip[i][i] = blf_A[i][i]->compute(25, 1e-5f, false, &t_pair); t_A+=t_pair;
+                bool dbg = (step==3 && i==1);  // debug A[1,1] at step 3
+                A_ip[i][i] = blf_A[i][i]->compute(25, 1e-5f, dbg, &t_pair); t_A+=t_pair;
                 for (int j=i+1; j<N_GAMMA; j++) {
                     A_ip[i][j] = blf_A[i][j]->compute(25, 1e-5f, false, &t_pair); t_A+=t_pair;
                     A_ip[j][i] = A_ip[i][j];

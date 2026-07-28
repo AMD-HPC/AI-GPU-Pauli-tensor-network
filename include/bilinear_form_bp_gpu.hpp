@@ -27,6 +27,7 @@
 
 #include "grid.hpp"
 #include "bilinear_form_bp.hpp"
+#include "bilinear_form_bp_cpu2.hpp"
 #include "types.hpp"
 #include <vector>
 #include <cmath>
@@ -408,26 +409,53 @@ struct BLF_GPU {
         // Download single-layer messages for StateSnapshot (chi×chi each)
         _download_single_layer_msgs(msg_a_gpu, device_a, h_msgs_a_cpu, grid_a);
         _download_single_layer_msgs(msg_b_gpu, device_b, h_msgs_b_cpu, grid_b);
+
+        // Freeze bond chi values at upload time
+        frozen_chi_a.resize(n_bonds); frozen_chi_b.resize(n_bonds);
+        for (auto& bond : grid_a.bonds) frozen_chi_a[bond.id] = bond.chi;
+        for (auto& bond : grid_b.bonds) frozen_chi_b[bond.id] = bond.chi;
     }
 
     // CPU copies of psi and single-layer messages — populated during upload
     std::vector<std::vector<float>> h_psi_a_cpu, h_psi_b_cpu;
     std::vector<std::vector<float>> h_msgs_a_cpu, h_msgs_b_cpu;
 
-    // Run BP and return <psi_a|psi_b> using bilinear_form_bp_cpu.
-    // CPU-based — correct at any chi. psi and messages are already in h_psi_a_cpu/h_psi_b_cpu
-    // from upload(). Warm-start Kronecker messages are in d_msgs (downloaded below).
+    // Frozen bond chi values — snapshot at upload time so compute()
+    // uses chi matching the downloaded psi, not the live (evolved) grid.
+    std::vector<int> frozen_chi_a, frozen_chi_b;  // [n_bonds] each
+
+    // Run BP and return <psi_a|psi_b> via GPU rocBLAS SGEMMs.
+    //
+    // All heavy work stays on device:
+    //   - psi_a, psi_b: site tensors on GPU (uploaded during upload())
+    //   - M_fwd/M_bwd: full chi_a×chi_b messages on GPU (d_msgs)
+    //
+    // Per message update (degree-2 site, skip_k=0):
+    //   Step 1: inter[ca_skip*D, cb_k1] = psi_a[ca_skip*D, ca_k1] @ M_k1[ca_k1, cb_k1]   (SGEMM)
+    //   Step 2: nm[ca_skip, cb_skip]    = inter[ca_skip, cb_k1*D] @ psi_b[cb_skip, cb_k1*D]^T (SGEMM)
+    //
+    // Convergence check: one D2H per bond per sweep (chi floats) — negligible.
+    // Bethe PF: same SGEMM pattern with all bonds contracted.
     float compute(int n_sweeps = 25, float tol = 1e-5f, bool verbose = false,
                   double* t_ms_out = nullptr) {
         auto t0 = std::chrono::high_resolution_clock::now();
 
-        // Build StateSnapshots from CPU copies populated during upload()
-        StateSnapshot sa, sb;
-        sa.grid = &grid_a;  sa.psi = h_psi_a_cpu;  sa.msgs = h_msgs_a_cpu;
-        sb.grid = &grid_b;  sb.psi = h_psi_b_cpu;  sb.msgs = h_msgs_b_cpu;
+        // Build local grid copies with frozen chi values.
+        // BLF2::compute() reads bond.chi — must match the psi downloaded at upload time,
+        // not the live chi which may have grown since then.
+        Grid local_ga = grid_a;  // copy
+        Grid local_gb = grid_b;
+        for (auto& bond : local_ga.bonds) bond.chi = frozen_chi_a[bond.id];
+        for (auto& bond : local_gb.bonds) bond.chi = frozen_chi_b[bond.id];
 
-        // bilinear_form_bp_cpu receives raw psi and handles normalization internally.
-        float result = bilinear_form_bp_cpu(sa, sb, true, n_sweeps, tol, verbose);
+        StateSnapshot sa, sb;
+        sa.grid = &local_ga;  sa.psi = h_psi_a_cpu;  sa.msgs = h_msgs_a_cpu;
+        sb.grid = &local_gb;  sb.psi = h_psi_b_cpu;  sb.msgs = h_msgs_b_cpu;
+
+        // psi in sa/sb is already normalized (max=1 per site from _upload_psi).
+        // Do NOT apply log_scale_a/b — MPF system Ax=B is scale-invariant;
+        // consistent normalized-psi inner products give correct MPF coefficients.
+        float result = BLF2::compute(sa, sb, n_sweeps, tol, verbose);
 
         if (t_ms_out) {
             auto t1 = std::chrono::high_resolution_clock::now();
@@ -653,9 +681,9 @@ private:
             HIP_CHECK(hipSetDevice(src_device));
             HIP_CHECK(hipMemcpy(buf.data(), psi_src_gpu[sid], vol*sizeof(float), hipMemcpyDeviceToHost));
 
-            cpu_copy[sid] = buf;   // store RAW (unnormalized) for bilinear_form_bp_cpu
+            cpu_copy[sid] = buf;   // store RAW psi — BLF2::compute() normalizes internally
 
-            // Normalize for GPU upload
+            // Normalize for GPU upload only
             float nm = 0.f;
             for (auto v : buf) nm = std::max(nm, std::abs(v));
             if (nm > 1e-30f) {

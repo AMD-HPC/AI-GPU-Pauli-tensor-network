@@ -57,8 +57,8 @@ struct BLF2 {
     // psi_a, psi_b: CPU copies (from StateSnapshot).
     // msgs_a, msgs_b: single-layer messages for warm-start initialization.
     static float compute(
-        const StateSnapshot& sa,
-        const StateSnapshot& sb,
+        StateSnapshot sa,   // by value — we normalize psi in-place
+        StateSnapshot sb,
         int   n_sweeps = 25,
         float tol      = 1e-5f,
         bool  verbose  = false)
@@ -67,6 +67,25 @@ struct BLF2 {
         const Grid& gb = *sb.grid;
         int n_sites = ga.n_sites;
         int n_bonds = ga.n_bonds;
+
+        if (verbose) {
+            float na=0.f, nb_=0.f;
+            if (!sa.psi.empty() && sa.psi.size()>13) for(auto v:sa.psi[13]) na=std::max(na,std::abs(v));
+            if (!sb.psi.empty() && sb.psi.size()>13) for(auto v:sb.psi[13]) nb_=std::max(nb_,std::abs(v));
+            printf("  [BLF2] site13 psi_a max=%.4e psi_b max=%.4e  n_bonds=%d\n",na,nb_,n_bonds);
+            if (n_bonds>0) printf("  [BLF2] bond0 chi_a=%d chi_b=%d\n",
+                ga.bonds[0].chi, gb.bonds[0].chi);
+        }
+
+        // Normalize psi per site — accumulate log scale for Bethe correction.
+        double log_scale = 0.0;
+        for (int sid=0; sid<n_sites; sid++) {
+            float s=0.f; for(auto v:sa.psi[sid]) s=std::max(s,std::abs(v));
+            if(s>1e-30f){for(auto& v:sa.psi[sid])v/=s; log_scale+=std::log((double)s);}
+            s=0.f; for(auto v:sb.psi[sid]) s=std::max(s,std::abs(v));
+            if(s>1e-30f){for(auto& v:sb.psi[sid])v/=s; log_scale+=std::log((double)s);}
+        }
+        // Note: if psi is already normalized (max=1 per site), log_scale≈0 and this is a no-op.
 
         // Per-site metadata
         struct SiteMeta {
@@ -109,21 +128,12 @@ struct BLF2 {
             int mn = std::min(ca, cb);
             M_fwd[bid].assign(ca*cb, 0.f);
             M_bwd[bid].assign(ca*cb, 0.f);
-            // Initialize from diagonal of single-layer messages if available
-            if (!sa.msgs.empty() && (int)sa.msgs.size() > bond.msg_from_a()) {
-                const auto& ma = sa.msgs[bond.msg_from_a()];
-                const auto& mb = sb.msgs[bond.msg_from_a()];
-                for (int i=0; i<mn; i++) {
-                    float va = (int)ma.size() > i*(ca+1) ? std::abs(ma[i*(ca+1)]) : 1.f/mn;
-                    float vb = (int)mb.size() > i*(cb+1) ? std::abs(mb[i*(cb+1)]) : 1.f/mn;
-                    M_fwd[bid][i*cb+i] = va * vb;
-                    M_bwd[bid][i*cb+i] = va * vb;
-                }
-            } else {
-                for (int i=0; i<mn; i++) {
-                    M_fwd[bid][i*cb+i] = 1.f/mn;
-                    M_bwd[bid][i*cb+i] = 1.f/mn;
-                }
+            // Identity warm-start: diagonal = 1/min(ca,cb)
+            // Kronecker diagonal warm-start from single-layer messages is unreliable
+            // because QR-gauge messages may have near-zero diagonal entries.
+            for (int i=0; i<mn; i++) {
+                M_fwd[bid][i*cb+i] = 1.f/mn;
+                M_bwd[bid][i*cb+i] = 1.f/mn;
             }
         }
 
@@ -309,56 +319,58 @@ struct BLF2 {
 
                     } else {
                         // Degree-3: two non-skip bonds k1, k2
-                        // Find k1, k2 in order
+                        // Same two-step approach as degree-2, validated in test_phi_bp.py:
+                        // Step 1: inter[ia_skip, ia_k1, ib_k2, d] =
+                        //           sum_{ia_k2} psi_a[ia_skip,ia_k1,ia_k2,d] * M_k2[ia_k2,ib_k2]
+                        // Step 2: inter2[ia_skip, ib_k1, ib_k2, d] =
+                        //           sum_{ia_k1} inter[ia_skip,ia_k1,ib_k2,d] * M_k1[ia_k1,ib_k1]
+                        // Step 3: nm[ia_skip, ib_skip] =
+                        //           sum_{ib_k1,ib_k2,d} inter2[ia_skip,ib_k1,ib_k2,d]
+                        //                              * psi_b[ib_skip,ib_k1,ib_k2,d]
+                        // Cost: O(chi^3*D) — same as degree-2
+
                         int k1=-1, k2=-1;
                         for (int k=0; k<nb; k++) if(k!=skip_k) { if(k1<0) k1=k; else k2=k; }
-                        // k1 < k2 always
 
                         int ca1=sm.chi_a[k1], cb1=sm.chi_b[k1];
                         int ca2=sm.chi_a[k2], cb2=sm.chi_b[k2];
                         const float* M1 = get_msg(src, k1);
                         const float* M2 = get_msg(src, k2);
 
-                        // psi_a has 3 bond indices + d. Layout depends on skip_k and k1,k2.
-                        // Bonds in order: bond[0], bond[1], bond[2] → indices i0,i1,i2,d
-                        // We need to contract M_k1 over ia_k1 leaving ib_k1,
-                        //                    M_k2 over ia_k2 leaving ib_k2,
-                        // then contract psi_b[i_skip_b, ib_k1, ib_k2, d] (using ib indices)
-
-                        // Step 1: contract k2 (last non-skip) into psi_a
-                        // inter1 has indices [i_skip, i_k1 or ia_k1, ib_k2, d]
-                        // (keeping ia_k1 for next step with M1)
-
-                        // This is getting complex. Use the general approach:
-                        // For each (i_skip_a, i_skip_b):
-                        //   contract all non-skip a-indices with M row, b-indices with M col
-                        // Implement via enumeration for correctness (then optimize later)
-
-                        // Enumerate all combinations of non-skip indices
-                        for (int ia_s=0; ia_s<ca_skip; ia_s++) {
-                            for (int ib_s=0; ib_s<cb_skip; ib_s++) {
-                                float val = 0.f;
-                                for (int ia1=0; ia1<ca1; ia1++)
-                                for (int ib1=0; ib1<cb1; ib1++)
-                                for (int ia2=0; ia2<ca2; ia2++)
-                                for (int ib2=0; ib2<cb2; ib2++) {
-                                    float m1 = M1[ia1*cb1+ib1];
-                                    float m2 = M2[ia2*cb2+ib2];
-                                    // psi_a index: depends on bond order
-                                    // Bond order: bond[0],bond[1],bond[2]
-                                    // Reconstruct flat index for psi_a given (i_skip_a, ia1, ia2)
-                                    int ia[3], ib[3];
-                                    ia[skip_k]=ia_s; ia[k1]=ia1; ia[k2]=ia2;
-                                    ib[skip_k]=ib_s; ib[k1]=ib1; ib[k2]=ib2;
-                                    int flat_a = (ia[0]*sm.chi_a[1]+ia[1])*sm.chi_a[2]+ia[2];
-                                    int flat_b = (ib[0]*sm.chi_b[1]+ib[1])*sm.chi_b[2]+ib[2];
-                                    for (int d=0; d<D; d++)
-                                        val += psi_a[flat_a*D+d]*psi_b[flat_b*D+d]*m1*m2;
-                                }
-                                nm[ia_s*cb_skip+ib_s] += val;
-                            }
+                        // Step 1: inter[ia_skip, ia_k1, ib_k2, d] — size ca_skip*ca1*cb2*D
+                        std::vector<float> inter(ca_skip*ca1*cb2*D, 0.f);
+                        for (int is=0; is<ca_skip; is++)
+                        for (int i1=0; i1<ca1; i1++)
+                        for (int i2=0; i2<ca2; i2++) {
+                            int idx[3]; idx[skip_k]=is; idx[k1]=i1; idx[k2]=i2;
+                            int fa=(idx[0]*sm.chi_a[1]+idx[1])*sm.chi_a[2]+idx[2];
+                            for (int jb2=0; jb2<cb2; jb2++)
+                                for (int d=0; d<D; d++)
+                                    inter[((is*ca1+i1)*cb2+jb2)*D+d] +=
+                                        psi_a[fa*D+d] * M2[i2*cb2+jb2];
                         }
-                        // Note: degree-3 is O(chi^5*D) here -- will optimize with SGEMM later
+
+                        // Step 2: inter2[ia_skip, ib_k1, ib_k2, d] — size ca_skip*cb1*cb2*D
+                        std::vector<float> inter2(ca_skip*cb1*cb2*D, 0.f);
+                        for (int is=0; is<ca_skip; is++)
+                        for (int i1=0; i1<ca1; i1++)
+                        for (int jb2=0; jb2<cb2; jb2++)
+                        for (int jb1=0; jb1<cb1; jb1++)
+                            for (int d=0; d<D; d++)
+                                inter2[((is*cb1+jb1)*cb2+jb2)*D+d] +=
+                                    inter[((is*ca1+i1)*cb2+jb2)*D+d] * M1[i1*cb1+jb1];
+
+                        // Step 3: nm[ia_skip, ib_skip] — contract inter2 with psi_b
+                        for (int is=0; is<ca_skip; is++)
+                        for (int ib_s=0; ib_s<cb_skip; ib_s++)
+                        for (int jb1=0; jb1<cb1; jb1++)
+                        for (int jb2=0; jb2<cb2; jb2++) {
+                            int jdx[3]; jdx[skip_k]=ib_s; jdx[k1]=jb1; jdx[k2]=jb2;
+                            int fb=(jdx[0]*sm.chi_b[1]+jdx[1])*sm.chi_b[2]+jdx[2];
+                            for (int d=0; d<D; d++)
+                                nm[is*cb_skip+ib_s] +=
+                                    inter2[((is*cb1+jb1)*cb2+jb2)*D+d] * psi_b[fb*D+d];
+                        }
                     }
 
                     // Normalize
@@ -388,37 +400,29 @@ struct BLF2 {
             const float* psi_a = sa.psi[sid].data();
             const float* psi_b = sb.psi[sid].data();
 
-            // a_v = sum_{all_a, all_b, d} psi_a[...]*psi_b[...] * prod_k M_k[ia_k,ib_k]
-            // Use incremental contraction: contract each incoming M into psi_a,
-            // then sum_d with corresponding psi_b factor.
-            // For simplicity: enumerate (fast enough for Bethe since only 68 sites)
+            // a_v = sum_{ia_flat, ib_flat, d} psi_a[ia,d]*psi_b[ib,d] * prod_k M_k[ia_k, ib_k]
+            // Joint enumeration over (ia_flat, ib_flat) — correct, no marginal factorization.
             int vola = sm.vola, volb = sm.volb;
             double a_v = 0.0;
             for (int ia=0; ia<vola; ia++) {
                 int tmp=ia;
                 int ia_k[MAX_DEGREE];
                 for (int k=nb-1; k>=0; k--) { ia_k[k]=tmp%sm.chi_a[k]; tmp/=sm.chi_a[k]; }
-                float prod_a=1.f;
-                for (int k=0; k<nb; k++) {
-                    // sum over ib_k of M_k[ia_k, ib_k] = row sum (marginal)
-                    const float* Mk = get_msg(sid, k);
-                    float s=0.f;
-                    for (int j=0; j<sm.chi_b[k]; j++) s += Mk[ia_k[k]*sm.chi_b[k]+j];
-                    prod_a *= s;
-                }
+
                 for (int ib=0; ib<volb; ib++) {
                     int tmp2=ib;
                     int ib_k[MAX_DEGREE];
                     for (int k=nb-1; k>=0; k--) { ib_k[k]=tmp2%sm.chi_b[k]; tmp2/=sm.chi_b[k]; }
-                    float prod_b=1.f;
+
+                    // Joint message product M_k[ia_k, ib_k] for all bonds
+                    float msg_prod = 1.f;
                     for (int k=0; k<nb; k++) {
                         const float* Mk = get_msg(sid, k);
-                        float s=0.f;
-                        for (int j=0; j<sm.chi_a[k]; j++) s += Mk[j*sm.chi_b[k]+ib_k[k]];
-                        prod_b *= s;
+                        msg_prod *= Mk[ia_k[k]*sm.chi_b[k] + ib_k[k]];
                     }
+
                     for (int d=0; d<D; d++)
-                        a_v += (double)psi_a[ia*D+d] * (double)psi_b[ib*D+d] * prod_a * prod_b;
+                        a_v += (double)psi_a[ia*D+d] * (double)psi_b[ib*D+d] * msg_prod;
                 }
             }
             sign_num *= (a_v>0?1.0:(a_v<0?-1.0:0.0));
@@ -436,7 +440,7 @@ struct BLF2 {
         }
 
         if (sign_num==0.0) return 0.f;
-        double result = sign_num*sign_den*std::exp(log_num-log_den);
+        double result = sign_num*sign_den*std::exp(log_num-log_den+log_scale);
         if (verbose) printf("  [BLF2] overlap=%.6f\n",(float)result);
         return (float)result;
     }
