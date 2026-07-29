@@ -359,7 +359,79 @@ computation beyond the Trotter evolution already performed.
 
 This formulation is also a natural scaffold for the full quantum inner product
 MPF: replacing $A_{ij}$ with $\langle\psi_i|\psi_j\rangle$ recovers the
-complete formulation used in \cite{mpf-ref}, which we leave for future work.
+complete formulation used in \cite{mpf-ref}.
+Below we describe the algorithm and block structure for computing these
+inner products efficiently on GPU.
+
+\subsection*{Quantum inner product via double-layer belief propagation}
+
+The inner product between two Heisenberg-picture operator states
+$|\psi_a\rangle$ and $|\psi_b\rangle$ — both living on the heavy-hex graph
+as tensor networks with bond dimension $\chi$ — is computed by contracting
+a \emph{double-layer} tensor network.
+At each site $v$, the single-layer site tensor $\psi_v[\mathbf{i}, d]$
+(bond indices $\mathbf{i}$, Pauli index $d\in\{I,X,Y,Z\}$) becomes:
+\begin{equation}
+    T_v[\mathbf{i}_a, \mathbf{i}_b]
+    \;=\; \sum_{d=1}^{D} \psi_a[v, \mathbf{i}_a, d]\;\psi_b[v, \mathbf{i}_b, d]
+    \label{eq:Tv}
+\end{equation}
+where $\mathbf{i}_a$ and $\mathbf{i}_b$ are \emph{independent} bond indices
+for the two layers, each ranging over $\chi$ values.
+Each bond of the double-layer network carries a $\chi\times\chi$ message
+matrix $M_e[i_a,i_b]$, and the inner product follows from the
+Bethe partition function:
+\begin{equation}
+    \langle\psi_a|\psi_b\rangle
+    \;\approx\;
+    \frac{\prod_v a_v}{\prod_e z_e},
+    \qquad
+    a_v = \sum_{\mathbf{i}_a,\mathbf{i}_b} T_v\!\prod_e M_e,
+    \quad
+    z_e = \sum_{i_a,i_b} M_e^{\to}[i_a,i_b]\,M_e^{\leftarrow}[i_a,i_b]
+\end{equation}
+which is the BP approximation (exact on trees, approximate on the loopy heavy-hex graph).
+
+\paragraph{Message update without building $T_v$.}
+Constructing $T_v$ explicitly costs $O(\chi^{2\,\text{deg}})$ — for degree-3
+junction sites this is $O(\chi^6)$, which is intractable at $\chi\gtrsim 10$.
+Instead, we contract $M$ into $\psi$ \emph{before} forming the outer product,
+giving $O(\chi^3 D)$ per message update.
+For a degree-2 (arm) site $v$ with bonds $k_{\rm skip}$ and $k_1$,
+the outgoing message update is performed in two steps:
+\begin{align}
+    \phi_a[i_{a,{\rm skip}},\, j_{b,1},\, d]
+    &= \sum_{i_{a,1}} \psi_a[v,\, i_{a,{\rm skip}},\, i_{a,1},\, d]
+       \cdot M_{k_1}[i_{a,1},\, j_{b,1}]
+    \label{eq:step1}\\
+    M_{k_{\rm skip}}^{\rm new}[i_{a,{\rm skip}},\, i_{b,{\rm skip}}]
+    &= \sum_{j_{b,1},\, d} \phi_a[i_{a,{\rm skip}},\, j_{b,1},\, d]
+       \cdot \psi_b[v,\, i_{b,{\rm skip}},\, j_{b,1},\, d]
+    \label{eq:step2}
+\end{align}
+Equation~(\ref{eq:step1}) contracts the incoming message $M_{k_1}$ into
+$\psi_a$ over bond index $i_{a,1}$, producing an intermediate tensor
+$\phi_a$ of shape $[\chi, \chi, D]$.
+Equation~(\ref{eq:step2}) contracts $\phi_a$ with $\psi_b$ over the shared
+bond $j_{b,1}$ and physical index $d$, yielding the new $\chi\times\chi$
+outgoing message.
+For degree-3 (junction) sites two sequential contractions of the form
+(\ref{eq:step1}) precede the final step~(\ref{eq:step2}), keeping the
+cost at $O(\chi^3 D)$ throughout.
+
+\paragraph{GPU block structure.}
+Both steps map directly to \textsc{Blas} matrix operations.
+Step~(\ref{eq:step1}) is implemented as a single
+\texttt{rocblas\_sgemm\_strided\_batched} call with batch count $D=4$:
+for each Pauli index $d$, the slice $\psi_a[\cdot,\cdot,d]$ is a
+$\chi\times\chi$ matrix, and the contraction with $M_{k_1}[\chi,\chi]$
+is a standard GEMM.
+Step~(\ref{eq:step2}) accumulates $D$ sequential GEMM calls.
+The dominant cost per message update is therefore two GEMM operations on
+$\chi\times\chi$ matrices — $O(\chi^3)$ — compared to $O(\chi^6)$ for the
+naive T$_v$ approach.
+At $\chi=70$ this reduces the cost per inner product from $\sim 233$\,s
+(CPU, $O(\chi^6)$) to a target of $\sim 5$\,s (GPU GEMM, $O(\chi^3 D)$).
 
 
 The polynomial extrapolation is a Taylor approximation in $\gamma$, valid when

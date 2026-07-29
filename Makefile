@@ -131,6 +131,15 @@ main_heavyhex_gamma_mpf_ip: main_heavyhex_gamma_mpf_ip.cpp $(HEADERS) include/he
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_gamma_mpf_ip main_heavyhex_gamma_mpf_ip.cpp $(LIBS)
 	@echo "Built main_heavyhex_gamma_mpf_ip"
 
+test_blf_gpu3: test_blf_gpu3.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_gamma1_data.hpp \
+	include/bilinear_form_bp.hpp \
+	include/bilinear_form_bp_cpu2.hpp \
+	include/bilinear_form_bp_gpu3.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test_blf_gpu3 test_blf_gpu3.cpp $(LIBS)
+	@echo "Built test_blf_gpu3"
+
 test_blf_sgemm: test_blf_sgemm.cpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test_blf_sgemm test_blf_sgemm.cpp $(LIBS)
 	@echo "Built test_blf_sgemm"
