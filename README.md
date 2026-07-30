@@ -395,3 +395,88 @@ Julia reference implementation:
 Physics background: Heisenberg-picture tensor network methods for 2D quantum
 dynamics; Bethe approximation for operator inner products; Vidal canonical form
 for matrix product operators.
+
+---
+
+## Heavy-Hex MPF Extension
+
+Extension of CppSim to the heavy-hex lattice (68 sites, 76 bonds) used in
+superconducting quantum processors, with hardware noise model and
+Multi-Product Formula (MPF) quantum error mitigation.
+
+### Paper
+
+**"Tensor Network Simulation of the Heisenberg Model on Heavy-Hex Lattices"**
+Paolo D'Alberto + Claude (Anthropic). arXiv:2606.30985 [cs.MS].
+
+### Key results
+
+| Metric | Value |
+|--------|-------|
+| Chi convergence | χ=200 gives \|error\|<1e-4 (ref χ=430) |
+| Speedup vs Julia | 9-10× at saturated χ=430 |
+| Gamma-MPF (γ=1/2/3, ε=0.1) | 7-8% error at 10 cycles, 4.4s total |
+| Inner product MPF, GPU | 0.2s per cycle at χ=50 (4× faster than Julia) |
+| Pareto result | Poor man's MPF dominates at all χ and cutoff in QR gauge |
+
+### Binaries
+
+```bash
+# Build all heavy-hex targets
+make PHYS_DIM=4 main_heavyhex_gamma_mpf      # gamma-MPF, C(t) only
+make PHYS_DIM=4 main_heavyhex_gamma_mpf_ip   # single-GPU inner product dump
+make PHYS_DIM=4 main_heavyhex_gamma_mpf_2gpu # 2-GPU: Trotter + inner products
+```
+
+### Run gamma-MPF
+
+```bash
+./main_heavyhex_gamma_mpf_ip [chi_max] [n_steps] [cutoff]
+# Output: STEP C_nl C_n1 C_n2 C_n3  IP_A ...  IP_B ...  chi t_cycle t_trotter t_ip_wall
+```
+
+### Run sweep (25 combinations: 5 chi × 5 cutoff)
+
+```bash
+bash run_ip_sweep.sh
+# Logs → logs/ip_sweep_YYYYMMDD_HHMMSS/
+```
+
+### Generate figures
+
+```bash
+# Multi-chi log-error comparison + Pareto frontier
+python3 plot_ip_sweep.py --logdir logs/ip_sweep_YYYYMMDD_HHMMSS
+
+# Per-cycle timing (t_cycle, t_Trotter, t_IP_wall)
+python3 plot_ip_timing.py --ip /path/to/log.log
+
+# Single-run MPF comparison (poor man's vs inner product)
+python3 analyze_ip_mpf.py --ip /path/to/log.log
+```
+
+### 2-GPU architecture
+
+```
+GPU 0: all Trotter (noiseless + 3 noisy states, sequential)
+GPU 1: all inner products (9 pairs in parallel streams)
+t_cycle = max(t_Trotter, t_IP_wall)
+```
+
+At χ=250: t_Trotter≈80s, t_IP≈11s — inner products add zero wall-clock overhead.
+Compared to Julia reference at 350s/cycle: **4× speedup**.
+
+### Scientific conclusion
+
+Inner product MPF with QR gauge is **gauge-limited**, not compute-limited:
+- Error is insensitive to χ or cutoff — Pareto frontier entirely dominated by poor man's MPF
+- Consistent systematic bias (not random scatter) confirms correct implementation
+- Path forward: symmetric gauge → diagonal messages → inner product MPF competitive
+
+### Python dependencies (plotting only)
+
+```
+numpy matplotlib
+```
+
+No special dependencies beyond rocBLAS/rocSOLVER already required for building.
