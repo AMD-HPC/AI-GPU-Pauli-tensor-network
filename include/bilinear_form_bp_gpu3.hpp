@@ -42,29 +42,55 @@ __global__ void normalize_msg_gpu3(float* m, int n) {
     if (s > 1e-20f) for (int i=0; i<n; i++) m[i] /= s;
 }
 
+// ── Max-delta kernel: atomically accumulate max|new-old| into d_delta ────────
+// Launched per message: grid=(n_msgs), block=(1)
+// Compares current message (ping) against previous (pong, before swap)
+__global__ void max_delta_kernel(
+    const float* __restrict__ m_new,
+    const float* __restrict__ m_old,
+    float* __restrict__ d_delta,
+    int n)
+{
+    if (threadIdx.x != 0) return;
+    float local_max = 0.f;
+    for (int i=0; i<n; i++) local_max = fmaxf(local_max, fabsf(m_new[i]-m_old[i]));
+    atomicMax((int*)d_delta, __float_as_int(local_max));  // bit-cast trick (valid for positive floats)
+}
+
 // ── Transpose kernel: psi[n1, n2, D] → out[D, n1, n2] ───────────────────────
-// Launched as grid=(n1*n2*D / 256 + 1), block=(256)
 __global__ void transpose_to_batch_kernel(
     const float* __restrict__ psi, float* __restrict__ out,
     int n1, int n2, int total)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= total) return;
-    // idx = i1*n2*D + i2*D + d
     int d  = idx % D_BLF_G3;
     int i2 = (idx / D_BLF_G3) % n2;
     int i1 = idx / (D_BLF_G3 * n2);
-    // out[d, i1, i2] = out[d*n1*n2 + i1*n2 + i2]
     out[d*n1*n2 + i1*n2 + i2] = psi[idx];
 }
 
+// ── Swap axes kernel: psi[n1, n2, D] → out[n2, n1, D] ───────────────────────
+// Used for skip_k=1 on degree-2 sites: swaps the two bond axes, keeps D last.
+__global__ void swap_axes01_kernel(
+    const float* __restrict__ psi, float* __restrict__ out,
+    int n1, int n2, int total)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+    // idx = i1*n2*D + i2*D + d  (row-major [n1,n2,D])
+    int d  = idx % D_BLF_G3;
+    int i2 = (idx / D_BLF_G3) % n2;
+    int i1 = idx / (D_BLF_G3 * n2);
+    // out[i2, i1, d] at i2*n1*D + i1*D + d
+    out[i2*n1*D_BLF_G3 + i1*D_BLF_G3 + d] = psi[idx];
+}
+
 // ── Rearrange kernel: psi[a,b,c,D] → out[skip,k1,k2,D] permuting bond axes ──
-// Handles deg-3 reordering entirely on GPU.
-// All three bond orders: skip_k ∈ {0,1,2}
 __global__ void rearrange_deg3_kernel(
     const float* __restrict__ psi, float* __restrict__ out,
-    int c0, int c1, int c2,          // original chi_a[0..2]
-    int skip_k, int k1_idx, int k2_idx,  // target order: skip, k1, k2
+    int c0, int c1, int c2,
+    int skip_k, int k1_idx, int k2_idx,
     int ca_skip, int ca1, int ca2, int total)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -74,16 +100,75 @@ __global__ void rearrange_deg3_kernel(
     int i2   = rem % ca2; rem /= ca2;
     int i1   = rem % ca1; rem /= ca1;
     int i_sk = rem;
-    // Original indices in bond order 0,1,2
     int orig[3]; orig[skip_k]=i_sk; orig[k1_idx]=i1; orig[k2_idx]=i2;
     int src_flat = (orig[0]*c1 + orig[1])*c2 + orig[2];
     out[idx] = psi[src_flat*D_BLF_G3 + d];
+}
+
+// ── Rearrange inter1: [D, ca_skip*ca1, cb2] → [ca_skip*ca1*cb2, D] interleaved
+// then reinterpret as [cb2*D, ca_skip, ca1] for step B strided_batched
+// Combined: out[bd*ca_skip*ca1 + is*ca1 + i1] = in[d*ca_skip*ca1*cb2 + (is*ca1+i1)*cb2 + jb2]
+//           where bd = d*cb2 + jb2
+__global__ void rearrange_inter1_kernel(
+    const float* __restrict__ in, float* __restrict__ out,
+    int ca_skip, int ca1, int cb2, int D_, int total)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+    // out indexed as [bd, ca_skip, ca1] flat = bd*ca_skip*ca1 + is*ca1 + i1
+    int i1   = idx % ca1;
+    int is   = (idx / ca1) % ca_skip;
+    int bd   = idx / (ca1*ca_skip);   // bd = d*cb2 + jb2
+    int d    = bd / cb2;
+    int jb2  = bd % cb2;
+    // in[D, ca_skip*ca1, cb2]: in[d*ca_skip*ca1*cb2 + (is*ca1+i1)*cb2 + jb2]
+    out[idx] = in[d*ca_skip*ca1*cb2 + (is*ca1+i1)*cb2 + jb2];
+}
+
+// ── Rearrange inter2: [cb2*D, ca_skip, cb1] → [ca_skip, cb1*cb2*D] flat
+// out[is*(cb1*cb2*D) + jb1*cb2*D + jb2*D + d] = in[bd*ca_skip*cb1 + is*cb1 + jb1]
+//   where bd = d*cb2 + jb2
+__global__ void rearrange_inter2_kernel(
+    const float* __restrict__ in, float* __restrict__ out,
+    int ca_skip, int cb1, int cb2, int D_, int total)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+    // out[ca_skip, cb1*cb2*D]: idx = is*(cb1*cb2*D) + jb1*cb2*D + jb2*D + d
+    int d   = idx % D_;
+    int jb2 = (idx / D_) % cb2;
+    int jb1 = (idx / (D_*cb2)) % cb1;
+    int is  = idx / (D_*cb2*cb1);
+    int bd  = d*cb2 + jb2;
+    out[idx] = in[bd*ca_skip*cb1 + is*cb1 + jb1];
+}
+
+// ── Rearrange psi_b for degree-3: [orig_order, D] → [cb_skip, cb1, cb2, D]
+// skip_k, k1, k2 define the target ordering
+__global__ void rearrange_psi_b_deg3_kernel(
+    const float* __restrict__ psi_b, float* __restrict__ out,
+    int c0, int c1, int c2,          // original chi_b[0..2]
+    int skip_k, int k1_idx, int k2_idx,
+    int cb_skip, int cb1, int cb2, int D_, int total)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= total) return;
+    int d    = idx % D_;
+    int rem  = idx / D_;
+    int jb2  = rem % cb2; rem /= cb2;
+    int jb1  = rem % cb1; rem /= cb1;
+    int ib_s = rem;
+    int orig[3]; orig[skip_k]=ib_s; orig[k1_idx]=jb1; orig[k2_idx]=jb2;
+    int fb = (orig[0]*c1 + orig[1])*c2 + orig[2];
+    out[idx] = psi_b[fb*D_ + d];
 }
 
 // ── BLF_GPU3 ─────────────────────────────────────────────────────────────────
 
 struct BLF_GPU3 {
     rocblas_handle handle;
+    hipStream_t    stream = nullptr;   // dedicated stream — enables concurrent BLF_GPU3 objects
+    float*         d_delta = nullptr;  // GPU convergence accumulator (one float)
     int n_sites, n_bonds;
 
     // Per-site metadata (frozen at upload time)
@@ -116,7 +201,11 @@ struct BLF_GPU3 {
     const Grid* grid_a_ptr = nullptr;
     const Grid* grid_b_ptr = nullptr;
 
-    BLF_GPU3(rocblas_handle h) : handle(h) {}
+    BLF_GPU3(rocblas_handle h) : handle(h) {
+        HIP_CHECK(hipStreamCreate(&stream));
+        rocblas_set_stream(handle, stream);
+        HIP_CHECK(hipMalloc(&d_delta, sizeof(float)));
+    }
     ~BLF_GPU3() { _free(); }
 
     // ── upload ────────────────────────────────────────────────────────────────
@@ -227,11 +316,7 @@ struct BLF_GPU3 {
                 }
             }
         }
-        if(d_scratch)  HIP_CHECK(hipFree(d_scratch));
-        if(d_scratch2) HIP_CHECK(hipFree(d_scratch2));
-        scratch_elems = max_sz;
-        HIP_CHECK(hipMalloc(&d_scratch,  max_sz*sizeof(float)));
-        HIP_CHECK(hipMalloc(&d_scratch2, max_sz*sizeof(float)));
+        // d_scratch2 is now allocated in _alloc_psi_T_buffers() with correct deg-3 sizing
     }
 
     // ── compute ───────────────────────────────────────────────────────────────
@@ -304,21 +389,15 @@ struct BLF_GPU3 {
                             // psi_b[cb_skip, cb1, D] — skip_k outermost
                             _step2_gpu(psi_b, ca_skip, cb1, cb_skip, out_M);
                         } else {
-                            // skip_k=1: psi_a[ca1, ca_skip, D] — transpose to [ca_skip, ca1, D]
-                            // Use GPU kernel: treat as [ca1, ca_skip, D] → transpose_to_batch
-                            // gives [D, ca1, ca_skip] — not what we want.
-                            // Simpler: D2H transpose on CPU (skip_k=1 is minority, optimize later)
-                            auto cpu_transpose = [&](float* d_src, int n1, int n2, float* d_dst){
-                                int sz=n1*n2*D_BLF_G3;
-                                std::vector<float> h(sz),ht(sz);
-                                HIP_CHECK(hipMemcpy(h.data(),d_src,sz*sizeof(float),hipMemcpyDeviceToHost));
-                                for(int i=0;i<n1;i++)for(int j=0;j<n2;j++)for(int d=0;d<D_BLF_G3;d++)
-                                    ht[(j*n1+i)*D_BLF_G3+d]=h[(i*n2+j)*D_BLF_G3+d];
-                                HIP_CHECK(hipMemcpy(d_dst,ht.data(),sz*sizeof(float),hipMemcpyHostToDevice));
-                            };
-                            cpu_transpose(psi_a, ca1, ca_skip, d_scratch2); // [ca_skip,ca1,D]
+                            // skip_k=1: psi_a[ca1, ca_skip, D] → [ca_skip, ca1, D] via GPU kernel
+                            int total2 = ca1*ca_skip*D_BLF_G3;
+                            hipLaunchKernelGGL(swap_axes01_kernel, (total2+255)/256, 256, 0, stream,
+                                psi_a, d_scratch2, ca1, ca_skip, total2);
                             _step1_gpu(d_scratch2, ca_skip, ca1, M1, cb1);
-                            cpu_transpose(psi_b, cb1, cb_skip, d_scratch2); // [cb_skip,cb1,D]
+                            // psi_b[cb1, cb_skip, D] → [cb_skip, cb1, D]
+                            int total3 = cb1*cb_skip*D_BLF_G3;
+                            hipLaunchKernelGGL(swap_axes01_kernel, (total3+255)/256, 256, 0, stream,
+                                psi_b, d_scratch2, cb1, cb_skip, total3);
                             _step2_gpu(d_scratch2, ca_skip, cb1, cb_skip, out_M);
                         }
 
@@ -330,158 +409,116 @@ struct BLF_GPU3 {
                         int ca2=sm.chi_a[k2],cb2=sm.chi_b[k2];
                         float* M1=get_M(k1); float* M2=get_M(k2);
 
-                        // Degree-3: GPU SGEMM path
-                        // Rearrange psi_a so skip_k is outermost index
+                        // ── Degree-3: full GPU path ──────────────────────────
+                        // Follows paper equations (6)-(7) exactly:
+                        //   Step A: phi1[ca_skip*ca1, cb2, D] = psi_a_r[ca_skip,ca1,ca2,D] @_{ca2} M2
+                        //   Step B: phi2[cb2*D, ca_skip, cb1] = phi1_r[cb2*D,ca_skip,ca1] @_{ca1} M1
+                        //   Step C: nm[ca_skip,cb_skip] = phi2_flat[ca_skip,K] @ psi_b_r[cb_skip,K]^T
+                        //           where K = cb1*cb2*D
+                        // All rearrangements via GPU kernels — no D2H.
+
+                        int BD = cb2*D_BLF_G3;  // combined batch dimension for step B
+                        int K  = cb1*cb2*D_BLF_G3;  // flat K for step C
+
+                        // ── Step A ──────────────────────────────────────────
+                        // Rearrange psi_a → psi_a_r[ca_skip, ca1, ca2, D] (GPU)
                         _rearrange_deg3_gpu(psi_a, sm.chi_a, skip_k, k1, k2,
                                             ca_skip, ca1, ca2, d_scratch2);
-                        // d_scratch2: psi_a_r[ca_skip, ca1, ca2, D]
-
-                        // Step A: inter1[ca_skip*ca1, cb2, D] = psi_a_r[:,: ,ca2,:] @ M2[ca2,cb2]
-                        // Treat psi_a_r as [ca_skip*ca1, ca2, D] → step1 with ca_skip*ca1 rows
+                        // Step 1 SGEMM: treat psi_a_r as [ca_skip*ca1, ca2, D]
                         _step1_gpu(d_scratch2, ca_skip*ca1, ca2, M2, cb2);
-                        // d_inter_T: [D, ca_skip*ca1, cb2]
+                        // d_inter_T: [D, ca_skip*ca1, cb2]  (from _step1_gpu output)
 
-                        // Step B: inter2[ca_skip, cb1, cb2*D] = inter1[ca_skip,ca1,cb2*D] @ M1[ca1,cb1]
-                        // Treat inter1 as [ca_skip, ca1, cb2*D]: need M1 contracted over ca1
-                        // inter1 is stored as d_inter_T[D, ca_skip*ca1, cb2]
-                        // Rearrange to [ca_skip, ca1, D*cb2] → use scratch
-                        // Actually: for each (d,cb2 pair), inter1_d[ca_skip,ca1] @ M1 → inter2_d[ca_skip,cb1]
-                        // This is strided_batched with batch = D*cb2
-                        // inter1 in d_inter_T[D, ca_skip*ca1, cb2]:
-                        //   batch db = d*cb2+jb2, A_db = d_inter_T[d*ca_skip*ca1*cb2 + ... ]
-                        // This requires a rearrangement. Simpler: download inter_T, rearrange, re-upload
-                        // then do strided_batched over D*cb2 batches.
+                        // ── Step B ──────────────────────────────────────────
+                        // Rearrange inter1: [D, ca_skip*ca1, cb2] → [cb2*D, ca_skip, ca1]
                         {
-                            int sz = D_BLF_G3*ca_skip*ca1*cb2;
-                            std::vector<float> iT(sz), i2(ca_skip*ca1*cb2*D_BLF_G3);
-                            HIP_CHECK(hipMemcpy(iT.data(), d_inter_T, sz*sizeof(float), hipMemcpyDeviceToHost));
-                            // iT[D, ca_skip*ca1, cb2] → rearrange to [ca_skip, ca1, cb2, D]
-                            for(int d=0;d<D_BLF_G3;d++)
-                            for(int is=0;is<ca_skip;is++)
-                            for(int i1=0;i1<ca1;i1++)
-                            for(int jb2=0;jb2<cb2;jb2++)
-                                i2[((is*ca1+i1)*cb2+jb2)*D_BLF_G3+d] = iT[d*ca_skip*ca1*cb2 + (is*ca1+i1)*cb2 + jb2];
-                            HIP_CHECK(hipMemcpy(d_scratch2, i2.data(), sz*sizeof(float), hipMemcpyHostToDevice));
+                            int total3 = BD*ca_skip*ca1;
+                            int blocks3 = (total3+255)/256;
+                            hipLaunchKernelGGL(rearrange_inter1_kernel, blocks3, 256, 0, stream,
+                                d_inter_T, d_scratch2, ca_skip, ca1, cb2, D_BLF_G3, total3);
                         }
-                        // d_scratch2: inter1_r[ca_skip, ca1, cb2*D] (treating cb2*D as one dim)
-                        // Step B: inter2[ca_skip, cb1, cb2*D] = inter1_r[ca_skip, ca1, cb2*D] @_{ca1} M1
-                        // Same as step1 but contracting ca1, with cb2*D "D-like" batches
-                        // Use step1 treating cb2*D as the batch dimension:
-                        // inter1_r[ca_skip, ca1, cb2*D] → _step1 with ca_skip rows, ca1 contract, cb1 output
-                        // but "D" here is cb2*D which changes the kernel. Use strided_batched directly:
-                        {
-                            // inter1_r[ca_skip, ca1, cb2*D] — transpose to [cb2*D, ca_skip, ca1]
-                            int sz=ca_skip*ca1*cb2*D_BLF_G3;
-                            std::vector<float> i2(sz), i2T(sz);
-                            HIP_CHECK(hipMemcpy(i2.data(), d_scratch2, sz*sizeof(float), hipMemcpyDeviceToHost));
-                            // [ca_skip,ca1,cb2*D] → [cb2*D, ca_skip, ca1]
-                            int BD = cb2*D_BLF_G3;
-                            for(int is=0;is<ca_skip;is++)
-                            for(int i1=0;i1<ca1;i1++)
-                            for(int bd=0;bd<BD;bd++)
-                                i2T[bd*ca_skip*ca1 + is*ca1 + i1] = i2[(is*ca1+i1)*BD+bd];
-                            HIP_CHECK(hipMemcpy(d_scratch2, i2T.data(), sz*sizeof(float), hipMemcpyHostToDevice));
-                        }
-                        // strided_batched: inter2_T[cb2*D, ca_skip, cb1] = M1 @ i2T[cb2*D, ca_skip, ca1]
+                        // d_scratch2: [cb2*D, ca_skip, ca1]
+                        // strided_batched: phi2[cb2*D, ca_skip, cb1] = M1 @ d_scratch2
                         {
                             float alpha=1.f, beta=0.f;
-                            int BD=cb2*D_BLF_G3;
                             rocblas_sgemm_strided_batched(handle,
                                 rocblas_operation_none, rocblas_operation_none,
                                 cb1, ca_skip, ca1,
                                 &alpha,
-                                M1,          cb1, 0,
-                                d_scratch2,  ca1, ca_skip*ca1,
+                                M1,          cb1, 0,            // M1[ca1,cb1], stride=0
+                                d_scratch2,  ca1, ca_skip*ca1,  // psi_a_r batch stride
                                 &beta,
-                                d_inter_T,   cb1, ca_skip*cb1,
+                                d_inter_T,   cb1, ca_skip*cb1,  // phi2 output
                                 BD);
                         }
-                        // d_inter_T[cb2*D, ca_skip, cb1] = inter2_T
+                        // d_inter_T: [cb2*D, ca_skip, cb1]
 
-                        // Step C: rearrange inter2_T and psi_b, then nm via step2
-                        // inter2_T[cb2*D, ca_skip, cb1] → inter2[ca_skip, cb1*cb2*D] for step2
-                        // psi_b_r[cb_skip, cb1, cb2, D] (rearranged) → psi_b_flat[cb_skip, cb1*cb2*D]
-                        // nm[ca_skip, cb_skip] = inter2[ca_skip, cb1*cb2*D] @ psi_b_flat[cb_skip, cb1*cb2*D]^T
-                        // This is one SGEMM (no batching needed since cb1*cb2*D is the K dimension)
+                        // ── Step C ──────────────────────────────────────────
+                        // Rearrange inter2: [cb2*D, ca_skip, cb1] → [ca_skip, cb1*cb2*D]
                         {
-                            // Rearrange inter2_T[cb2*D, ca_skip, cb1] → [ca_skip, cb1*cb2*D]
-                            int sz_i=D_BLF_G3*ca_skip*cb1*cb2;
-                            std::vector<float> iT2(sz_i), i2flat(ca_skip*cb1*cb2*D_BLF_G3);
-                            HIP_CHECK(hipMemcpy(iT2.data(), d_inter_T, sz_i*sizeof(float), hipMemcpyDeviceToHost));
-                            int BD=cb2*D_BLF_G3;
-                            // iT2[cb2*D, ca_skip, cb1] → i2flat[ca_skip, cb1, cb2, D]
-                            for(int bd=0;bd<BD;bd++)
-                            for(int is=0;is<ca_skip;is++)
-                            for(int jb1=0;jb1<cb1;jb1++){
-                                int jb2=bd/D_BLF_G3, d=bd%D_BLF_G3;
-                                i2flat[((is*cb1+jb1)*cb2+jb2)*D_BLF_G3+d] = iT2[bd*ca_skip*cb1 + is*cb1 + jb1];
-                            }
-                            HIP_CHECK(hipMemcpy(d_scratch2, i2flat.data(), sz_i*sizeof(float), hipMemcpyHostToDevice));
-                            // d_scratch2: inter2[ca_skip, cb1*cb2*D] (flat K dimension)
+                            int total3 = ca_skip*K;
+                            int blocks3 = (total3+255)/256;
+                            hipLaunchKernelGGL(rearrange_inter2_kernel, blocks3, 256, 0, stream,
+                                d_inter_T, d_scratch2, ca_skip, cb1, cb2, D_BLF_G3, total3);
+                        }
+                        // d_scratch2: [ca_skip, K]
 
-                            // Rearrange psi_b so skip_k is outermost
-                            int sz_pb=sm.volb*D_BLF_G3;
-                            std::vector<float> pb_h(sz_pb), pb_r(sz_pb);
-                            HIP_CHECK(hipMemcpy(pb_h.data(), psi_b, sz_pb*sizeof(float), hipMemcpyDeviceToHost));
-                            // psi_b original order [bond0,bond1,bond2,D], rearrange to [skip,k1,k2,D]
-                            for(int ib_s=0;ib_s<cb_skip;ib_s++)
-                            for(int jb1=0;jb1<cb1;jb1++)
-                            for(int jb2=0;jb2<cb2;jb2++)
-                            for(int d=0;d<D_BLF_G3;d++){
-                                int jdx[3]; jdx[skip_k]=ib_s; jdx[k1]=jb1; jdx[k2]=jb2;
-                                int fb=(jdx[0]*sm.chi_b[1]+jdx[1])*sm.chi_b[2]+jdx[2];
-                                pb_r[((ib_s*cb1+jb1)*cb2+jb2)*D_BLF_G3+d] = pb_h[fb*D_BLF_G3+d];
-                            }
-                            // pb_r[cb_skip, cb1*cb2*D] flat
-                            float* d_pb_r; HIP_CHECK(hipMalloc(&d_pb_r, sz_pb*sizeof(float)));
-                            HIP_CHECK(hipMemcpy(d_pb_r, pb_r.data(), sz_pb*sizeof(float), hipMemcpyHostToDevice));
+                        // Rearrange psi_b → psi_b_r[cb_skip, cb1, cb2, D] = [cb_skip, K]
+                        {
+                            int total3 = cb_skip*K;
+                            int blocks3 = (total3+255)/256;
+                            // Allocate temporary psi_b_r
+                            float* d_pb_r;
+                            HIP_CHECK(hipMalloc(&d_pb_r, cb_skip*K*sizeof(float)));
+                            hipLaunchKernelGGL(rearrange_psi_b_deg3_kernel, blocks3, 256, 0, stream,
+                                psi_b, d_pb_r,
+                                sm.chi_b[0], sm.chi_b[1], sm.chi_b[2],
+                                skip_k, k1, k2, cb_skip, cb1, cb2, D_BLF_G3, total3);
 
-                            // nm col[cb_skip,ca_skip] = pb_r[cb_skip,K]^T_col @ inter2[ca_skip,K]^T_col
-                            // = sgemm(op_T,op_none, cb_skip,ca_skip, K=cb1*cb2*D,
-                            //         pb_r,cb1*cb2*D, inter2_col,cb1*cb2*D, nm,cb_skip)
-                            int K=cb1*cb2*D_BLF_G3;
+                            // nm col[cb_skip,ca_skip] = d_pb_r[cb_skip,K]^T @ d_scratch2[ca_skip,K]^T
+                            // sgemm(op_T, op_none, cb_skip, ca_skip, K, ...)
                             float alpha=1.f, beta=0.f;
                             rocblas_sgemm(handle,
                                 rocblas_operation_transpose, rocblas_operation_none,
                                 cb_skip, ca_skip, K,
                                 &alpha, d_pb_r, K, d_scratch2, K,
                                 &beta, out_M, cb_skip);
-                            HIP_CHECK(hipDeviceSynchronize());
                             HIP_CHECK(hipFree(d_pb_r));
                         }
+                        // out_M: col[cb_skip,ca_skip] = nm_row[ca_skip,cb_skip] ✓
                         // Normalize
-                        hipLaunchKernelGGL(normalize_msg_gpu3, 1, 1, 0, 0,
+                        hipLaunchKernelGGL(normalize_msg_gpu3, 1, 1, 0, stream,
                             out_M, ca_skip*cb_skip);
                         continue;
                     }
 
                     // Normalize (GPU kernel)
-                    hipLaunchKernelGGL(normalize_msg_gpu3, 1, 1, 0, 0,
+                    hipLaunchKernelGGL(normalize_msg_gpu3, 1, 1, 0, stream,
                         out_M, ca_skip*cb_skip);
                 }
             }
 
-            HIP_CHECK(hipDeviceSynchronize());
+            // Reset delta accumulator and compute max|new-old| for all messages on GPU
+            float zero_f = 0.f;
+            HIP_CHECK(hipMemcpyAsync(d_delta, &zero_f, sizeof(float), hipMemcpyHostToDevice, stream));
 
-            // Swap ping-pong
+            // Swap ping-pong first (after swap: fwd=new, fwd2=old)
             for(int bid=0;bid<n_bonds;bid++){
                 std::swap(d_M_fwd[bid], d_M_fwd2[bid]);
                 std::swap(d_M_bwd[bid], d_M_bwd2[bid]);
             }
 
-            // Convergence check: download all messages once per sweep
+            // GPU delta: compare new (fwd) vs old (fwd2) for each bond
             for(int bid=0;bid<n_bonds;bid++){
-                int ca=frozen_chi_a[bid], cb=frozen_chi_b[bid], sz=ca*cb;
-                std::vector<float> mf(sz), mb(sz), mf2(sz), mb2(sz);
-                HIP_CHECK(hipMemcpy(mf.data(),  d_M_fwd[bid],  sz*sizeof(float), hipMemcpyDeviceToHost));
-                HIP_CHECK(hipMemcpy(mb.data(),  d_M_bwd[bid],  sz*sizeof(float), hipMemcpyDeviceToHost));
-                HIP_CHECK(hipMemcpy(mf2.data(), d_M_fwd2[bid], sz*sizeof(float), hipMemcpyDeviceToHost));
-                HIP_CHECK(hipMemcpy(mb2.data(), d_M_bwd2[bid], sz*sizeof(float), hipMemcpyDeviceToHost));
-                for(int i=0;i<sz;i++){
-                    max_delta=std::max(max_delta,std::abs(mf[i]-mf2[i]));
-                    max_delta=std::max(max_delta,std::abs(mb[i]-mb2[i]));
-                }
+                int sz=frozen_chi_a[bid]*frozen_chi_b[bid];
+                hipLaunchKernelGGL(max_delta_kernel, 1, 1, 0, stream,
+                    d_M_fwd[bid], d_M_fwd2[bid], d_delta, sz);
+                hipLaunchKernelGGL(max_delta_kernel, 1, 1, 0, stream,
+                    d_M_bwd[bid], d_M_bwd2[bid], d_delta, sz);
             }
+
+            // One D2H: download single float
+            HIP_CHECK(hipMemcpyAsync(&max_delta, d_delta, sizeof(float), hipMemcpyDeviceToHost, stream));
+            HIP_CHECK(hipStreamSynchronize(stream));
 
             if(verbose) printf("  [BLF3] sweep %d max_delta=%.2e\n", sweep, max_delta);
             if(max_delta < tol){ if(verbose) printf("  [BLF3] converged sweep %d\n",sweep); break; }
@@ -506,25 +543,42 @@ private:
     int    inter_T_elems = 0;
 
     void _alloc_psi_T_buffers() {
-        // Max psi size across all sites
-        int max_psi = 0, max_inter = 0;
+        int max_psi=0, max_inter=0, max_scratch=0;
         for (int sid=0; sid<n_sites; sid++) {
-            auto& sm = smeta[sid];
+            auto& sm = smeta[sid]; int nb=sm.nb;
             max_psi = std::max(max_psi, sm.vola * D_BLF_G3);
             max_psi = std::max(max_psi, sm.volb * D_BLF_G3);
-            for (int sk=0; sk<sm.nb; sk++) {
-                int ca_skip = sm.chi_a[sk];
-                for (int k=0; k<sm.nb; k++) if(k!=sk)
-                    max_inter = std::max(max_inter, D_BLF_G3 * ca_skip * sm.chi_b[k]);
+            for (int sk=0; sk<nb; sk++) {
+                int ca_skip=sm.chi_a[sk], cb_skip=sm.chi_b[sk];
+                if (nb==2) {
+                    int k1=(sk==0)?1:0;
+                    int cb1=sm.chi_b[k1], ca1=sm.chi_a[k1];
+                    max_inter  = std::max(max_inter,  D_BLF_G3*ca_skip*cb1);
+                    max_scratch= std::max(max_scratch, ca_skip*ca1*D_BLF_G3); // for cpu_transpose
+                } else if (nb==3) {
+                    int k1=-1,k2=-1;
+                    for(int k=0;k<3;k++) if(k!=sk){if(k1<0)k1=k;else k2=k;}
+                    int ca1=sm.chi_a[k1],cb1=sm.chi_b[k1],ca2=sm.chi_a[k2],cb2=sm.chi_b[k2];
+                    int BD=cb2*D_BLF_G3, K=cb1*cb2*D_BLF_G3;
+                    // d_inter_T: max of step A output [D,ca_skip*ca1,cb2] and step B output [BD,ca_skip,cb1]
+                    max_inter  = std::max(max_inter,  D_BLF_G3*ca_skip*ca1*cb2);
+                    max_inter  = std::max(max_inter,  BD*ca_skip*cb1);
+                    // d_scratch2: psi_a_r [ca_skip,ca1,ca2,D], inter1_r [BD,ca_skip,ca1], inter2 [ca_skip,K]
+                    max_scratch= std::max(max_scratch, ca_skip*ca1*ca2*D_BLF_G3);
+                    max_scratch= std::max(max_scratch, BD*ca_skip*ca1);
+                    max_scratch= std::max(max_scratch, ca_skip*K);
+                }
             }
         }
         if (d_psi_T_a) HIP_CHECK(hipFree(d_psi_T_a));
         if (d_psi_T_b) HIP_CHECK(hipFree(d_psi_T_b));
         if (d_inter_T) HIP_CHECK(hipFree(d_inter_T));
-        psi_T_elems = max_psi; inter_T_elems = max_inter;
+        if (d_scratch2) HIP_CHECK(hipFree(d_scratch2));
+        psi_T_elems=max_psi; inter_T_elems=max_inter;
         HIP_CHECK(hipMalloc(&d_psi_T_a, max_psi*sizeof(float)));
         HIP_CHECK(hipMalloc(&d_psi_T_b, max_psi*sizeof(float)));
-        HIP_CHECK(hipMalloc(&d_inter_T, max_inter*sizeof(float)));
+        HIP_CHECK(hipMalloc(&d_inter_T,  max_inter*sizeof(float)));
+        HIP_CHECK(hipMalloc(&d_scratch2, max_scratch*sizeof(float)));
     }
 
     // ── SGEMM helpers — all GPU, no D2H ──────────────────────────────────────
@@ -532,8 +586,7 @@ private:
     // Transpose psi[n1, n2, D] → d_out[D, n1, n2] on GPU
     void _transpose_to_batch(float* d_psi, int n1, int n2, float* d_out) {
         int total = n1*n2*D_BLF_G3;
-        int blocks = (total+255)/256;
-        hipLaunchKernelGGL(transpose_to_batch_kernel, blocks, 256, 0, 0,
+        hipLaunchKernelGGL(transpose_to_batch_kernel, (total+255)/256, 256, 0, stream,
             d_psi, d_out, n1, n2, total);
     }
 
@@ -587,7 +640,7 @@ private:
                               int ca_skip, int ca1, int ca2, float* d_out) {
         int total = ca_skip*ca1*ca2*D_BLF_G3;
         int blocks = (total+255)/256;
-        hipLaunchKernelGGL(rearrange_deg3_kernel, blocks, 256, 0, 0,
+        hipLaunchKernelGGL(rearrange_deg3_kernel, blocks, 256, 0, stream,
             d_psi, d_out, chi_a[0], chi_a[1], chi_a[2],
             skip_k, k1, k2, ca_skip, ca1, ca2, total);
     }
@@ -694,5 +747,7 @@ private:
         if(d_psi_T_a)   HIP_CHECK(hipFree(d_psi_T_a));
         if(d_psi_T_b)   HIP_CHECK(hipFree(d_psi_T_b));
         if(d_inter_T)   HIP_CHECK(hipFree(d_inter_T));
+        if(d_delta)     HIP_CHECK(hipFree(d_delta));
+        if(stream)      HIP_CHECK(hipStreamDestroy(stream));
     }
 };

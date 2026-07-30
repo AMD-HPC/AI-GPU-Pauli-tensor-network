@@ -26,6 +26,7 @@
 #include "heavyhex.hpp"
 #include "heavyhex_physics.hpp"
 #include "bilinear_form_bp_gpu.hpp"
+#include "bilinear_form_bp_gpu3.hpp"
 #include "overlap_gpu.hpp"
 
 #include "heavyhex_ideal_kick_eps010_data.hpp"
@@ -224,13 +225,17 @@ int main(int argc, char** argv) {
     rocblas_handle handle1;
     rocblas_create_handle(&handle1);
 
-    // BLF objects created once, upload() called each step with live data
-    BLF_GPU* blf_A[N_GAMMA][N_GAMMA] = {};   // upper triangle used
-    BLF_GPU* blf_B[N_GAMMA]          = {};
+    // BLF_GPU3 objects: one per inner product pair, each with its own handle+stream
+    // This enables concurrent execution of independent inner products on GPU 1.
+    BLF_GPU3* blf_A[N_GAMMA][N_GAMMA] = {};
+    BLF_GPU3* blf_B[N_GAMMA]          = {};
     for (int i=0; i<N_GAMMA; i++) {
-        for (int j=i; j<N_GAMMA; j++)
-            blf_A[i][j] = new BLF_GPU(*grids_n[i], *grids_n[j]);
-        blf_B[i] = new BLF_GPU(grid_nl, *grids_n[i]);
+        for (int j=i; j<N_GAMMA; j++) {
+            rocblas_handle hA; rocblas_create_handle(&hA);
+            blf_A[i][j] = new BLF_GPU3(hA);
+        }
+        rocblas_handle hB; rocblas_create_handle(&hB);
+        blf_B[i] = new BLF_GPU3(hB);
     }
 
     // ── Async inner product results (shared between threads) ──────────────────
@@ -298,14 +303,10 @@ int main(int argc, char** argv) {
         HIP_CHECK(hipSetDevice(1));
         for (int i=0; i<N_GAMMA; i++) {
             for (int j=i; j<N_GAMMA; j++)
-                blf_A[i][j]->upload(states_n[i]->psi, 0,
-                                    states_n[j]->psi, 0,
-                                    &states_n[i]->messages,
-                                    &states_n[j]->messages);
-            blf_B[i]->upload(state_nl.psi, 0,
-                             states_n[i]->psi, 0,
-                             &state_nl.messages,
-                             &states_n[i]->messages);
+                blf_A[i][j]->upload(*grids_n[i], states_n[i]->psi, 0,
+                                    *grids_n[j], states_n[j]->psi, 0);
+            blf_B[i]->upload(grid_nl,       state_nl.psi,         0,
+                             *grids_n[i],   states_n[i]->psi,     0);
         }
         t_ip_last = (now_ms() - t_ip0) / 1000.0;
 
