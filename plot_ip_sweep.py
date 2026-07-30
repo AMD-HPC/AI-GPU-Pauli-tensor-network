@@ -126,5 +126,102 @@ def main():
     plt.savefig(outfile, dpi=150)
     print(f"Saved: {outfile}")
 
+def parse_timing(path):
+    """Extract t_cycle per step and sum for total compute time."""
+    total = 0.0
+    with open(path) as f:
+        for line in f:
+            m = re.search(r't_cycle ([\d.]+)', line)
+            if m: total += float(m.group(1))
+    return total
+
+def plot_pareto(logdir, outfile=None):
+    """Pareto frontier: mean error vs total compute time."""
+    logs = glob.glob(os.path.join(logdir, 'chi*_cut*.log'))
+    chi_set = sorted(set(int(re.search(r'chi(\d+)',f).group(1)) for f in logs))
+    cut_set = sorted(set(re.search(r'cut([\d.e+-]+)',f).group(1) for f in logs),
+                     key=lambda x: float(x))
+
+    # Markers per chi, colors per cutoff
+    markers = ['o','s','^','D','v']
+    chi_marker = {c:m for c,m in zip(chi_set, markers)}
+    cut_colors = cm.plasma(np.linspace(0.1, 0.9, len(cut_set)))
+    cut_color  = {c:col for c,col in zip(cut_set, cut_colors)}
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    for chi in chi_set:
+        for cut in cut_set:
+            logfile = os.path.join(logdir, f'chi{chi}_cut{cut}.log')
+            if not os.path.exists(logfile): continue
+            steps = parse_log(logfile)
+            if len(steps) < 4: continue
+
+            t_total = parse_timing(logfile)
+            pm_data = poor_mans(steps)
+
+            # Mean error over cycles 3-10 (skip early chi=4 regime)
+            d_pm, d_ip = [], []
+            for s in sorted(steps.keys()):
+                if s < 3: continue
+                d = steps[s]
+                C_pm = pm_data.get(s, float('nan'))
+                C_ip = solve_lagrange(d['A'], d['B'], d['C_n'])
+                if not np.isnan(C_pm): d_pm.append(abs(C_pm - d['C_nl']))
+                if not np.isnan(C_ip) and abs(C_ip)<10: d_ip.append(abs(C_ip - d['C_nl']))
+
+            if not d_pm: continue
+            mean_pm = np.nanmean(d_pm)
+            mean_ip = np.nanmean(d_ip) if d_ip else float('nan')
+
+            col = cut_color[cut]
+            mk  = chi_marker[chi]
+
+            ax.scatter(t_total, mean_pm, marker=mk, color=col, s=80,
+                       label=f'PM χ={chi} cut={cut}' if chi==chi_set[0] and cut==cut_set[0] else None)
+            if not np.isnan(mean_ip):
+                ax.scatter(t_total, mean_ip, marker=mk, color=col, s=80,
+                           facecolors='none', linewidths=2)
+
+    # Draw Pareto frontier for PM (filled) and IP (open)
+    # Collect all PM points and find lower-left frontier
+    # (done visually — the scatter plot itself shows it)
+
+    # Legend elements
+    from matplotlib.lines import Line2D
+    legend_chi   = [Line2D([0],[0],marker=chi_marker[c],color='gray',
+                            linestyle='None',markersize=8,label=f'χ={c}')
+                    for c in chi_set]
+    legend_type  = [Line2D([0],[0],marker='o',color='gray',linestyle='None',
+                            markersize=8,label='Poor man\'s (filled)'),
+                    Line2D([0],[0],marker='o',color='gray',linestyle='None',
+                            markersize=8,markerfacecolor='none',linewidth=2,
+                            label='Inner product (open)')]
+    legend_cut   = [Line2D([0],[0],marker='s',color=cut_color[c],
+                            linestyle='None',markersize=8,label=f'cut={c}')
+                    for c in cut_set]
+
+    l1 = ax.legend(handles=legend_chi,  loc='upper right', fontsize=8, title='χ_max')
+    l2 = ax.legend(handles=legend_type, loc='upper center', fontsize=8)
+    l3 = ax.legend(handles=legend_cut,  loc='upper left',  fontsize=8, title='cutoff')
+    ax.add_artist(l1); ax.add_artist(l2)
+
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel('Total compute time (s, sum over 10 cycles)')
+    ax.set_ylabel(r'Mean $|C_{\rm mpf} - C_{\rm nl}|$ (cycles 3–10)')
+    ax.set_title('Pareto frontier: accuracy vs compute\nfilled=poor man\'s, open=inner product')
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out = outfile or os.path.join(logdir, 'ip_pareto.png')
+    plt.savefig(out, dpi=150)
+    print(f"Saved: {out}")
+
 if __name__ == '__main__':
     main()
+    import sys
+    if '--logdir' in sys.argv:
+        idx = sys.argv.index('--logdir')
+        logdir = sys.argv[idx+1]
+        plot_pareto(logdir)
