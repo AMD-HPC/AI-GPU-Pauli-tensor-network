@@ -209,7 +209,7 @@ struct HeavyHexSimulator {
             }
 
             for (auto& gate : grid.colors[c]) {
-                const float* G = heavy_hex_3x3_ideal_kick_ptm(gate.bond_id);
+                const float* G = heavy_hex_3x3_ideal_ptm(gate.bond_id);
                 gate_ops.apply_binary_gate(
                     state.psi[gate.site_a], state.psi[gate.site_b],
                     gate, grid,
@@ -235,6 +235,100 @@ struct HeavyHexSimulator {
         for (auto p : new_msg)    if (p) HIP_CHECK(hipFree(p));
 
         // Wave 2: kick gate — Rx(2φ) once per site, independent of bond degree
+        {
+            size_t tmp_sz = 0;
+            for (auto& site : grid.sites) {
+                int vol = D;
+                for (int d = 0; d < MAX_DEGREE; d++)
+                    if (site.bond_id[d] >= 0)
+                        vol *= grid.bonds[site.bond_id[d]].chi;
+                tmp_sz = std::max(tmp_sz, (size_t)vol);
+            }
+            Scalar* tmp;
+            HIP_CHECK(hipMalloc(&tmp, tmp_sz * sizeof(Scalar)));
+            for (auto& site : grid.sites)
+                gate_ops.apply_unary_gate(state.psi[site.id], site, grid,
+                                          HEAVY_HEX_3x3_IDEAL_KICK_SITE_PTM, tmp);
+            HIP_CHECK(hipFree(tmp));
+        }
+
+        int max_chi = 1;
+        for (auto& bond : grid.bonds)
+            max_chi = std::max(max_chi, bond.chi);
+        return max_chi;
+    }
+};
+
+/* =========================================================
+ * NoisyKickSimulator — noisy kicked Trotter layer
+ *
+ * Same as HeavyHexSimulator but uses NOISY_KICK PTM which includes
+ * the hardware gate, interleaved noise, and kick gate in one PTM.
+ * Takes a gamma parameter to select noise level.
+ * ========================================================= */
+struct NoisyKickSimulator {
+    rocblas_handle handle;
+    GateOps gate_ops;
+    float gamma;
+
+    NoisyKickSimulator(rocblas_handle h_, float gamma_)
+        : handle(h_), gate_ops(h_), gamma(gamma_) {}
+
+    int trotter_layer(HeavyHexState& state, FlatHeavyHexGrid& grid,
+                      Workspace& ws, int chi_max, Scalar cutoff=1e-4f,
+                      LayerMetrics* lm=nullptr)
+    {
+        int nm = 2 * grid.n_bonds;
+        std::vector<int>     frozen_chi(grid.n_bonds);
+        std::vector<Scalar*> frozen_msg(nm, nullptr);
+        std::vector<Scalar*> new_msg(nm, nullptr);
+
+        size_t alloc = (size_t)chi_max * chi_max * sizeof(Scalar);
+        for (auto& bond : grid.bonds) {
+            for (int d = 0; d < 2; d++) {
+                int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                HIP_CHECK(hipMalloc(&frozen_msg[idx], alloc));
+                HIP_CHECK(hipMalloc(&new_msg[idx], alloc));
+            }
+        }
+
+        for (int c = 0; c < 3; c++) {
+            for (auto& b : grid.bonds) frozen_chi[b.id] = b.chi;
+            for (auto& bond : grid.bonds) {
+                int chi = bond.chi;
+                size_t sz = (size_t)chi * chi * sizeof(Scalar);
+                for (int d = 0; d < 2; d++) {
+                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    HIP_CHECK(hipMemcpy(frozen_msg[idx], state.messages[idx], sz, hipMemcpyDeviceToDevice));
+                    HIP_CHECK(hipMemcpy(new_msg[idx], state.messages[idx], sz, hipMemcpyDeviceToDevice));
+                }
+            }
+
+            for (auto& gate : grid.colors[c]) {
+                // Use NOISY_KICK PTM: gate+noise+kick combined
+                // Use NOISY PTM (gate+noise, no kick) — kick applied separately below
+                const float* G = heavy_hex_3x3_noisy_ptm(gate.bond_id, gamma);
+                gate_ops.apply_binary_gate(
+                    state.psi[gate.site_a], state.psi[gate.site_b],
+                    gate, grid, new_msg, frozen_msg, frozen_chi,
+                    G, ws, chi_max, cutoff, lm);
+            }
+
+            for (auto& gate : grid.colors[c]) {
+                const Bond& bond = grid.bonds[gate.bond_id];
+                int chi = bond.chi;
+                size_t sz = (size_t)chi * chi * sizeof(Scalar);
+                for (int d = 0; d < 2; d++) {
+                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    HIP_CHECK(hipMemcpy(state.messages[idx], new_msg[idx], sz, hipMemcpyDeviceToDevice));
+                }
+            }
+        }
+
+        for (auto p : frozen_msg) if (p) HIP_CHECK(hipFree(p));
+        for (auto p : new_msg)    if (p) HIP_CHECK(hipFree(p));
+
+        // Wave 2: kick gate once per site (same as HeavyHexSimulator)
         {
             size_t tmp_sz = 0;
             for (auto& site : grid.sites) {
@@ -368,6 +462,24 @@ struct NoisyHeavyHexSimulator {
 
         for (auto p : frozen_msg) if (p) HIP_CHECK(hipFree(p));
         for (auto p : new_msg)    if (p) HIP_CHECK(hipFree(p));
+
+        // Wave 2: kick gate once per site
+        {
+            size_t tmp_sz = 0;
+            for (auto& site : grid.sites) {
+                int vol = D;
+                for (int d = 0; d < MAX_DEGREE; d++)
+                    if (site.bond_id[d] >= 0)
+                        vol *= grid.bonds[site.bond_id[d]].chi;
+                tmp_sz = std::max(tmp_sz, (size_t)vol);
+            }
+            Scalar* tmp;
+            HIP_CHECK(hipMalloc(&tmp, tmp_sz * sizeof(Scalar)));
+            for (auto& site : grid.sites)
+                gate_ops.apply_unary_gate(state.psi[site.id], site, grid,
+                                          HEAVY_HEX_3x3_IDEAL_KICK_SITE_PTM, tmp);
+            HIP_CHECK(hipFree(tmp));
+        }
 
         int max_chi = 1;
         for (auto& bond : grid.bonds)

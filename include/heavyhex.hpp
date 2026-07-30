@@ -481,6 +481,9 @@ private:
 #include "heavyhex_noise_data.hpp"
 #include "heavyhex_exact_noise_data.hpp"
 #include "heavyhex_ideal_kick_data.hpp"
+#include "heavyhex_ideal_data.hpp"
+#include "heavyhex_noisy_data.hpp"
+#include "heavyhex_noisy_kick_data.hpp"
 
 struct NoisyHeavyHexGrid : public FlatHeavyHexGrid {
     float gamma;

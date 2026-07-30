@@ -95,6 +95,30 @@ __global__ void add_diagonal(Scalar* A, int n, Scalar val) {
     A[i + (size_t)n * i] += val;
 }
 
+/* ── fix_qr_sign ─────────────────────────────────────────────────────────────
+ * Enforce positive diagonal of R after Householder QR.
+ * If R[i,i] < 0: flip sign of Q[:,i] (col i, stride m) and R[i,:] (row i).
+ * This makes the QR factorization unique (positive-diagonal convention),
+ * ensuring independent runs on nearly-identical states produce consistent
+ * gauge choices — required for bilinear_form_bp cross inner products. */
+__global__ void fix_qr_sign_Q(Scalar* Q, const Scalar* R, int m, int k) {
+    // One thread per (row, col) in Q[m×k]
+    int col = blockIdx.x;   // k columns
+    int row = blockIdx.y * blockDim.x + threadIdx.x;  // m rows
+    if (col >= k || row >= m) return;
+    // R is k×n col-major; R[i,i] = R[i + k*i]
+    if (R[col + (size_t)k * col] < 0.f)
+        Q[row + (size_t)m * col] = -Q[row + (size_t)m * col];
+}
+__global__ void fix_qr_sign_R(Scalar* R, int k, int n) {
+    // One thread per (row, col) in R[k×n] — only upper triangle matters
+    int col = blockIdx.x;   // n columns
+    int row = blockIdx.y * blockDim.x + threadIdx.x;  // k rows
+    if (col >= n || row >= k || row > col) return;
+    if (R[row + (size_t)k * row] < 0.f)
+        R[row + (size_t)k * col] = -R[row + (size_t)k * col];
+}
+
 /* ── build_M_from_U ──────────────────────────────────────────────────────────
  * Scales U columns by sqrt(S[c]*inv_snorm) and reorders into M for GEMM.
  * M[r + k*(c + new_chi*d)] = U[(r*D_+d) + k_D*c] * sqrt(S[c]*inv_snorm)
@@ -454,6 +478,15 @@ struct GateOps {
         RB_CHECK(rocsolver_sorgqr(handle,m,k,k,Q,m,tau));
         HIP_CHECK(hipStreamSynchronize(rbstream));
         HIP_CHECK(hipFree(tau));
+        // Enforce positive diagonal of R → unique gauge for cross inner products
+        {
+            int threads = 256;
+            dim3 bQ(k, (m + threads - 1) / threads);
+            fix_qr_sign_Q<<<bQ, threads, 0, rbstream>>>(Q, R, m, k);
+            dim3 bR(n, (k + threads - 1) / threads);
+            fix_qr_sign_R<<<bR, threads, 0, rbstream>>>(R, k, n);
+            HIP_CHECK(hipStreamSynchronize(rbstream));
+        }
     }
 
     /* ── cholesky_qr ─────────────────────────────────────────────────── */

@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
 
     QrMode qr_mode   = QrMode::Householder;
     float  gamma     = 1.0f;
-    int    center    = 13;
+    int    center    = 2;
     bool   measure_spatial = false;
     bool   use_exact = false;
     const char* spatial_file = nullptr;
