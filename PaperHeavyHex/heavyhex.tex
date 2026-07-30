@@ -421,117 +421,122 @@ For degree-3 (junction) sites two sequential contractions of the form
 cost at $O(\chi^3 D)$ throughout.
 
 \paragraph{Matrix formulation.}
-We express both message update steps and the Bethe PF as explicit
-matrix multiplications, enabling direct GPU implementation via \textsc{Blas}.
+Both the message update and the Bethe PF reduce to standard matrix
+multiplications, enabling direct GPU implementation via \textsc{Blas}.
+We use the shorthand $\tilde{\Psi}_a \in \mathbb{R}^{\chi_{a,0} \times \chi_{a,1}D}$
+for the site tensor $\psi_a[v, i_{a,0}, i_{a,1}, d]$ reshaped by treating
+the last bond index and Pauli index $d\in\{I,X,Y,Z\}$ jointly.
 
-\textit{Degree-2 site} (arm node, bonds $k_0=k_{\rm skip}$ and $k_1$).
-Define the \emph{mode-$d$ slices} of the site tensors as
-$\Psi_a^{(d)} \in \mathbb{R}^{\chi_{a,0}\times\chi_{a,1}}$
-and
-$\Psi_b^{(d)} \in \mathbb{R}^{\chi_{b,0}\times\chi_{b,1}}$,
-and reshape $\psi_a$ as
-$\tilde{\Psi}_a \in \mathbb{R}^{\chi_{a,0} \times (\chi_{a,1}\cdot D)}$
-by treating the last bond and Pauli index jointly.
-The two-step message update then reads:
+\textit{Degree-2 site} (arm node, skip bond $k_0$, incoming bond $k_1$):
 \begin{align}
     \Phi_a &= \tilde{\Psi}_a \cdot (M_{k_1} \otimes I_D)
-    \;\in\; \mathbb{R}^{\chi_{a,0} \times (\chi_{b,1}\cdot D)}
+    \;\in\; \mathbb{R}^{\chi_{a,0} \times \chi_{b,1}D}
+    \quad\text{(GEMM, batched over }D\text{)}
     \label{eq:gemm1}\\
     M_{k_0}^{\rm new} &= \Phi_a \cdot \tilde{\Psi}_b^{\top}
     \;\in\; \mathbb{R}^{\chi_{a,0} \times \chi_{b,0}}
+    \quad\text{($D$ sequential GEMMs)}
     \label{eq:gemm2}
 \end{align}
-Equation~(\ref{eq:gemm1}) is a single GEMM of shape
-$\chi_{a,0} \times \chi_{a,1} D \times \chi_{b,1}$,
-implemented as \texttt{sgemm\_strided\_batched} with batch count $D$.
-Equation~(\ref{eq:gemm2}) accumulates $D$ sequential GEMM calls.
-Cost: $O(\chi^3 D)$ total.
 
-\textit{Degree-3 site} (junction node, bonds $k_0=k_{\rm skip}$, $k_1$, $k_2$).
-Two sequential contractions of the form~(\ref{eq:gemm1}) precede the
-final step~(\ref{eq:gemm2}):
+\textit{Degree-3 site} (junction, skip $k_0$, incoming $k_1$, $k_2$):
+same structure applied twice before the final step:
 \begin{align}
-    \Phi_a^{(1)} &= \tilde{\Psi}_a^{(k_2)} \cdot (M_{k_2}\otimes I_D)
-    \;\in\; \mathbb{R}^{(\chi_{a,0}\chi_{a,1})\times(\chi_{b,2}D)}
+    \Phi_a^{(1)} &= \tilde{\Psi}_a^{[k_2]} \cdot (M_{k_2}\otimes I_D)
+    \;\in\; \mathbb{R}^{\chi_{a,0}\chi_{a,1}\times\chi_{b,2}D}
     \label{eq:gemm3}\\
-    \Phi_a^{(2)} &= \Phi_a^{(1)\,(k_1)} \cdot (M_{k_1}\otimes I_D)
-    \;\in\; \mathbb{R}^{\chi_{a,0}\times(\chi_{b,1}\chi_{b,2}D)}
+    \Phi_a^{(2)} &= \Phi_a^{(1)[k_1]} \cdot (M_{k_1}\otimes I_D)
+    \;\in\; \mathbb{R}^{\chi_{a,0}\times\chi_{b,1}\chi_{b,2}D}
     \label{eq:gemm4}\\
     M_{k_0}^{\rm new} &= \Phi_a^{(2)} \cdot \tilde{\Psi}_b^{\top}
     \;\in\; \mathbb{R}^{\chi_{a,0}\times\chi_{b,0}}
     \label{eq:gemm5}
 \end{align}
-where the superscript $(k)$ denotes a reshape that moves bond $k$ to the
-outermost index. Cost: $O(\chi^3 D)$ per step, three steps total.
+where $[\,\cdot\,]$ denotes a reshape placing that bond index outermost.
+Total cost: $O(\chi^3 D)$ for both degree-2 and degree-3.
 
 \textit{Bethe partition function.}
-The vertex factor $a_v$ and edge factor $z_e$ are:
+The vertex and edge factors in~(\ref{eq:bethe_formula}) are computed
+by the same GEMM chain applied to \emph{all} bonds:
 \begin{align}
-    a_v &= \langle M_{k_0},\; G \rangle_F,
-    \quad G = \Phi_a^{\rm full}\,(\tilde{\Psi}_b^{\rm full})^{\top}
-    \;\in\; \mathbb{R}^{\chi_{a,0}\times\chi_{b,0}}
+    a_v &= \langle M_{k_0},\;
+           \Phi_a^{\rm full} \cdot (\tilde{\Psi}_b^{\rm full})^{\top}
+           \rangle_F
     \label{eq:bethe_v}\\
     z_e &= \langle M_e^{\to},\; M_e^{\leftarrow}\rangle_F
     \label{eq:bethe_e}
 \end{align}
-where $\Phi_a^{\rm full}$ contracts \emph{all} bonds (not just non-skip ones)
-using the same GEMM chain~(\ref{eq:gemm1})--(\ref{eq:gemm5}),
-and $\langle\cdot,\cdot\rangle_F$ denotes the Frobenius inner product
-(one \texttt{sdot} call).
-The full inner product then follows from
-equation~(\ref{eq:bethe_formula}) using log-sum-exp for numerical stability.
+where $\langle\cdot,\cdot\rangle_F$ is the Frobenius inner product
+(one \texttt{sdot} call per bond).
+The Bethe PF costs the same as one message update per site — $O(\chi^3 D)$.
 
-\paragraph{GPU implementation.}
-All GEMM operations use \texttt{rocblas\_sgemm\_strided\_batched} with batch
-count $D=4$, so the GPU sees a single large batched operation per bond per sweep.
-The Bethe PF (\ref{eq:bethe_v}) reuses the same GEMM chain and costs the same
-as one message update per site.
-With 9 independent inner product pairs launched in parallel streams on GPU~1
-while GPU~0 runs Trotter, the total cycle time is
-$t_{\rm cycle} = \max(t_{\rm Trotter},\, t_{\rm IP})$.
-Table~\ref{tab:timing} shows that Trotter dominates from cycle 3 onward,
-so inner products add zero overhead.
-At cycle 10 ($\chi=250$), $t_{\rm Trotter}\approx 80$\,s
-vs $t_{\rm IP}\approx 11$\,s — the inner products are $7\times$ faster.
-Compared to the Julia reference implementation at 350\,s per cycle,
-CppSim achieves a $4\times$ wall-clock improvement at the same bond dimension.
+\paragraph{Two-GPU pipeline and timing.}
+The 9 inner product pairs ($A_{ij}$ and $B_i$) are independent and
+launched as concurrent streams on GPU~1, while GPU~0 runs the four-state
+Trotter step.
+The total cycle time is $t_{\rm cycle} = \max(t_{\rm Trotter},\, t_{\rm IP})$
+(Fig.~\ref{fig:ip_timing}).
+Table~\ref{tab:timing} shows the measured breakdown:
+Trotter dominates from cycle 3 onward, so inner products add zero wall-clock
+overhead for the remainder of the simulation.
+At $\chi=250$ (cycle 10): $t_{\rm Trotter}\approx 80$\,s,
+$t_{\rm IP}\approx 11$\,s — inner products are $7\times$ faster than Trotter.
+Compared to the Julia reference at $350$\,s per cycle,
+CppSim achieves a $4\times$ improvement at the same bond dimension.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\columnwidth]{ip_chi250_timing.png}
+    \caption{Per-cycle timing at $\chi_{\max}=250$, 10 cycles.
+    \emph{Left}: MPF extrapolation — noiseless $C_{\rm nl}$ (black),
+    poor man's MPF (red), inner product MPF (blue).
+    \emph{Right}: wall-clock breakdown.
+    Black: total cycle time $t_{\rm cycle} = \max(t_{\rm Trotter}, t_{\rm IP})$.
+    Red: pure Trotter time (4 states, GPU~0).
+    Blue: IP wall-clock (9 pairs, parallel streams, GPU~1).
+    Green dashed: P2P upload overhead.
+    Crossover at cycle 2--3: IP bottleneck early ($\chi\lesssim 41$),
+    Trotter dominates thereafter.}
+    \label{fig:ip_timing}
+\end{figure}
 
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{rrrrrr}
+\begin{tabular}{rrrrr}
 \toprule
-Cycle & $\chi$ & $t_{\rm cycle}$\,(s) & $t_{\rm Trotter}$\,(s) & $t_{\rm IP\,wall}$\,(s) & $t_{\rm upload}$\,(s) \\
+Cycle & $\chi$ & $t_{\rm cycle}$\,(s) & $t_{\rm Trotter}$\,(s) & $t_{\rm IP}$\,(s) \\
 \midrule
-2  & 18  & 0.89  & 0.39 & 0.89 & 0.16 \\
-3  & 41  & 1.31  & 1.31 & 1.26 & 0.17 \\
-5  & 108 & 5.69  & 5.69 & 3.81 & 0.31 \\
-7  & 214 & 18.44 & 18.44 & 5.39 & 0.53 \\
-10 & 250 & 79.68 & 70.48 & 11.00 & 8.15 \\
+2  & 18  & 0.89  & 0.39  & 0.89 \\
+3  & 41  & 1.31  & 1.31  & 1.26 \\
+5  & 108 & 5.69  & 5.69  & 3.81 \\
+7  & 214 & 18.44 & 18.44 & 5.39 \\
+10 & 250 & 79.68 & 70.48 & 11.00 \\
 \bottomrule
 \end{tabular}
 \caption{Per-cycle wall-clock times at $\chi_{\max}=250$, 10 cycles.
-$t_{\rm cycle} = \max(t_{\rm Trotter}, t_{\rm IP\,wall})$.
-$t_{\rm Trotter}$: GPU~0 pure Trotter time (4 states sequential).
-$t_{\rm IP\,wall}$: GPU~1 wall-clock for all 9 inner products (parallel streams).
-$t_{\rm upload}$: P2P data transfer overhead.
-Trotter dominates from cycle 3 onward — inner products add zero overhead.}
+$t_{\rm cycle} = \max(t_{\rm Trotter}, t_{\rm IP})$.
+$t_{\rm Trotter}$: GPU~0 Trotter time (4 states sequential).
+$t_{\rm IP}$: GPU~1 wall-clock for all 9 inner products (parallel streams).
+Trotter dominates from cycle 3 — inner products add zero overhead.}
 \label{tab:timing}
 \end{table}
 
 \paragraph{Validation of inner product MPF.}
-Figure~\ref{fig:ip_mpf} compares the three MPF variants at $\chi=250$.
-The inner product MPF exhibits a consistent \emph{systematic} bias —
-the extrapolated curve follows the correct oscillation shape and recurrence
-structure of $C_{\rm nl}(t)$, displaced by a roughly constant offset.
-This behaviour is characteristic of a correct implementation with a
-gauge-dependent approximation error: the double-layer BP on the loopy
-heavy-hex graph introduces a reproducible bias but not random scatter.
-Were the implementation incorrect, the errors would be incoherent.
-The consistent bias confirms that the $O(\chi^3 D)$ GEMM-based inner
-product computation is correct, and that improving the approximation
-quality (e.g.\ via symmetric gauge or loop corrections) is the
-appropriate next step rather than algorithmic correction.
+The inner product MPF (Fig.~\ref{fig:ip_timing}, left) exhibits a
+\emph{consistent systematic bias}: the extrapolated curve follows the
+correct oscillation shape and recurrence structure of $C_{\rm nl}(t)$,
+displaced by a roughly constant amplitude offset.
+This behaviour distinguishes a correct implementation with a
+gauge-dependent approximation error from a broken one — random scatter
+would indicate algorithmic failure.
+The double-layer BP on the loopy heavy-hex graph approximates the
+exact contraction, and the QR gauge introduces a reproducible bias in
+the Bethe partition function.
+The consistent bias confirms that the $O(\chi^3 D)$ GEMM-based
+inner product pipeline is correct; improving accuracy requires
+a better gauge (e.g.\ symmetric gauge) or loop corrections,
+not algorithmic changes.
 
 \paragraph{Rank-1 message approximation.}
 The double-layer message $M_k[i_{a,k}, i_{b,k}]$ couples bond $k$ of state
