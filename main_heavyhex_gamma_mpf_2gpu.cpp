@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
            HEAVY_HEX_3x3_IDEAL_KICK_EPS010_EPSILON, chi_max, n_steps, (double)cutoff);
     printf("# gammas: 1.0 2.0 3.0\n");
     printf("# STEP C_nl C_n1 C_n2 C_n3  IP_A a00 a01 a02 a11 a12 a22  IP_B b0 b1 b2"
-           "  chi_nl chi_n  t_trotter(s) t_ip(s)\n");
+           "  chi_nl chi_n  t_cycle(s) t_trotter_pure(s) t_ip_wall(s) t_upload(s)\n");
     fflush(stdout);
 
     // ── GPU 0: all states ─────────────────────────────────────────────────────
@@ -243,18 +243,22 @@ int main(int argc, char** argv) {
     float A_ip[N_GAMMA][N_GAMMA] = {};
     float B_ip[N_GAMMA]          = {};
     double t_ip_last = 0.0;
+    std::atomic<double> t_ip_wall_last{0.0};
 
     // ── Cycle loop ────────────────────────────────────────────────────────────
     for (int step = 1; step <= n_steps; step++) {
 
         // ── Thread 0: GPU 0 Trotter ──────────────────────────────────────────
         double t_trotter0 = now_ms();
+        std::atomic<double> t_trotter_pure{0.0};
         std::thread thr_trotter([&]() {
             HIP_CHECK(hipSetDevice(0));
+            double t0 = now_ms();
             sim_nl.step(state_nl, grid_nl, ws_nl, chi_max, cutoff);
             for (int g=0; g<N_GAMMA; g++)
                 sims_n[g]->step(*states_n[g], *grids_n[g], *ws_n[g], chi_max, cutoff);
             HIP_CHECK(hipDeviceSynchronize());
+            t_trotter_pure = (now_ms() - t0) / 1000.0;
         });
 
         // ── Thread 1: GPU 1 inner products — all 9 pairs in parallel streams ──
@@ -281,7 +285,9 @@ int main(int argc, char** argv) {
                     res_B[i].val = blf_B[i]->compute(25,1e-5f,false,&res_B[i].t_ms);
                 }));
             }
+            double t_ip_wall0 = now_ms();
             for (auto& t : ip_threads) t.join();
+            double t_ip_wallclock = (now_ms() - t_ip_wall0) / 1000.0;
 
             // Collect results
             double t_A=0, t_B=0;
@@ -292,9 +298,10 @@ int main(int argc, char** argv) {
                 }
                 B_ip[i] = res_B[i].val; t_B += res_B[i].t_ms;
             }
+            t_ip_wall_last = t_ip_wallclock;
             if (verbose_ip)
-                printf("  [IP] A=%.2fs B=%.2fs total(serial)=%.2fs\n",
-                       t_A/1000, t_B/1000, (t_A+t_B)/1000);
+                printf("  [IP] wall=%.2fs  serial=%.2fs\n",
+                       t_ip_wallclock, (t_A+t_B)/1000);
             ip_ready = true;
         });
 
@@ -335,18 +342,20 @@ int main(int argc, char** argv) {
             printf("STEP %d  C_nl %+.6f  C_n %+.6f %+.6f %+.6f"
                    "  IP_A nan nan nan nan nan nan"
                    "  IP_B nan nan nan"
-                   "  chi %d %d  t_trotter %.2f  t_ip nan\n",
-                   step, C_nl, C_n[0], C_n[1], C_n[2], chi_nl, chi_n, t_trotter);
+                   "  chi %d %d  t_cycle %.2f  t_trotter_pure %.2f  t_ip_wall nan  t_upload nan\n",
+                   step, C_nl, C_n[0], C_n[1], C_n[2],
+                   chi_nl, chi_n, t_trotter, (double)t_trotter_pure);
         } else {
             printf("STEP %d  C_nl %+.6f  C_n %+.6f %+.6f %+.6f"
                    "  IP_A %.6f %.6f %.6f %.6f %.6f %.6f"
                    "  IP_B %.6f %.6f %.6f"
-                   "  chi %d %d  t_trotter %.2f  t_ip %.2f\n",
+                   "  chi %d %d  t_cycle %.2f  t_trotter_pure %.2f  t_ip_wall %.2f  t_upload %.2f\n",
                    step, C_nl, C_n[0], C_n[1], C_n[2],
                    A_ip[0][0], A_ip[0][1], A_ip[0][2],
                    A_ip[1][1], A_ip[1][2], A_ip[2][2],
                    B_ip[0], B_ip[1], B_ip[2],
-                   chi_nl, chi_n, t_trotter, t_ip_last);
+                   chi_nl, chi_n, t_trotter, (double)t_trotter_pure,
+                   (double)t_ip_wall_last, t_ip_last);
         }
         fflush(stdout);
     }
