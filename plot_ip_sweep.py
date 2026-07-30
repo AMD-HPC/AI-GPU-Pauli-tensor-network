@@ -74,7 +74,7 @@ def main():
     # Discover chi and cutoff values from filenames
     logs = glob.glob(os.path.join(args.logdir, 'chi*_cut*.log'))
     chi_set = sorted(set(int(re.search(r'chi(\d+)',f).group(1)) for f in logs))
-    cut_set = sorted(set(re.search(r'cut([\d.e+-]+)',f).group(1) for f in logs),
+    cut_set = sorted(set(re.search(r'cut([\d.e+-]+)',f).group(1).rstrip('.') for f in logs),
                      key=lambda x: float(x))
 
     n_chi = len(chi_set)
@@ -139,7 +139,7 @@ def plot_pareto(logdir, outfile=None):
     """Pareto frontier: mean error vs total compute time."""
     logs = glob.glob(os.path.join(logdir, 'chi*_cut*.log'))
     chi_set = sorted(set(int(re.search(r'chi(\d+)',f).group(1)) for f in logs))
-    cut_set = sorted(set(re.search(r'cut([\d.e+-]+)',f).group(1) for f in logs),
+    cut_set = sorted(set(re.search(r'cut([\d.e+-]+)',f).group(1).rstrip('.') for f in logs),
                      key=lambda x: float(x))
 
     # Markers per chi, colors per cutoff

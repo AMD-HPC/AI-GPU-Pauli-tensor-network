@@ -566,17 +566,36 @@ toward a production GPU implementation.
 
 \begin{figure}[ht]
     \centering
-    \includegraphics[width=\columnwidth]{ip_chi50_10cycles_mpf_comparison.png}
-    \caption{Comparison of MPF variants at $\chi=50$, 10 Trotter cycles.
-    \emph{Left}: extrapolated $C(t)$ — noiseless reference (black), poor man's MPF (red),
-    and inner product MPF (blue).
-    \emph{Right}: log-scale error $|C_{\rm mpf}(t) - C_{\rm nl}(t)|$ per cycle.
-    Poor man's MPF maintains error $\lesssim 10^{-3}$ throughout.
-    Inner product MPF degrades after cycle 5 due to gauge-dependent BP messages
-    giving ill-conditioned $A$ matrix.
-    Inner products computed at $\chi=50$ in $\sim 0.2$\,s per cycle
-    (GPU, 9 concurrent streams) vs $\sim 52$\,s before porting the Bethe PF to GPU.}
+    \includegraphics[width=\columnwidth]{ip_sweep_comparison.png}
+    \caption{MPF error $|C_{\rm mpf}(t) - C_{\rm nl}(t)|$ vs cycle for
+    $\chi_{\max} \in \{50,100,150,200,250\}$ and
+    cutoff $\in \{2\times10^{-2}, 10^{-2}, 2\times10^{-3}, 10^{-3}, 10^{-4}\}$.
+    Solid lines: poor man's MPF. Dashed lines: inner product MPF.
+    \emph{Poor man's MPF} shows significant variation across chi and cutoff
+    — it genuinely improves with tighter approximation.
+    \emph{Inner product MPF} curves cluster tightly regardless of chi or cutoff
+    — the error is gauge-limited, not compute-limited.
+    Both methods show error growth at $\chi=250$ cycle~10 where chi saturates
+    and truncation error accumulates — a physics limit, not an MPF artifact.}
     \label{fig:ip_mpf}
+\end{figure}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.85\columnwidth]{ip_pareto.png}
+    \caption{Pareto frontier: mean error (cycles 3--10) vs total compute time
+    for all 25 (chi, cutoff) combinations.
+    Filled markers: poor man's MPF. Open markers: inner product MPF.
+    Shape encodes $\chi_{\max}$; color encodes cutoff.
+    \emph{The Pareto frontier is entirely dominated by poor man's MPF}
+    — no inner product point achieves competitive accuracy at any compute budget.
+    Poor man's MPF achieves mean error $\sim 3\times10^{-4}$ across the full
+    compute range; inner product MPF stays at $\sim 5\times10^{-2}$,
+    two orders of magnitude worse.
+    The inner product points are vertically flat (insensitive to chi/cutoff),
+    confirming that the error is set by the QR gauge approximation bias,
+    not by approximation quality.}
+    \label{fig:ip_pareto}
 \end{figure}
 
 The polynomial extrapolation is a Taylor approximation in $\gamma$, valid when
