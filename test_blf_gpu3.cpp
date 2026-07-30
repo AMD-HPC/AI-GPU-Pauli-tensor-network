@@ -130,6 +130,17 @@ int main(int argc,char** argv){
     printf("B[0]  =%.6f  (ref=%.6f)  diff=%.2e  t=%.2fs\n",
            B0_gpu,B0_ref,std::abs(B0_gpu-B0_ref),(now_ms()-t0)/1000.0);
 
+    // Test n_sweeps=0: Bethe PF with warm-start messages only (no BP)
+    printf("\n--- BLF_GPU3 n_sweeps=0 (warm-start only) ---\n");
+    t0=now_ms();
+    blf.upload(gnl,snl.psi,device, gnl,snl.psi,device);
+    float A00_0sw=blf.compute(0,1e-5f);
+    blf.upload(gnl,snl.psi,device, gn1,sn1.psi,device);
+    float B0_0sw=blf.compute(0,1e-5f);
+    printf("A[0,0]=%.6f  (ref=%.6f)  diff=%.2e\n",A00_0sw,A00_ref,std::abs(A00_0sw-A00_ref));
+    printf("B[0]  =%.6f  (ref=%.6f)  diff=%.2e  t=%.2fs\n",
+           B0_0sw,B0_ref,std::abs(B0_0sw-B0_ref),(now_ms()-t0)/1000.0);
+
     rocblas_destroy_handle(handle);
     return 0;
 }

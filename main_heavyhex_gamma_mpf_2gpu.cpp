@@ -257,25 +257,44 @@ int main(int argc, char** argv) {
             HIP_CHECK(hipDeviceSynchronize());
         });
 
-        // ── Thread 1: GPU 1 inner products for previous step ─────────────────
-        // (step 1: no previous inner products — skip)
+        // ── Thread 1: GPU 1 inner products — all 9 pairs in parallel streams ──
         std::thread thr_ip([&]() {
-            if (step == 1) return;   // nothing to compute for step 0
-            // BLF objects already have data from previous upload() call
-            // just compute — already uploaded in previous iteration
+            if (step == 1) return;
             HIP_CHECK(hipSetDevice(1));
-            double t_A=0, t_B=0, t_pair=0;
+
+            // Launch all 9 inner products concurrently — each BLF_GPU3 has
+            // its own stream, so they run in parallel on GPU 1.
+            struct PairResult { float val; double t_ms; };
+            std::vector<std::thread> ip_threads;
+            PairResult res_A[N_GAMMA][N_GAMMA] = {};
+            PairResult res_B[N_GAMMA]          = {};
+
             for (int i=0; i<N_GAMMA; i++) {
-                bool dbg = (step==3 && i==1);  // debug A[1,1] at step 3
-                A_ip[i][i] = blf_A[i][i]->compute(25, 1e-5f, dbg, &t_pair); t_A+=t_pair;
-                for (int j=i+1; j<N_GAMMA; j++) {
-                    A_ip[i][j] = blf_A[i][j]->compute(25, 1e-5f, false, &t_pair); t_A+=t_pair;
-                    A_ip[j][i] = A_ip[i][j];
+                for (int j=i; j<N_GAMMA; j++) {
+                    ip_threads.push_back(std::thread([&, i, j]() {
+                        HIP_CHECK(hipSetDevice(1));
+                        res_A[i][j].val = blf_A[i][j]->compute(25,1e-5f,false,&res_A[i][j].t_ms);
+                    }));
                 }
-                B_ip[i] = blf_B[i]->compute(25, 1e-5f, false, &t_pair); t_B+=t_pair;
+                ip_threads.push_back(std::thread([&, i]() {
+                    HIP_CHECK(hipSetDevice(1));
+                    res_B[i].val = blf_B[i]->compute(25,1e-5f,false,&res_B[i].t_ms);
+                }));
+            }
+            for (auto& t : ip_threads) t.join();
+
+            // Collect results
+            double t_A=0, t_B=0;
+            for (int i=0; i<N_GAMMA; i++) {
+                A_ip[i][i] = res_A[i][i].val; t_A += res_A[i][i].t_ms;
+                for (int j=i+1; j<N_GAMMA; j++) {
+                    A_ip[i][j] = A_ip[j][i] = res_A[i][j].val; t_A += res_A[i][j].t_ms;
+                }
+                B_ip[i] = res_B[i].val; t_B += res_B[i].t_ms;
             }
             if (verbose_ip)
-                printf("  [IP] A=%.2fs B=%.2fs total=%.2fs\n", t_A/1000, t_B/1000, (t_A+t_B)/1000);
+                printf("  [IP] A=%.2fs B=%.2fs total(serial)=%.2fs\n",
+                       t_A/1000, t_B/1000, (t_A+t_B)/1000);
             ip_ready = true;
         });
 

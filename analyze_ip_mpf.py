@@ -21,6 +21,9 @@ Usage:
 import argparse
 import numpy as np
 import re
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 GAMMAS = np.array([1.0, 2.0, 3.0])
 N = 3
@@ -136,6 +139,39 @@ def main():
         print(f"{s:>5}  {C_nl:+10.6f}  {C_mpf_poly:+12.6f}  {C_mpf_pm:+10.6f}  "
               f"{C_mpf_ip:+10.6f}  {d_poly:9.2e}  {d_pm:9.2e}  {d_ip:9.2e}")
         print(f"       x_ip=[{x_ip[0]:+.3f} {x_ip[1]:+.3f} {x_ip[2]:+.3f}] sum={x_ip.sum():.3f}")
+
+    # ── Plot ──────────────────────────────────────────────────────────────────
+    steps  = sorted(ip_data.keys())
+    C_nl_v = [ip_data[s]['C_nl'] for s in steps]
+    C_pm_v = [pm_data.get(s, float('nan')) for s in steps]
+
+    C_ip_v, d_pm_v, d_ip_v = [], [], []
+    for s in steps:
+        d = ip_data[s]; C_n = d['C_n']; A = d['A']; B = d['B']
+        C_mpf_ip, _ = solve_lagrange(A, B, C_n)
+        C_mpf_pm    = pm_data.get(s, float('nan'))
+        C_ip_v.append(C_mpf_ip)
+        d_pm_v.append(abs(C_mpf_pm - d['C_nl']))
+        d_ip_v.append(abs(C_mpf_ip - d['C_nl']) if not np.isnan(C_mpf_ip) else float('nan'))
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # Left: C(t) curves
+    ax1.plot(steps, C_nl_v, 'k-o', label='$C_{nl}$', linewidth=2)
+    ax1.plot(steps, C_pm_v, 'r-s', label="Poor man's MPF", linewidth=1.5)
+    ax1.plot(steps, C_ip_v, 'b-^', label='Inner product MPF', linewidth=1.5)
+    ax1.set_xlabel('Cycle'); ax1.set_ylabel('C(t)')
+    ax1.set_title('MPF extrapolation'); ax1.legend(); ax1.grid(True, alpha=0.3)
+
+    # Right: error (log scale)
+    ax2.semilogy(steps, d_pm_v, 'r-s', label="|Δ| poor man's", linewidth=1.5)
+    ax2.semilogy(steps, d_ip_v, 'b-^', label='|Δ| inner product', linewidth=1.5)
+    ax2.set_xlabel('Cycle'); ax2.set_ylabel('|C_mpf - C_nl|')
+    ax2.set_title('MPF error (log scale)'); ax2.legend(); ax2.grid(True, alpha=0.3)
+
+    outfile = args.ip.replace('.log', '_mpf_comparison.png').replace('/tmp/', './')
+    plt.tight_layout(); plt.savefig(outfile, dpi=150)
+    print(f"\nPlot saved: {outfile}")
 
 if __name__ == '__main__':
     main()
