@@ -433,6 +433,31 @@ naive T$_v$ approach.
 At $\chi=70$ this reduces the cost per inner product from $\sim 233$\,s
 (CPU, $O(\chi^6)$) to a target of $\sim 5$\,s (GPU GEMM, $O(\chi^3 D)$).
 
+\paragraph{Rank-1 message approximation.}
+The double-layer message $M_k[i_{a,k}, i_{b,k}]$ couples bond $k$ of state
+$|\psi_a\rangle$ to bond $k$ of state $|\psi_b\rangle$.
+Note that the bond indices $i_{a,k}$ and $i_{b,k}$ belong to \emph{different}
+states — the Kronecker product is across layers, not across bonds.
+If $M_k$ is approximated as rank-1:
+\begin{equation}
+    M_k[i_{a,k}, i_{b,k}] \;\approx\; u_k[i_{a,k}]\cdot v_k[i_{b,k}]
+    \label{eq:rank1}
+\end{equation}
+the two layers decouple completely.
+Each contraction in~(\ref{eq:step1}) separates into independent single-layer
+operations — $O(\chi^2 D)$ each — identical in structure to the
+autocorrelation computation (which is the special case $\chi_b=1$,
+$v_k \equiv 1$).
+On a tree this rank-1 approximation is exact when messages have converged.
+On the loopy heavy-hex graph it is an additional approximation on top of BP,
+but the error is bounded by the same loop-correction terms that make plain BP
+approximate.
+The rank-1 vectors $u_k, v_k$ are updated each sweep via the leading singular
+vectors of the full message matrix~(\ref{eq:rank1}), extracted by power iteration
+at $O(\chi^2)$ cost.
+This approximation reduces the inner product cost to $O(\chi^2 D)$ per message
+update — the same order as autocorrelation — and is the natural next step
+toward a production GPU implementation.
 
 The polynomial extrapolation is a Taylor approximation in $\gamma$, valid when
 the noise perturbation is small. As cycles accumulate, the noise effect grows
