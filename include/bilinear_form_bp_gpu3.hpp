@@ -524,7 +524,7 @@ struct BLF_GPU3 {
             if(max_delta < tol){ if(verbose) printf("  [BLF3] converged sweep %d\n",sweep); break; }
         }
 
-        float result = _bethe_cpu();
+        float result = _bethe_gpu();
 
         if(t_ms_out){
             auto t1=std::chrono::high_resolution_clock::now();
@@ -686,6 +686,201 @@ private:
         HIP_CHECK(hipMemcpy(old_h.data(), old_M_dev, ca_skip*cb_skip*sizeof(float), hipMemcpyDeviceToHost));
         for(int i=0;i<ca_skip*cb_skip;i++) max_delta=std::max(max_delta,std::abs(nm[i]-old_h[i]));
         HIP_CHECK(hipMemcpy(out_M_dev, nm.data(), ca_skip*cb_skip*sizeof(float), hipMemcpyHostToDevice));
+    }
+
+    // ── Bethe PF (GPU) ───────────────────────────────────────────────────────
+    // For each site: a_v = sum_{ia,ib,d} psi_a[ia,d]*psi_b[ib,d]*prod_k M_k[ia_k,ib_k]
+    // Same SGEMM structure as message update but contracting ALL bonds.
+    //
+    // Degree-2 site (bonds k0, k1):
+    //   Step 1: phi_a[chi_b0, chi_b1, D] = contract M_0 into psi_a over chi_a0
+    //           then contract M_1 into result over chi_a1
+    //   Simplified: phi_a[chi_b0*chi_b1, D] = psi_a contracted with both M's
+    //   Step 2: a_v = sum_d phi_a[ia,d]*phi_b[ib,d]  (one SDOT after weighting)
+    //
+    // We implement via two _step1_gpu calls treating "skip" as a dummy:
+    //   First contract k1 out of psi_a → inter[chi_a0, chi_b1, D]
+    //   Then contract k0 out of inter → phi_a[chi_b0, D] — a D-vector!
+    //   Similarly for phi_b.
+    //   a_v = phi_a · phi_b (dot product of two D-vectors)
+    //
+    // Device buffers d_psi_T_a, d_inter_T already allocated — reuse them.
+    float _bethe_gpu() {
+        double log_num=0.0, sign_num=1.0;
+
+        for(auto& site : grid_a_ptr->sites){
+            int sid=site.id; auto& sm=smeta[sid]; int nb=sm.nb;
+
+            auto get_M_dev=[&](int k)->float*{
+                int bk=sm.bond_id[k];
+                return (sid==grid_a_ptr->bonds[bk].site_a)?d_M_bwd[bk]:d_M_fwd[bk];
+            };
+
+            // Contract all messages into psi_a → phi_a[D] (scalar per Pauli)
+            // Contract all messages into psi_b → phi_b[D]
+            // a_v = phi_a · phi_b
+            //
+            // Strategy: sequential _step1_gpu contractions
+            // After k contractions: intermediate has shape [remaining_chi_a, remaining_chi_b, D]
+            // Final: [1, 1, D] = phi_a[D]
+
+            float phi_a[D_BLF_G3] = {}, phi_b[D_BLF_G3] = {};
+
+            if (nb == 1) {
+                // phi_a[d] = sum_{ia} psi_a[ia,d]*M_0[ia,ib] summed over ib
+                // = sum_{ia,ib} psi_a[ia,d]*M_0[ia,ib]
+                // = psi_a_flat[D] @ M_0_rowsum[chi_a0]  (weighted by row sums)
+                int ca0=sm.chi_a[0], cb0=sm.chi_b[0];
+                float* M0=get_M_dev(0);
+                // phi_a[d] = sum_ia psi_a[ia,d] * (sum_ib M0[ia,ib])
+                // Download M0 row sums on CPU (chi_a0 floats — tiny)
+                std::vector<float> rs(ca0,0.f), cs(cb0,0.f);
+                std::vector<float> m(ca0*cb0);
+                HIP_CHECK(hipMemcpy(m.data(),M0,ca0*cb0*sizeof(float),hipMemcpyDeviceToHost));
+                for(int ia=0;ia<ca0;ia++) for(int ib=0;ib<cb0;ib++){rs[ia]+=m[ia*cb0+ib]; cs[ib]+=m[ia*cb0+ib];}
+                std::vector<float> pa(sm.vola*D_BLF_G3), pb(sm.volb*D_BLF_G3);
+                HIP_CHECK(hipMemcpy(pa.data(),d_psi_a[sid],sm.vola*D_BLF_G3*sizeof(float),hipMemcpyDeviceToHost));
+                HIP_CHECK(hipMemcpy(pb.data(),d_psi_b[sid],sm.volb*D_BLF_G3*sizeof(float),hipMemcpyDeviceToHost));
+                for(int ia=0;ia<ca0;ia++) for(int d=0;d<D_BLF_G3;d++) phi_a[d]+=pa[ia*D_BLF_G3+d]*rs[ia];
+                for(int ib=0;ib<cb0;ib++) for(int d=0;d<D_BLF_G3;d++) phi_b[d]+=pb[ib*D_BLF_G3+d]*cs[ib];
+
+            } else if (nb == 2) {
+                // Degree-2: O(chi^3 D) via two SGEMMs + SDOT
+                // a_v = sum_{ia0,ia1,ib0,ib1,d} psi_a[ia0,ia1,d]*psi_b[ib0,ib1,d]*M0[ia0,ib0]*M1[ia1,ib1]
+                //
+                // Step 1: inter_a[ia0, ib1, D] = psi_a[ia0,ia1,D] @ M1[ia1,ib1]  (SGEMM)
+                // Step 2: G[ia0, ib0] = inter_a_flat[ia0, ib1*D] @ psi_b_flat[ib0, ib1*D]^T (SGEMM)
+                // Step 3: a_v = frobenius(M0, G) = SDOT(M0_flat, G_flat)
+                int ca0=sm.chi_a[0],ca1=sm.chi_a[1],cb0=sm.chi_b[0],cb1=sm.chi_b[1];
+                float* M0=get_M_dev(0); float* M1=get_M_dev(1);
+
+                // Step 1: inter_a stored in d_inter_T as [D, ca0, cb1]
+                _step1_gpu(d_psi_a[sid], ca0, ca1, M1, cb1);
+
+                // Step 2: G[ca0, cb0] = inter_a_flat[ca0, cb1*D] @ psi_b_flat[cb0, cb1*D]^T
+                // Rearrange d_inter_T[D,ca0,cb1] → inter_flat[ca0, cb1*D] on CPU (small: ca0*cb1*D)
+                int sz_i = ca0*cb1*D_BLF_G3;
+                std::vector<float> inter_T(sz_i), inter_flat(sz_i), pb_flat(sm.volb*D_BLF_G3);
+                HIP_CHECK(hipMemcpy(inter_T.data(), d_inter_T, sz_i*sizeof(float), hipMemcpyDeviceToHost));
+                // d_inter_T[d, ia0, ib1] at d*ca0*cb1 + ia0*cb1 + ib1 → inter_flat[ia0, ib1, d]
+                for(int d=0;d<D_BLF_G3;d++)
+                for(int ia0=0;ia0<ca0;ia0++)
+                for(int ib1=0;ib1<cb1;ib1++)
+                    inter_flat[(ia0*cb1+ib1)*D_BLF_G3+d] = inter_T[d*ca0*cb1+ia0*cb1+ib1];
+
+                HIP_CHECK(hipMemcpy(pb_flat.data(),d_psi_b[sid],sm.volb*D_BLF_G3*sizeof(float),hipMemcpyDeviceToHost));
+
+                // G[ia0, ib0] = sum_{ib1,d} inter_flat[ia0,ib1,d]*psi_b[ib0,ib1,d]
+                // = inter_flat[ca0, cb1*D] @ psi_b_flat[cb0, cb1*D]^T  — one SGEMM on CPU
+                int K = cb1*D_BLF_G3;
+                std::vector<float> G(ca0*cb0, 0.f);
+                for(int ia0=0;ia0<ca0;ia0++)
+                for(int ib0=0;ib0<cb0;ib0++)
+                for(int k=0;k<K;k++)
+                    G[ia0*cb0+ib0] += inter_flat[ia0*K+k] * pb_flat[ib0*K+k];
+
+                // Step 3: a_v = sum_{ia0,ib0} M0[ia0,ib0] * G[ia0,ib0]
+                std::vector<float> m0(ca0*cb0);
+                HIP_CHECK(hipMemcpy(m0.data(),M0,ca0*cb0*sizeof(float),hipMemcpyDeviceToHost));
+                double a_v=0.0;
+                for(int i=0;i<ca0*cb0;i++) a_v+=(double)m0[i]*(double)G[i];
+
+                sign_num*=(a_v>0?1.0:(a_v<0?-1.0:0.0));
+                log_num+=(a_v!=0?std::log(std::abs(a_v)):-1e30);
+                continue;
+
+            } else {
+                // Degree-3: three SGEMMs — O(chi^3 D) per site
+                // a_v = sum_{ia,ib,d} psi_a[ia,d]*psi_b[ib,d]*M0[ia0,ib0]*M1[ia1,ib1]*M2[ia2,ib2]
+                //
+                // Step 1: inter1[ca0*ca1, cb2, D] = psi_a[ca0,ca1,ca2,D] @_{ca2} M2  (SGEMM)
+                // Step 2: inter2[ca0, cb1*cb2*D] contracted with M1  (CPU loop, O(chi^3 D))
+                // Step 3: G[ca0, cb0] = inter2 @ psi_b_flat^T  (SGEMM)
+                // Step 4: a_v = frobenius(M0, G)  (SDOT)
+
+                int ca0=sm.chi_a[0],ca1=sm.chi_a[1],ca2=sm.chi_a[2];
+                int cb0=sm.chi_b[0],cb1=sm.chi_b[1],cb2=sm.chi_b[2];
+                float* M0=get_M_dev(0); float* M1=get_M_dev(1); float* M2=get_M_dev(2);
+
+                // Rearrange psi_a to [ca0,ca1,ca2,D] order (may already be correct)
+                _rearrange_deg3_gpu(d_psi_a[sid], sm.chi_a, 0, 1, 2, ca0, ca1, ca2, d_scratch2);
+                // d_scratch2: psi_a_r[ca0,ca1,ca2,D]
+
+                // Step 1: inter1[ca0*ca1, cb2, D] = psi_a_r[ca0*ca1,ca2,D] @_{ca2} M2
+                _step1_gpu(d_scratch2, ca0*ca1, ca2, M2, cb2);
+                // d_inter_T: [D, ca0*ca1, cb2]
+
+                // Download inter1 and rearrange to [ca0, ca1, cb2, D]
+                int sz1 = ca0*ca1*cb2*D_BLF_G3;
+                std::vector<float> iT1(sz1), inter1(sz1);
+                HIP_CHECK(hipMemcpy(iT1.data(), d_inter_T, sz1*sizeof(float), hipMemcpyDeviceToHost));
+                for(int d=0;d<D_BLF_G3;d++)
+                for(int ia01=0;ia01<ca0*ca1;ia01++)
+                for(int ib2=0;ib2<cb2;ib2++)
+                    inter1[(ia01*cb2+ib2)*D_BLF_G3+d] = iT1[d*ca0*ca1*cb2+ia01*cb2+ib2];
+
+                // Step 2: contract M1 → inter2[ca0, cb1, cb2, D]  O(chi^3 D)
+                std::vector<float> m1(ca1*cb1);
+                HIP_CHECK(hipMemcpy(m1.data(),M1,ca1*cb1*sizeof(float),hipMemcpyDeviceToHost));
+                std::vector<float> inter2(ca0*cb1*cb2*D_BLF_G3, 0.f);
+                for(int ia0=0;ia0<ca0;ia0++)
+                for(int ia1=0;ia1<ca1;ia1++)
+                for(int ib1=0;ib1<cb1;ib1++)
+                for(int ib2=0;ib2<cb2;ib2++)
+                for(int d=0;d<D_BLF_G3;d++)
+                    inter2[((ia0*cb1+ib1)*cb2+ib2)*D_BLF_G3+d] +=
+                        inter1[((ia0*ca1+ia1)*cb2+ib2)*D_BLF_G3+d] * m1[ia1*cb1+ib1];
+
+                // inter2 flat as [ca0, cb1*cb2*D]
+                int K3 = cb1*cb2*D_BLF_G3;
+
+                // Step 3: rearrange psi_b to [cb0,cb1,cb2,D] order, flatten to [cb0, K3]
+                _rearrange_deg3_gpu(d_psi_b[sid], sm.chi_b, 0, 1, 2, cb0, cb1, cb2, d_scratch2);
+                std::vector<float> pb_flat(cb0*K3);
+                {
+                    std::vector<float> pb_r(cb0*cb1*cb2*D_BLF_G3);
+                    HIP_CHECK(hipMemcpy(pb_r.data(),d_scratch2,cb0*K3*sizeof(float),hipMemcpyDeviceToHost));
+                    pb_flat = pb_r; // already [cb0, cb1, cb2, D] = [cb0, K3]
+                }
+
+                // G[ca0, cb0] = inter2[ca0, K3] @ pb_flat[cb0, K3]^T
+                std::vector<float> G(ca0*cb0, 0.f);
+                for(int ia0=0;ia0<ca0;ia0++)
+                for(int ib0=0;ib0<cb0;ib0++)
+                for(int k=0;k<K3;k++)
+                    G[ia0*cb0+ib0] += inter2[ia0*K3+k] * pb_flat[ib0*K3+k];
+
+                // Step 4: a_v = frobenius(M0, G)
+                std::vector<float> m0(ca0*cb0);
+                HIP_CHECK(hipMemcpy(m0.data(),M0,ca0*cb0*sizeof(float),hipMemcpyDeviceToHost));
+                double a_v=0.0;
+                for(int i=0;i<ca0*cb0;i++) a_v+=(double)m0[i]*(double)G[i];
+
+                sign_num*=(a_v>0?1.0:(a_v<0?-1.0:0.0));
+                log_num+=(a_v!=0?std::log(std::abs(a_v)):-1e30);
+                continue;
+            }
+
+            // For nb==1 case: phi_a and phi_b computed above
+            double a_v=0.0;
+            for(int d=0;d<D_BLF_G3;d++) a_v+=(double)phi_a[d]*(double)phi_b[d];
+            sign_num*=(a_v>0?1.0:(a_v<0?-1.0:0.0));
+            log_num+=(a_v!=0?std::log(std::abs(a_v)):-1e30);
+        }
+
+        // ze per bond: dot product M_fwd · M_bwd (on GPU via SDOT)
+        double log_den=0.0, sign_den=1.0;
+        for(auto& bond : grid_a_ptr->bonds){
+            int bid=bond.id; int ca=frozen_chi_a[bid],cb=frozen_chi_b[bid]; int sz=ca*cb;
+            float ze_gpu=0.f;
+            rocblas_sdot(handle, sz, d_M_fwd[bid], 1, d_M_bwd[bid], 1, &ze_gpu);
+            HIP_CHECK(hipStreamSynchronize(stream));
+            double ze=(double)ze_gpu;
+            sign_den*=(ze>0?1.0:(ze<0?-1.0:0.0));
+            log_den+=(std::abs(ze)>1e-30?std::log(std::abs(ze)):-1e30);
+        }
+        if(sign_num==0.0) return 0.f;
+        return (float)(sign_num*sign_den*std::exp(log_num-log_den+log_scale_a+log_scale_b));
     }
 
     // ── Bethe PF (CPU) ────────────────────────────────────────────────────────

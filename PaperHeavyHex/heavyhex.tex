@@ -459,6 +459,21 @@ This approximation reduces the inner product cost to $O(\chi^2 D)$ per message
 update — the same order as autocorrelation — and is the natural next step
 toward a production GPU implementation.
 
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\columnwidth]{ip_chi50_10cycles_mpf_comparison.png}
+    \caption{Comparison of MPF variants at $\chi=50$, 10 Trotter cycles.
+    \emph{Left}: extrapolated $C(t)$ — noiseless reference (black), poor man's MPF (red),
+    and inner product MPF (blue).
+    \emph{Right}: log-scale error $|C_{\rm mpf}(t) - C_{\rm nl}(t)|$ per cycle.
+    Poor man's MPF maintains error $\lesssim 10^{-3}$ throughout.
+    Inner product MPF degrades after cycle 5 due to gauge-dependent BP messages
+    giving ill-conditioned $A$ matrix.
+    Inner products computed at $\chi=50$ in $\sim 0.2$\,s per cycle
+    (GPU, 9 concurrent streams) vs $\sim 52$\,s before porting the Bethe PF to GPU.}
+    \label{fig:ip_mpf}
+\end{figure}
+
 The polynomial extrapolation is a Taylor approximation in $\gamma$, valid when
 the noise perturbation is small. As cycles accumulate, the noise effect grows
 and higher-order terms become significant, causing the polynomial fit to diverge.
