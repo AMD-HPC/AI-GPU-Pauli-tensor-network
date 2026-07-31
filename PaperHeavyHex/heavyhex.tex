@@ -133,11 +133,14 @@ enabling parallel gate application within each color class.}
 \label{fig:heavyhex}
 \end{figure}
 
-The \texttt{heavy\_hex\_$n_x \times n_y$} graph (Fig.~\ref{fig:heavyhex}) has
+The \texttt{heavy\_hex\_$n_x \times n_y$} graph $G=(V,E)$
+(Fig.~\ref{fig:heavyhex}) has
 $n_x \cdot n_y$ \emph{junction} sites of degree 3 and
 $(2n_xn_y + n_x + n_y)$ arm sites of degree 2,
-for a total of $(3n_xn_y + n_x + n_y)$ sites and $(2n_xn_y + n_x + n_y)$ bonds.
-For $n_x = n_y = 3$: 16 junction sites, 52 arm sites, 76 bonds.
+for a total of $|V| = 3n_xn_y + n_x + n_y$ sites and
+$|E| = 2n_xn_y + n_x + n_y$ bonds.
+For $n_x = n_y = 3$: $|V|=68$ ($16$ junction $+ 52$ arm) and $|E|=76$.
+We write $\partial v \subset E$ for the set of bonds incident to site $v$.
 The graph is bipartite and 3-edge-colorable — bonds partition into 3 color
 classes of sizes 25, 25, 26, corresponding to the natural gate layers
 of the hardware schedule.
@@ -381,56 +384,88 @@ for the two layers: $i_{a,k} \in [0, \chi_{a,k})$ is determined by the bond
 dimension of $|\psi_a\rangle$, and $i_{b,k} \in [0, \chi_{b,k})$ by that of
 $|\psi_b\rangle$. These may differ — for cross-overlaps between the noiseless
 and noisy states, $\chi_{a,k} \neq \chi_{b,k}$ in general.
-Each bond carries a $\chi_{a,k}\times\chi_{b,k}$ message matrix $M_e[i_a,i_b]$,
-and the inner product follows from the
-Bethe partition function:
+Each bond $e\in E$ carries a $\chi_{a,e}\times\chi_{b,e}$ message matrix
+$M_e[i_a,i_b]$, and the inner product follows from the Bethe partition function:
 \begin{equation}
     \langle\psi_a|\psi_b\rangle
     \;\approx\;
-    \frac{\prod_v a_v}{\prod_e z_e},
+    \frac{\prod_{v\in V} a_v}{\prod_{e\in E} z_e},
     \label{eq:bethe_formula}
     \qquad
-    a_v = \sum_{\mathbf{i}_a,\mathbf{i}_b} T_v\!\prod_e M_e,
+    a_v = \sum_{\mathbf{i}_a,\mathbf{i}_b} T_v\!\prod_{e\in\partial v} M_e,
     \quad
     z_e = \sum_{i_a,i_b} M_e^{\to}[i_a,i_b]\,M_e^{\leftarrow}[i_a,i_b]
 \end{equation}
-which is the BP approximation (exact on trees, approximate on the loopy heavy-hex graph).
+which is the BP approximation (exact on trees, approximate on the loopy graph $G$).
 
 \paragraph{Message update without building $T_v$.}
+Each bond $e$ carries \emph{two} directed messages: $M_e^{\to}[i_a,i_b]$
+flowing from site $a$ to site $b$, and $M_e^{\leftarrow}[i_a,i_b]$ in the
+reverse direction.
+Both are $\chi_{a,e}\times\chi_{b,e}$ matrices coupling the bond index
+of $|\psi_a\rangle$ to that of $|\psi_b\rangle$.
+
+\emph{Initialization.}
+Before any BP sweep, the messages are warm-started from the single-layer
+BP messages already computed during the Trotter step:
+\begin{equation}
+    M_e^{(0)}[i_a,\, i_b]
+    \;=\;
+    \bigl|m_e^{(a)}[i_a]\bigr| \cdot \bigl|m_e^{(b)}[i_b]\bigr|
+    \label{eq:msg_init}
+\end{equation}
+where $m_e^{(a)}$ and $m_e^{(b)}$ are the diagonal entries of the converged
+single-layer BP messages for $|\psi_a\rangle$ and $|\psi_b\rangle$ respectively.
+This rank-1 warm-start — a Kronecker product of the two single-layer diagonals
+— places BP in a good basin of attraction at zero additional cost.
+After convergence, $M_e$ evolves to a general matrix of rank up to
+$\min(\chi_{a,e}, \chi_{b,e}, D)$.
+
+\emph{Update rule.}
 Constructing $T_v$ explicitly costs $O(\chi^{2\,\text{deg}})$ — for degree-3
 junction sites this is $O(\chi^6)$, which is intractable at $\chi\gtrsim 10$.
 Instead, we contract $M$ into $\psi$ \emph{before} forming the outer product,
 giving $O(\chi^3 D)$ per message update.
-For a degree-2 (arm) site $v$ with bonds $k_{\rm skip}$ and $k_1$,
-the outgoing message update is performed in two steps:
+
+Consider a degree-2 (arm) site $v$ with bonds $k_0$ and $k_1$.
+To update the outgoing message on bond $k_0$, we use only the
+\emph{incoming} message from the other bond $k_1$ — BP never uses the
+current message of a bond to update itself.
+The update proceeds in two steps:
 \begin{align}
-    \phi_a[i_{a,{\rm skip}},\, j_{b,1},\, d]
-    &= \sum_{i_{a,1}} \psi_a[v,\, i_{a,{\rm skip}},\, i_{a,1},\, d]
+    \phi_a[i_{a,0},\, j_{b,1},\, d]
+    &= \sum_{i_{a,1}} \psi_a[v,\, i_{a,0},\, i_{a,1},\, d]
        \cdot M_{k_1}[i_{a,1},\, j_{b,1}]
     \label{eq:step1}\\
-    M_{k_{\rm skip}}^{\rm new}[i_{a,{\rm skip}},\, i_{b,{\rm skip}}]
-    &= \sum_{j_{b,1},\, d} \phi_a[i_{a,{\rm skip}},\, j_{b,1},\, d]
-       \cdot \psi_b[v,\, i_{b,{\rm skip}},\, j_{b,1},\, d]
+    M_{k_0}^{\rm new}[i_{a,0},\, i_{b,0}]
+    &= \sum_{j_{b,1},\, d} \phi_a[i_{a,0},\, j_{b,1},\, d]
+       \cdot \psi_b[v,\, i_{b,0},\, j_{b,1},\, d]
     \label{eq:step2}
 \end{align}
-Equation~(\ref{eq:step1}) contracts the incoming message $M_{k_1}$ into
-$\psi_a$ over bond index $i_{a,1}$, producing an intermediate tensor
-$\phi_a$ of shape $[\chi, \chi, D]$.
-Equation~(\ref{eq:step2}) contracts $\phi_a$ with $\psi_b$ over the shared
-bond $j_{b,1}$ and physical index $d$, yielding the new $\chi\times\chi$
-outgoing message.
-For degree-3 (junction) sites two sequential contractions of the form
-(\ref{eq:step1}) precede the final step~(\ref{eq:step2}), keeping the
-cost at $O(\chi^3 D)$ throughout.
+Here $i_{a,k}$ denotes the bond-$k$ index of state $|\psi_a\rangle$
+and $j_{b,k}$ that of state $|\psi_b\rangle$
+(e.g.\ $i_{a,0}\in[0,\chi_{a,0})$ for bond $k_0$ in $|\psi_a\rangle$,
+$j_{b,1}\in[0,\chi_{b,1})$ for bond $k_1$ in $|\psi_b\rangle$).
+Equation~(\ref{eq:step1}) absorbs the incoming message $M_{k_1}$ into
+$\psi_a$ by summing over $i_{a,1}$, producing an
+intermediate tensor $\phi_a$ of shape $[\chi_{a,0}, \chi_{b,1}, D]$.
+Equation~(\ref{eq:step2}) pairs $\phi_a$ with $\psi_b$ by summing over
+the shared index $j_{b,1}$ and the Pauli index $d$, yielding the new
+outgoing message $M_{k_0}^{\rm new}$ of shape $[\chi_{a,0}, \chi_{b,0}]$.
+The symmetric update for $M_{k_1}^{\rm new}$ follows by swapping $k_0\leftrightarrow k_1$.
+For degree-3 (junction) sites, two sequential contractions of the form
+(\ref{eq:step1}) absorb the two incoming messages before the final
+step~(\ref{eq:step2}), keeping the cost at $O(\chi^3 D)$ throughout.
 
 \paragraph{Matrix formulation.}
 Both the message update and the Bethe PF reduce to standard matrix
-multiplications, enabling direct GPU implementation via \textsc{Blas}.
+multiplications.
 We use the shorthand $\tilde{\Psi}_a \in \mathbb{R}^{\chi_{a,0} \times \chi_{a,1}D}$
 for the site tensor $\psi_a[v, i_{a,0}, i_{a,1}, d]$ reshaped by treating
 the last bond index and Pauli index $d\in\{I,X,Y,Z\}$ jointly.
 
-\textit{Degree-2 site} (arm node, skip bond $k_0$, incoming bond $k_1$):
+\textit{Degree-2 site} (arm node, bonds $k_0$ and $k_1$; updating $M_{k_0}^{\rm new}$
+using incoming $M_{k_1}$):
 \begin{align}
     \Phi_a &= \tilde{\Psi}_a \cdot (M_{k_1} \otimes I_D)
     \;\in\; \mathbb{R}^{\chi_{a,0} \times \chi_{b,1}D}
@@ -442,7 +477,8 @@ the last bond index and Pauli index $d\in\{I,X,Y,Z\}$ jointly.
     \label{eq:gemm2}
 \end{align}
 
-\textit{Degree-3 site} (junction, skip $k_0$, incoming $k_1$, $k_2$):
+\textit{Degree-3 site} (junction, bonds $k_0$, $k_1$, $k_2$; updating $M_{k_0}^{\rm new}$
+using incoming $M_{k_1}$ and $M_{k_2}$):
 same structure applied twice before the final step:
 \begin{align}
     \Phi_a^{(1)} &= \tilde{\Psi}_a^{[k_2]} \cdot (M_{k_2}\otimes I_D)
@@ -457,6 +493,9 @@ same structure applied twice before the final step:
 \end{align}
 where $[\,\cdot\,]$ denotes a reshape placing that bond index outermost.
 Total cost: $O(\chi^3 D)$ for both degree-2 and degree-3.
+The formulation above was derived by formalising the implemented and
+validated GPU code (\texttt{test\_blf\_sgemm.cpp}); the equations
+describe exactly what the kernels compute.
 
 \textit{Bethe partition function.}
 The vertex and edge factors in~(\ref{eq:bethe_formula}) are computed
@@ -567,6 +606,30 @@ This approximation reduces the inner product cost to $O(\chi^2 D)$ per message
 update — the same order as autocorrelation — and is the natural next step
 toward a production GPU implementation.
 
+\paragraph{Symmetric gauge: diagonal messages.}
+The strongest simplification arises in the \emph{symmetric gauge}, where
+the converged single-layer BP messages are absorbed into the site tensors
+as $\psi^{\sqrt{}}_a \leftarrow \sqrt{M_e}\,\psi_a$ for each incident bond.
+After this absorption the effective single-layer messages are identity,
+and the warm-start~(\ref{eq:msg_init}) gives $M_e^{(0)} = I$ — a diagonal
+matrix.
+Assuming BP converges back to diagonal matrices (which is forced to be
+true on a tree, and is an excellent approximation on the heavy-hex graph
+when the gauge is well-chosen), the message product in the vertex factor
+$a_v$ is non-zero only when $i_{a,k} = i_{b,k}$ for every bond $k\in\partial v$.
+The double sum over $(\mathbf{i}_a, \mathbf{i}_b)$ collapses to a single sum:
+\begin{equation}
+    a_v \;\approx\; \sum_{\mathbf{i},\,d}
+    \psi_a^{\sqrt{}}[v,\mathbf{i},d]\cdot\psi_b^{\sqrt{}}[v,\mathbf{i},d],
+    \label{eq:sqrt_av}
+\end{equation}
+which costs $O(\chi^{\deg} D)$ — identical to the autocorrelation evaluation.
+No BP sweeps are required and the $\chi\times\chi$ message matrices never
+appear explicitly.
+Implementing this gauge change on GPU~1 before the Bethe PF evaluation
+would reduce the inner product cost from $O(\chi^3 D)$ to $O(\chi D)$,
+making the inner product pipeline faster than Trotter at all bond dimensions.
+
 \begin{figure}[ht]
     \centering
     \includegraphics[width=\columnwidth]{ip_sweep_comparison.png}
@@ -646,7 +709,7 @@ modeling to the noisy setting using the same methodology.
     \includegraphics[width=\textwidth]{lightcone_sites_spatial_site13.png}
     \caption{Non-identity Pauli weight $n(v,t)$ at each site of the
     heavy\_hex\_3x3 graph over 20 Trotter steps, initialised at site 13
-    (mid-graph degree-3 junction, marked cyan). The operator spreads radially
+    (mid-graph degree-3 junction). The operator spreads radially
     outward with 3-fold hexagonal symmetry, reaching the graph boundary
     by cycle $\sim$17. Color scale is per-panel normalized.}
     \label{fig:lightcone}
