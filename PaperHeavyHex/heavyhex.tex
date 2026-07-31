@@ -377,9 +377,12 @@ At each site $v$, the single-layer site tensor $\psi_v[\mathbf{i}, d]$
     \label{eq:Tv}
 \end{equation}
 where $\mathbf{i}_a$ and $\mathbf{i}_b$ are \emph{independent} bond indices
-for the two layers, each ranging over $\chi$ values.
-Each bond of the double-layer network carries a $\chi\times\chi$ message
-matrix $M_e[i_a,i_b]$, and the inner product follows from the
+for the two layers: $i_{a,k} \in [0, \chi_{a,k})$ is determined by the bond
+dimension of $|\psi_a\rangle$, and $i_{b,k} \in [0, \chi_{b,k})$ by that of
+$|\psi_b\rangle$. These may differ — for cross-overlaps between the noiseless
+and noisy states, $\chi_{a,k} \neq \chi_{b,k}$ in general.
+Each bond carries a $\chi_{a,k}\times\chi_{b,k}$ message matrix $M_e[i_a,i_b]$,
+and the inner product follows from the
 Bethe partition function:
 \begin{equation}
     \langle\psi_a|\psi_b\rangle
