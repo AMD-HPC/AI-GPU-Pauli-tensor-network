@@ -697,18 +697,12 @@ For quantum error mitigation via the gamma multi-product formula
 the time of current implementations, enabling fast and systematic
 exploration of the parameter space.
 
-The classical simulation infrastructure developed here is a direct
-component of the Lindblad Multiproduct Formula (L-MPF) workflow
-\cite{lmpf-ref}, which combines two-dimensional tensor networks contracted
-with loop-corrected belief propagation~\cite{evenbly2026loop} with quantum
-hardware measurements to perform error mitigation on the heavy-hex lattice.
-In that framework the quantities $F_{ij} = \langle\langle O|\Lambda_{\lambda_i}^T
-\Lambda_{\lambda_j}|O\rangle\rangle$ — which are exactly the inner products
-$\langle\psi_i|\psi_j\rangle$ computed here — are evaluated classically
-and used to find coefficients $c_i$ that optimally project noisy observables
-onto the noiseless target.
-Our GPU inner product pipeline achieves the same $4$--$5.6\times$ wall-clock
-speedup on AMD MI355X as reported in that work.
+The inner product quantities $F_{ij} = \langle\langle O|\Lambda_{\lambda_i}^T
+\Lambda_{\lambda_j}|O\rangle\rangle$ computed here are the central classical
+component of Lindblad Multiproduct Formula workflows~\cite{lmpf-ref,robertson2025dynamic},
+which combine two-dimensional tensor networks with loop-corrected belief
+propagation~\cite{evenbly2026loop} and quantum hardware measurements to
+perform error mitigation on the heavy-hex lattice.
 
 Future work proceeds along four interconnected directions.
 First, \emph{loop corrections} to belief propagation~\cite{evenbly2026loop}:
