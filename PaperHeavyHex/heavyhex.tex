@@ -697,23 +697,42 @@ For quantum error mitigation via the gamma multi-product formula
 the time of current implementations, enabling fast and systematic
 exploration of the parameter space.
 
-Future work proceeds along three interconnected directions.
-First, the \emph{symmetric gauge} for inner products: absorbing $\sqrt{M_e}$
+The classical simulation infrastructure developed here is a direct
+component of the Lindblad Multiproduct Formula (L-MPF) workflow
+\cite{lmpf-ref}, which combines two-dimensional tensor networks contracted
+with loop-corrected belief propagation~\cite{evenbly2026loop} with quantum
+hardware measurements to perform error mitigation on the heavy-hex lattice.
+In that framework the quantities $F_{ij} = \langle\langle O|\Lambda_{\lambda_i}^T
+\Lambda_{\lambda_j}|O\rangle\rangle$ — which are exactly the inner products
+$\langle\psi_i|\psi_j\rangle$ computed here — are evaluated classically
+and used to find coefficients $c_i$ that optimally project noisy observables
+onto the noiseless target.
+Our GPU inner product pipeline achieves the same $4$--$5.6\times$ wall-clock
+speedup on AMD MI355X as reported in that work.
+
+Future work proceeds along four interconnected directions.
+First, \emph{loop corrections} to belief propagation~\cite{evenbly2026loop}:
+plain BP on the loopy heavy-hex graph introduces a gauge-dependent bias in
+the Bethe partition function; loop corrections make the inner product matrix
+$F_{ij}$ better conditioned and bring it closer to the exact contraction.
+Second, the \emph{symmetric gauge} for inner products: absorbing $\sqrt{M_e}$
 into the site tensors makes the double-layer messages diagonal, collapsing
 the $O(\chi^3 D)$ GEMM chain to an $O(\chi D)$ dot product — identical
 in cost to autocorrelation — without any BP sweeps.
-This is non-negotiable for extension to degree-4 sites (rectangular 2D grids),
+This is essential for extension to degree-4 sites (rectangular 2D grids),
 where the current QR-gauge inner product cost is $\sim 450\times$ the Trotter cost.
-Second, \emph{multi-GPU Trotter}: at degree-4, each state requires
-$O(\chi^4)$ memory; distributing the four states across four GPUs enables
-a $4\times$ wall-clock speedup and keeps the Trotter/inner-product overlap intact.
-Third, a \emph{temporal scheduling model} for memory-constrained settings:
-evolving one noisy state at a time, computing inner products against a
-checkpointed noiseless state, then discarding — halving peak memory at the
-cost of losing the overlap between Trotter and inner product computation.
-We are also interested in extending the lightcone prediction and modeling
-to the noisy setting, and in the joint $\varepsilon$--$\gamma$ MPF for
-simultaneous Trotter and noise extrapolation.
+Third, \emph{bond dimension extrapolation}: computing $F_{ij}(\chi)$ at
+multiple bond dimensions and extrapolating to $\epsilon_\chi\to 0$ via
+$\langle O\rangle = a\log(1-\epsilon_\chi)+b$ provides both a calibrated
+estimate and a systematic error bar — replacing empirical chi convergence
+with a physically motivated criterion.
+Fourth, \emph{ergodic amplification} as an alternative to noise amplification:
+perturbing the Hamiltonian parameter $\varepsilon$ (ergodicity) rather than
+the noise rates $\gamma$ gives smoother, better-conditioned coefficients
+and avoids the sampling overhead of probabilistic error amplification.
+We are also interested in extending the Pauli weight lightcone $n(v,t)$
+to the noisy setting and applying the MPF correction spatially — recovering
+the noiseless lightcone frontier from noisy measurements, site by site.
 
 \begin{figure}[t]
     \centering
