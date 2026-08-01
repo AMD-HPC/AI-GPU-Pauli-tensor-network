@@ -697,12 +697,23 @@ For quantum error mitigation via the gamma multi-product formula
 the time of current implementations, enabling fast and systematic
 exploration of the parameter space.
 
-Future work will extend to larger graphs, implement the full quantum
-inner product coefficient matrix via GPU double-layer belief
-propagation, and explore the joint epsilon--gamma MPF for simultaneous
-Trotter and noise extrapolation.
-We are also interested in extending the lightcone prediction and
-modeling to the noisy setting using the same methodology.
+Future work proceeds along three interconnected directions.
+First, the \emph{symmetric gauge} for inner products: absorbing $\sqrt{M_e}$
+into the site tensors makes the double-layer messages diagonal, collapsing
+the $O(\chi^3 D)$ GEMM chain to an $O(\chi D)$ dot product — identical
+in cost to autocorrelation — without any BP sweeps.
+This is non-negotiable for extension to degree-4 sites (rectangular 2D grids),
+where the current QR-gauge inner product cost is $\sim 450\times$ the Trotter cost.
+Second, \emph{multi-GPU Trotter}: at degree-4, each state requires
+$O(\chi^4)$ memory; distributing the four states across four GPUs enables
+a $4\times$ wall-clock speedup and keeps the Trotter/inner-product overlap intact.
+Third, a \emph{temporal scheduling model} for memory-constrained settings:
+evolving one noisy state at a time, computing inner products against a
+checkpointed noiseless state, then discarding — halving peak memory at the
+cost of losing the overlap between Trotter and inner product computation.
+We are also interested in extending the lightcone prediction and modeling
+to the noisy setting, and in the joint $\varepsilon$--$\gamma$ MPF for
+simultaneous Trotter and noise extrapolation.
 
 \begin{figure}[t]
     \centering
