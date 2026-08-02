@@ -30,9 +30,35 @@
 #include "overlap_gpu.hpp"
 
 #include "heavyhex_ideal_kick_eps010_data.hpp"
+
+#ifdef ERGODIC2
+// Ergodic amplification: fixed γ=2, varying ε=0.10/0.15/0.20
+#include "heavyhex_ideal_kick_eps010_gamma2_data.hpp"
+#include "heavyhex_ideal_kick_eps015_gamma2_data.hpp"
+#include "heavyhex_ideal_kick_eps020_gamma2_data.hpp"
+static const float* ptm_n1(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS010_GAMMA2[b];}
+static const float* ptm_n2(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS015_GAMMA2[b];}
+static const float* ptm_n3(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS020_GAMMA2[b];}
+static const char* MODE_STR = "ergodic  eps=0.10/0.15/0.20  gamma=2.0";
+#elif defined(ERGODIC)
+// Ergodic amplification: fixed γ=1, varying ε=0.10/0.15/0.20
+#include "heavyhex_ideal_kick_eps010_gamma1_data.hpp"
+#include "heavyhex_ideal_kick_eps015_gamma1_data.hpp"
+#include "heavyhex_ideal_kick_eps020_gamma1_data.hpp"
+static const float* ptm_n1(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS010_GAMMA1[b];}
+static const float* ptm_n2(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS015_GAMMA1[b];}
+static const float* ptm_n3(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS020_GAMMA1[b];}
+static const char* MODE_STR = "ergodic  eps=0.10/0.15/0.20  gamma=1.0";
+#else
+// Gamma-MPF: fixed ε=0.10, varying γ=1.0/2.0/3.0
 #include "heavyhex_noisy_eps010_gamma1_data.hpp"
 #include "heavyhex_noisy_eps010_gamma2_data.hpp"
 #include "heavyhex_noisy_eps010_gamma3_data.hpp"
+static const float* ptm_n1(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA1_GAMMA1_0[b];}
+static const float* ptm_n2(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA2_GAMMA2_0[b];}
+static const float* ptm_n3(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA3_GAMMA3_0[b];}
+static const char* MODE_STR = "gamma-MPF  gamma=1.0/2.0/3.0  eps=0.10";
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -51,9 +77,6 @@ static double now_ms() {
 }
 
 using PtmFunc = const float*(*)(int);
-static const float* ptm_gamma1(int b) { return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA1_GAMMA1_0[b]; }
-static const float* ptm_gamma2(int b) { return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA2_GAMMA2_0[b]; }
-static const float* ptm_gamma3(int b) { return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA3_GAMMA3_0[b]; }
 
 // ── Simulator structs (GPU 0) ─────────────────────────────────────────────────
 
@@ -187,7 +210,7 @@ int main(int argc, char** argv) {
     printf("# GPU 0: all Trotter  GPU 1: all inner products\n");
     printf("# epsilon=%.4f  chi_max=%d  n_steps=%d  cutoff=%.0e\n",
            HEAVY_HEX_3x3_IDEAL_KICK_EPS010_EPSILON, chi_max, n_steps, (double)cutoff);
-    printf("# gammas: 1.0 2.0 3.0\n");
+    printf("# mode: %s\n", MODE_STR);
     printf("# STEP C_nl C_n1 C_n2 C_n3  IP_A a00 a01 a02 a11 a12 a22  IP_B b0 b1 b2"
            "  chi_nl chi_n  t_cycle(s) t_trotter_pure(s) t_ip_wall(s) t_upload(s)\n");
     fflush(stdout);
@@ -204,7 +227,7 @@ int main(int argc, char** argv) {
     SimNoiseless      sim_nl(handle0);
     state_nl.init_heisenberg(grid_nl, center);
 
-    PtmFunc ptm_fns[N_GAMMA] = {ptm_gamma1, ptm_gamma2, ptm_gamma3};
+    PtmFunc ptm_fns[N_GAMMA] = {ptm_n1, ptm_n2, ptm_n3};
     FlatHeavyHexGrid* grids_n[N_GAMMA];
     HeavyHexState*    states_n[N_GAMMA];
     Workspace*        ws_n[N_GAMMA];

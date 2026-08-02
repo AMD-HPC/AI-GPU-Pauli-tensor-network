@@ -112,15 +112,39 @@ main_heavyhex_mpf2: main_heavyhex_mpf2.cpp $(HEADERS) include/heavyhex.hpp inclu
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_mpf2 main_heavyhex_mpf2.cpp $(LIBS) -lpthread
 	@echo "Built main_heavyhex_mpf2"
 
-main_heavyhex_gamma_mpf_2gpu: main_heavyhex_gamma_mpf_2gpu.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+DEPS_2GPU = $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/bilinear_form_bp_gpu.hpp include/bilinear_form_bp_gpu3.hpp \
+	include/overlap_gpu.hpp
+
+main_heavyhex_gamma_mpf_2gpu: main_heavyhex_gamma_mpf_2gpu.cpp $(DEPS_2GPU) \
 	include/heavyhex_noisy_eps010_gamma1_data.hpp \
 	include/heavyhex_noisy_eps010_gamma2_data.hpp \
-	include/heavyhex_noisy_eps010_gamma3_data.hpp \
-	include/bilinear_form_bp_gpu.hpp \
-	include/overlap_gpu.hpp
+	include/heavyhex_noisy_eps010_gamma3_data.hpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_gamma_mpf_2gpu main_heavyhex_gamma_mpf_2gpu.cpp $(LIBS) -lpthread
 	@echo "Built main_heavyhex_gamma_mpf_2gpu"
+
+main_heavyhex_ergodic_mpf_2gpu: main_heavyhex_gamma_mpf_2gpu.cpp $(DEPS_2GPU) \
+	include/heavyhex_ideal_kick_eps010_gamma1_data.hpp \
+	include/heavyhex_ideal_kick_eps015_gamma1_data.hpp \
+	include/heavyhex_ideal_kick_eps020_gamma1_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DERGODIC -o main_heavyhex_ergodic_mpf_2gpu main_heavyhex_gamma_mpf_2gpu.cpp $(LIBS) -lpthread
+	@echo "Built main_heavyhex_ergodic_mpf_2gpu"
+
+main_heavyhex_ergodic2_mpf_2gpu: main_heavyhex_gamma_mpf_2gpu.cpp $(DEPS_2GPU) \
+	include/heavyhex_ideal_kick_eps010_gamma2_data.hpp \
+	include/heavyhex_ideal_kick_eps015_gamma2_data.hpp \
+	include/heavyhex_ideal_kick_eps020_gamma2_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DERGODIC2 -o main_heavyhex_ergodic2_mpf_2gpu main_heavyhex_gamma_mpf_2gpu.cpp $(LIBS) -lpthread
+	@echo "Built main_heavyhex_ergodic2_mpf_2gpu"
+
+main_heavyhex_ergodic_mpf: main_heavyhex_ergodic_mpf.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_ideal_kick_eps010_gamma1_data.hpp \
+	include/heavyhex_ideal_kick_eps015_gamma1_data.hpp \
+	include/heavyhex_ideal_kick_eps020_gamma1_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_heavyhex_ergodic_mpf main_heavyhex_ergodic_mpf.cpp $(LIBS)
+	@echo "Built main_heavyhex_ergodic_mpf"
 
 main_heavyhex_gamma_mpf_ip: main_heavyhex_gamma_mpf_ip.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
