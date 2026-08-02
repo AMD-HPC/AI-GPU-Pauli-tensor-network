@@ -182,33 +182,31 @@ def build_bond_ptm(model, alpha, delta, phi, noise_ptm_16x16):
 # ── Graph + noise data loading ─────────────────────────────────────────────────
 
 # 76 bonds (0-based vertex ids) — from heavy_hex_3x3.json
-EDGES = [
-    (0,30),(0,31),(1,30),(1,32),(2,32),(2,33),(2,34),(3,33),(3,35),
-    (4,35),(4,36),(4,37),(5,36),(5,38),(6,38),(6,39),(7,40),(7,41),
-    (8,31),(8,42),(9,42),(9,43),(9,44),(10,34),(10,43),(10,45),
-    (11,45),(11,46),(11,47),(12,37),(12,46),(12,48),(13,48),(13,49),(13,50),
-    (14,39),(14,49),(14,51),(15,51),(15,52),(16,53),(16,54),
-    (17,44),(17,53),(17,55),(18,55),(18,56),(18,57),(19,47),(19,56),(19,58),
-    (20,58),(20,59),(20,60),(21,50),(21,59),(21,61),(22,40),(22,61),(22,62),
-    (23,52),(23,62),(24,54),(24,63),(25,63),(25,64),(26,57),(26,64),(26,65),
-    (27,65),(27,66),(28,60),(28,66),(28,67),(29,41),(29,67),
-]
-n_bonds = len(EDGES)
-edge_to_bond = {(u,v): i for i,(u,v) in enumerate(EDGES)}
-edge_to_bond.update({(v,u): i for i,(u,v) in enumerate(EDGES)})
+# EDGES and edge_to_bond are populated from the graph JSON at runtime in main()
+EDGES = []
+n_bonds = 0
+edge_to_bond = {}
 
 def parse_edge_key(key):
     m = re.findall(r'\((\d+),\)', key)
     return int(m[0])-1, int(m[1])-1
 
 def load_graph(graph_path, epsilon):
+    global EDGES, n_bonds, edge_to_bond
     with open(graph_path) as f:
         d = json.load(f)
     coupling_map = {}
+    edges_list = []
     for e in d['edges']:
         u = e['edge'][0][0] - 1
         v = e['edge'][1][0] - 1
         coupling_map[(min(u,v), max(u,v))] = e['coupling']
+        edges_list.append((min(u,v), max(u,v)))
+    # Populate global EDGES in consistent order
+    EDGES = sorted(set(edges_list))
+    n_bonds = len(EDGES)
+    edge_to_bond = {(u,v): i for i,(u,v) in enumerate(EDGES)}
+    edge_to_bond.update({(v,u): i for i,(u,v) in enumerate(EDGES)})
     # Julia convention: Δ = -coupling, α = Δ × epsilon = -coupling × epsilon
     alpha_map = {k: -v * epsilon for k, v in coupling_map.items()}
     delta_map  = {k: -v           for k, v in coupling_map.items()}
@@ -340,6 +338,7 @@ def main():
     epsilon = float(os.environ.get('EPSILON', '0.25'))
     phi     = float(os.environ.get('PHI',     '1.41371669'))
     gamma_filter = None  # None = all gammas; '1.0' = gamma=1.0 only
+    graph_override = None
     positional = []
     for arg in sys.argv[1:]:
         if arg.startswith('--epsilon='):
@@ -348,13 +347,16 @@ def main():
             phi = float(arg[6:])
         elif arg.startswith('--gamma='):
             gamma_filter = arg[8:]
+        elif arg.startswith('--graph='):
+            graph_override = arg[8:]
         else:
             positional.append(arg)
 
     noise_json = positional[0] if len(positional) > 0 else \
         os.path.join(script_dir, "data", "heavy_hex_3x3_gamma1.00-1.40-1.80_hardware.json")
-    graph_json = positional[1] if len(positional) > 1 else \
-        os.path.join(script_dir, "data", "graphs", "heavy_hex_3x3.json")
+    graph_json = graph_override if graph_override else \
+        (positional[1] if len(positional) > 1 else \
+        os.path.join(script_dir, "data", "graphs", "heavy_hex_3x3.json"))
     model      = positional[2] if len(positional) > 2 else "IDEAL_KICK"
     out_file   = positional[3] if len(positional) > 3 else None
 
