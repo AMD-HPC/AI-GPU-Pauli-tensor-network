@@ -88,6 +88,25 @@ def main():
     max_dist = max(dist)
     print(f"Graph: {n_sites} sites, max distance from center={args.center}: {max_dist}")
 
+    # Pre-flight: min distance from center to physical boundary
+    # Physical boundary = sites with only one higher-degree neighbor
+    # (arm sites at graph perimeter, not interior arms connecting two junctions)
+    degrees = [len(adj[v]) for v in range(n_sites)]
+    max_deg = max(degrees)
+    # Try physical boundary first (arm with 1 junction neighbor)
+    phys_boundary = [v for v in range(n_sites)
+                     if degrees[v] < max_deg and
+                     sum(1 for u in adj[v] if degrees[u]==max_deg) == 1]
+    # Fall back to all low-degree sites if graph is regular or physical boundary is empty
+    boundary = phys_boundary if phys_boundary else \
+               [v for v in range(n_sites) if degrees[v] < max_deg]
+    min_to_boundary = min(dist[v] for v in boundary)
+    v_hop_est = 0.245  # hops/cycle, calibrated for heavy-hex eps=0.10
+    max_faithful_cycles = int(min_to_boundary / v_hop_est)
+    print(f"Min distance center→boundary: {min_to_boundary} hops")
+    print(f"Faithful cycles (v_hop={v_hop_est}): ≤ {max_faithful_cycles} cycles")
+    print(f"  (10 cycles need {10*v_hop_est:.1f} hops, 20 need {20*v_hop_est:.1f}, 30 need {30*v_hop_est:.1f})")
+
     data = parse_dat(args.dat)
     step_list = sorted(s for s in data if data[s] is not None)
 

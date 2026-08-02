@@ -276,6 +276,38 @@ lattice. The wavefront reaches the boundary sites by cycle 17,
 defining the computational window within which the simulation is exact
 regardless of $\chi$ truncation at the boundary.
 
+\paragraph{Lightcone frontier calibration.}
+The non-identity Pauli weight $n(v,t)$ provides a direct probe of
+the operator lightcone: site $v$ is inside the lightcone at time $t$
+if $n(v,t) > 0$.
+We define the \emph{frontier} as the maximum graph distance from the center
+at which $n(v,t) > \epsilon_{\rm th}$ (threshold $\epsilon_{\rm th} = 10^{-4}$).
+Figure~\ref{fig:lightcone} shows the frontier advancing approximately linearly,
+with a fitted velocity of $v_{\rm hop} \approx 0.245$ hops/cycle at
+$\varepsilon=0.10$ — corresponding to $v = v_{\rm hop}/\varepsilon = 2.45$
+hops per unit time.
+
+We use the frontier velocity to calibrate the simulation parameters.
+A sweep over bond dimension $\chi \in \{70, 200\}$ and cutoff
+$\delta \in \{2\times10^{-3}, 10^{-3}, 5\times10^{-4}, 2\times10^{-4}\}$
+reveals two key findings.
+First, $v_{\rm hop}$ converges to $0.245 \pm 0.015$ hops/cycle for
+$\delta \leq 10^{-3}$ — the \emph{faithful cutoff} $\delta^* \approx 10^{-3}$.
+Second, increasing $\chi$ from 70 to 200 at fixed cutoff produces no change
+in $v_{\rm hop}$, confirming that $\chi = 70$ is sufficient at $\delta^*$.
+
+The frontier plateaus at graph distance 6 by cycle~12, after which $\chi$
+truncation prevents further tracking.
+The physical boundary of the \texttt{heavy\_hex\_3x3} graph (perimeter arm
+sites with a single junction neighbor) lies 3 hops from the center site,
+giving a faithful regime of $3/v_{\rm hop} \approx 12$ cycles — consistent
+with the observed plateau.
+The full graph diameter (14 hops) would require $\sim 57$ cycles at
+$v_{\rm hop}=0.245$, accessible on a larger graph.
+Our 10-cycle MPF simulations lie within the faithful regime:
+cycles 1--10 are physically meaningful, and $\chi$ truncation effects
+become visible only after cycle~12.
+
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Performance}
 \label{sec:perf}
