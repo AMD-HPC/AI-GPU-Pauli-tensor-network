@@ -276,6 +276,44 @@ lattice. The wavefront reaches the boundary sites by cycle 17,
 defining the computational window within which the simulation is exact
 regardless of $\chi$ truncation at the boundary.
 
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\columnwidth]{lightcone_heavyhex_analysis.png}
+    \caption{Lightcone frontier analysis at $\chi=70$, cutoff $=10^{-3}$, $\varepsilon=0.10$.
+    \emph{Left}: maximum non-identity Pauli weight $n(v,t)$ per distance shell
+    (BFS distance from site 13) vs Trotter cycle — the spreading wavefront is
+    visible as a propagating bright ridge.
+    \emph{Right}: frontier distance (furthest active shell, threshold $10^{-4}$)
+    vs cycle, with linear fit $v_{\rm hop}=0.244$ hops/cycle.
+    The plateau at distance 6 (cycle~12) reflects $\chi$ truncation,
+    consistent with the physical boundary at distance 3 hops giving
+    $\sim 12$ faithful cycles.}
+    \label{fig:lightcone_frontier}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{rrrr}
+\toprule
+$\chi_{\max}$ & cutoff $\delta$ & $v_{\rm hop}$ (hops/cycle) & Notes \\
+\midrule
+70  & $2\times10^{-3}$ & 0.419 & artifact: $\chi$ saturates too early \\
+70  & $10^{-3}$        & 0.232 & \\
+70  & $5\times10^{-4}$ & 0.259 & \\
+70  & $2\times10^{-4}$ & 0.244 & \\
+200 & $10^{-3}$        & 0.232 & $\chi$ not bottleneck \\
+200 & $5\times10^{-4}$ & 0.259 & $\chi$ not bottleneck \\
+\bottomrule
+\end{tabular}
+\caption{Lightcone frontier velocity $v_{\rm hop}$ sweep over $(\chi_{\max}, \delta)$
+for the \texttt{heavy\_hex\_3x3} graph, $\varepsilon=0.10$, $J=1$, 20 cycles.
+Velocity converges to $v_{\rm hop} = 0.245\pm0.015$ hops/cycle for
+$\delta \leq 10^{-3}$, independent of $\chi_{\max}$ — confirming that
+$\chi=70$, $\delta^*=10^{-3}$ is the faithful operating point.}
+\label{tab:lightcone}
+\end{table}
+
 \paragraph{Lightcone frontier calibration.}
 The non-identity Pauli weight $n(v,t)$ provides a direct probe of
 the operator lightcone: site $v$ is inside the lightcone at time $t$
