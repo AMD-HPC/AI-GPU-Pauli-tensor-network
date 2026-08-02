@@ -138,6 +138,11 @@ main_heavyhex_ergodic2_mpf_2gpu: main_heavyhex_gamma_mpf_2gpu.cpp $(DEPS_2GPU) \
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DERGODIC2 -o main_heavyhex_ergodic2_mpf_2gpu main_heavyhex_gamma_mpf_2gpu.cpp $(LIBS) -lpthread
 	@echo "Built main_heavyhex_ergodic2_mpf_2gpu"
 
+main_lightcone: main_lightcone.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o main_lightcone main_lightcone.cpp $(LIBS)
+	@echo "Built main_lightcone"
+
 main_heavyhex_ergodic_mpf: main_heavyhex_ergodic_mpf.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
 	include/heavyhex_ideal_kick_eps010_gamma1_data.hpp \
