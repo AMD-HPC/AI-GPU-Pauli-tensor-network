@@ -195,7 +195,10 @@ int main(int argc, char** argv) {
     int   n_steps = (argc>2)?atoi(argv[2]):10;
     float cutoff  = (argc>3)?atof(argv[3]):1e-4f;
     int   center  = 2;
-    bool  verbose_ip = true;   // print per-inner-product timing
+    bool  verbose_ip = true;
+    bool  measure_all = false;   // --measure-all: output n(v,t) per site per step
+    for (int i=1; i<argc; i++)
+        if (std::string(argv[i]) == "--measure-all") measure_all = true;
 
     // ── Check 2 GPUs + P2P ───────────────────────────────────────────────────
     int n_gpus = 0;
@@ -379,6 +382,24 @@ int main(int argc, char** argv) {
                    B_ip[0], B_ip[1], B_ip[2],
                    chi_nl, chi_n, t_trotter, (double)t_trotter_pure,
                    (double)t_ip_wall_last, t_ip_last);
+        }
+        // ── Pauli weight profile (--measure-all) ─────────────────────────────
+        if (measure_all) {
+            HIP_CHECK(hipSetDevice(0));
+            std::vector<float> nid_nl(grid_nl.n_sites);
+            meas.compute_pauli_profile(static_cast<Grid&>(grid_nl),
+                                       state_nl.psi, nid_nl.data());
+            printf("PAULI_NL %d", step);
+            for (int v=0; v<grid_nl.n_sites; v++) printf(" %.4f", nid_nl[v]);
+            printf("\n");
+            for (int g=0; g<N_GAMMA; g++) {
+                std::vector<float> nid_n(grids_n[g]->n_sites);
+                meas.compute_pauli_profile(static_cast<Grid&>(*grids_n[g]),
+                                           states_n[g]->psi, nid_n.data());
+                printf("PAULI_N%d %d", g+1, step);
+                for (int v=0; v<grids_n[g]->n_sites; v++) printf(" %.4f", nid_n[v]);
+                printf("\n");
+            }
         }
         fflush(stdout);
     }
