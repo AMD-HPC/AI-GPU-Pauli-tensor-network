@@ -21,7 +21,17 @@
 #include "measures.hpp"
 #include "heavyhex.hpp"
 #include "heavyhex_physics.hpp"
+#ifdef RECT_7x7
+#include "rect_7x7_ideal_kick_eps010_data.hpp"
+#define N_SITES 49
+#define N_COLORS 2
+#define GRID_TAG "rect_7x7"
+#else
 #include "heavyhex_ideal_kick_eps010_data.hpp"
+#define N_SITES 68
+#define N_COLORS 3
+#define GRID_TAG "heavy_hex_3x3"
+#endif
 
 #include <cstdio>
 #include <cstdlib>

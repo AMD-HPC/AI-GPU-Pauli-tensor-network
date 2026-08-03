@@ -339,6 +339,7 @@ def main():
     phi     = float(os.environ.get('PHI',     '1.41371669'))
     gamma_filter = None  # None = all gammas; '1.0' = gamma=1.0 only
     graph_override = None
+    out_override = None
     positional = []
     for arg in sys.argv[1:]:
         if arg.startswith('--epsilon='):
@@ -349,6 +350,8 @@ def main():
             gamma_filter = arg[8:]
         elif arg.startswith('--graph='):
             graph_override = arg[8:]
+        elif arg.startswith('--out='):
+            out_override = arg[6:]
         else:
             positional.append(arg)
 
@@ -369,7 +372,9 @@ def main():
         model_tag = f"{model_tag}_GAMMA{gam_tag}"
 
     # Default output uses model_tag so files don't overwrite each other
-    if out_file is None:
+    if out_override:
+        out_file = out_override
+    elif out_file is None:
         out_file = os.path.join(script_dir, "include",
                                 f"heavyhex_{model_tag.lower()}_data.hpp")
 
