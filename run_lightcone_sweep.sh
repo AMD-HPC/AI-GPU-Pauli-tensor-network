@@ -19,6 +19,10 @@ RUNS=(
     "200 2e-3  0"
     "200 1e-3  1"
     "200 5e-4  2"
+    "70  5e-3  0"
+    "70  1e-2  1"
+    "20  1e-3  2"
+    "30  1e-3  0"
 )
 
 pids=()
@@ -29,7 +33,7 @@ for run in "${RUNS[@]}"; do
     tag="chi${chi}_cut${cut}"
     logfile="$LOGDIR/${tag}.dat"
     echo "Launching chi=$chi cutoff=$cut → GPU $gpu → $logfile"
-    ROCR_VISIBLE_DEVICES=$gpu ./main_lightcone $chi $N_STEPS $cut 2>/dev/null > "$logfile" &
+    ROCR_VISIBLE_DEVICES=$gpu ./main_lightcone $chi $N_STEPS $cut --center=13 2>/dev/null > "$logfile" &
     pids+=($!)
 done
 
@@ -49,6 +53,6 @@ for run in "${RUNS[@]}"; do
     outpng="$LOGDIR/${tag}_analysis.png"
     echo "=== chi=$chi cut=$cut ==="
     python3 analyze_lightcone.py --dat "$logfile" --graph "$GRAPH" \
-        --center 2 --threshold 1e-4 --out "$outpng" 2>/dev/null | \
+        --center 13 --threshold 1e-4 --out "$outpng" 2>/dev/null | \
         grep -E "Frontier velocity|plateau|Graph:"
 done

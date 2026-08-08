@@ -200,6 +200,100 @@ struct BLF_GPU2 {
         HIP_CHECK(hipMalloc(&d_inter2, max_inter*sizeof(float)));
     }
 
+    // Upload pre-gauged psi (float32, already on current device).
+    // Normalizes all psi_a by a single global scale, same for psi_b.
+    // This prevents float32 underflow while preserving the inter-site relative
+    // scale that the Bethe PF requires. The log-scales are tracked and restored
+    // in _bethe_cpu() via log_scale_a + log_scale_b.
+    void upload_gauged(
+        const std::vector<float*>& psi_a_dev,
+        const std::vector<float*>& psi_b_dev)
+    {
+        for (auto& bond : grid_a.bonds) frozen_chi_a[bond.id] = bond.chi;
+        for (auto& bond : grid_b.bonds) frozen_chi_b[bond.id] = bond.chi;
+        _build_smeta();
+
+        for (auto p : d_psi_a) if (p) HIP_CHECK(hipFree(p));
+        for (auto p : d_psi_b) if (p) HIP_CHECK(hipFree(p));
+
+        // Per-site normalization by joint max(|psi_a|, |psi_b|) at each site.
+        // Using the same scale for both psi_a and psi_b at each site preserves
+        // their relative magnitude (which carries the cross-state overlap signal)
+        // while preventing float32 underflow in the gauged tensors.
+        log_scale_a = 0.0; log_scale_b = 0.0;
+        for (auto& site : grid_a.sites) {
+            int sid = site.id;
+            int vola = smeta[sid].vola * D;
+            int volb = smeta[sid].volb * D;
+            std::vector<float> bufa(vola), bufb(volb);
+            HIP_CHECK(hipMemcpy(bufa.data(), psi_a_dev[sid],
+                vola*sizeof(float), hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(bufb.data(), psi_b_dev[sid],
+                volb*sizeof(float), hipMemcpyDeviceToHost));
+
+            // Joint scale: max of both tensors at this site
+            float nm = 1e-30f;
+            for (auto v : bufa) nm = std::max(nm, std::abs(v));
+            for (auto v : bufb) nm = std::max(nm, std::abs(v));
+
+            // Normalize both by same scale — preserves relative magnitude
+            for (auto& v : bufa) v /= nm;
+            for (auto& v : bufb) v /= nm;
+
+            // Each site contributes log(nm) to both a and b log-scales
+            // (same nm used for both, so log_scale_a == log_scale_b per site)
+            log_scale_a += std::log((double)nm);
+            log_scale_b += std::log((double)nm);
+
+            HIP_CHECK(hipMalloc(&d_psi_a[sid], vola*sizeof(float)));
+            HIP_CHECK(hipMalloc(&d_psi_b[sid], volb*sizeof(float)));
+            HIP_CHECK(hipMemcpy(d_psi_a[sid], bufa.data(),
+                vola*sizeof(float), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy(d_psi_b[sid], bufb.data(),
+                volb*sizeof(float), hipMemcpyHostToDevice));
+        }
+
+        // Free old messages, allocate, identity warm-start
+        for (auto p : d_M_fwd)  if(p) HIP_CHECK(hipFree(p));
+        for (auto p : d_M_bwd)  if(p) HIP_CHECK(hipFree(p));
+        for (auto p : d_M_fwd2) if(p) HIP_CHECK(hipFree(p));
+        for (auto p : d_M_bwd2) if(p) HIP_CHECK(hipFree(p));
+        for (auto& bond : grid_a.bonds) {
+            int bid = bond.id;
+            int ca = frozen_chi_a[bid], cb = frozen_chi_b[bid];
+            int mn = std::min(ca, cb);
+            std::vector<float> mf(ca*cb, 0.f), mb(ca*cb, 0.f);
+            for (int i=0; i<mn; i++) { mf[i*cb+i]=1.f/mn; mb[i*cb+i]=1.f/mn; }
+            HIP_CHECK(hipMalloc(&d_M_fwd[bid],  ca*cb*sizeof(float)));
+            HIP_CHECK(hipMalloc(&d_M_bwd[bid],  ca*cb*sizeof(float)));
+            HIP_CHECK(hipMalloc(&d_M_fwd2[bid], ca*cb*sizeof(float)));
+            HIP_CHECK(hipMalloc(&d_M_bwd2[bid], ca*cb*sizeof(float)));
+            HIP_CHECK(hipMemcpy(d_M_fwd[bid],  mf.data(), ca*cb*sizeof(float), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy(d_M_bwd[bid],  mb.data(), ca*cb*sizeof(float), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy(d_M_fwd2[bid], mf.data(), ca*cb*sizeof(float), hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy(d_M_bwd2[bid], mb.data(), ca*cb*sizeof(float), hipMemcpyHostToDevice));
+        }
+        // Allocate scratch
+        int max_inter = 0;
+        for (auto& bond : grid_a.bonds) {
+            for (int dir=0; dir<2; dir++) {
+                int src = (dir==0)?bond.site_a:bond.site_b;
+                auto& sm = smeta[src];
+                for (int skip_k=0; skip_k<sm.nb; skip_k++) {
+                    int ca_skip = sm.chi_a[skip_k];
+                    int inter_sz = ca_skip * D;
+                    for (int k=0; k<sm.nb; k++) if(k!=skip_k) inter_sz *= sm.chi_b[k];
+                    max_inter = std::max(max_inter, inter_sz);
+                }
+            }
+        }
+        if (d_inter)  HIP_CHECK(hipFree(d_inter));
+        if (d_inter2) HIP_CHECK(hipFree(d_inter2));
+        scratch_size = max_inter;
+        HIP_CHECK(hipMalloc(&d_inter,  max_inter*sizeof(float)));
+        HIP_CHECK(hipMalloc(&d_inter2, max_inter*sizeof(float)));
+    }
+
     // Compute <psi_a|psi_b> via GPU BP.
     float compute(int n_sweeps=25, float tol=1e-5f, bool verbose=false,
                   double* t_ms_out=nullptr) {

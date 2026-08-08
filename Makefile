@@ -173,6 +173,25 @@ test_blf_sgemm: test_blf_sgemm.cpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test_blf_sgemm test_blf_sgemm.cpp $(LIBS)
 	@echo "Built test_blf_sgemm"
 
+test_sqrt_gauge_ip: test_sqrt_gauge_ip.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_gamma2_data.hpp \
+	include/bilinear_form_blf_gpu2.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o test_sqrt_gauge_ip test_sqrt_gauge_ip.cpp $(LIBS)
+	@echo "Built test_sqrt_gauge_ip"
+
+main_gauge_compare: main_gauge_compare.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_gamma1_data.hpp \
+	include/heavyhex_noisy_eps010_gamma2_data.hpp \
+	include/heavyhex_noisy_eps010_gamma3_data.hpp \
+	include/bilinear_form_blf_gpu2.hpp \
+	include/sqrt_gauge_ip.hpp \
+	include/diag_gauge_ip.hpp \
+	include/sqrt_bp_ip.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o main_gauge_compare main_gauge_compare.cpp $(LIBS) -llapack -lblas
+	@echo "Built main_gauge_compare"
+
 test_blf_cpu2: test_blf_cpu2.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
 	include/heavyhex_noisy_eps010_gamma1_data.hpp \
