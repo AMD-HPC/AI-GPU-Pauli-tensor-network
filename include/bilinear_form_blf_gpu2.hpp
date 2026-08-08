@@ -500,6 +500,111 @@ struct BLF_GPU2 {
         return result;
     }
 
+    // Damped BP: after each sweep, blend new messages with old:
+    //   M_e ← alpha * M_new + (1-alpha) * M_old
+    // This stabilizes loop correction sweeps starting from identity warm-start.
+    // Implemented as a wrapper: run compute() for one sweep at a time, then
+    // apply the damping blend before the next sweep.
+    float compute_damped(int n_sweeps=10, float tol=1e-5f, float alpha=0.5f,
+                         bool verbose=false, double* t_ms_out=nullptr) {
+        auto t0 = std::chrono::high_resolution_clock::now();
+
+        for (int sweep=0; sweep<n_sweeps; sweep++) {
+            // Save current messages (before update)
+            std::vector<std::vector<float>> old_fwd(n_bonds), old_bwd(n_bonds);
+            for (auto& bond : grid_a.bonds) {
+                int bid=bond.id;
+                int ca=frozen_chi_a[bid], cb=frozen_chi_b[bid];
+                old_fwd[bid].resize(ca*cb);
+                old_bwd[bid].resize(ca*cb);
+                HIP_CHECK(hipMemcpy(old_fwd[bid].data(), d_M_fwd[bid],
+                    ca*cb*sizeof(float), hipMemcpyDeviceToHost));
+                HIP_CHECK(hipMemcpy(old_bwd[bid].data(), d_M_bwd[bid],
+                    ca*cb*sizeof(float), hipMemcpyDeviceToHost));
+            }
+
+            // One undamped sweep (reuses existing compute() infrastructure)
+            // Run exactly 1 sweep with high tol so it never exits early
+            float max_delta_sweep = 0.f;
+            // Call existing sweep logic inline via compute(1, 1e30f) trick
+            // Actually: just do one pass of the message loop manually
+            const float one=1.f, zero=0.f;
+            for (auto& bond : grid_a.bonds) {
+                for (int dir=0; dir<2; dir++) {
+                    int src    = (dir==0) ? bond.site_a : bond.site_b;
+                    auto& sm   = smeta[src];
+                    int nb     = sm.nb;
+                    int skip_k = -1;
+                    for (int k=0;k<nb;k++) if(sm.bond_id[k]==bond.id){skip_k=k;break;}
+                    if (skip_k<0) continue;
+                    int ca_skip=sm.chi_a[skip_k], cb_skip=sm.chi_b[skip_k];
+                    float*& out_M=(src==bond.site_a)?d_M_fwd2[bond.id]:d_M_bwd2[bond.id];
+                    float*& old_M=(src==bond.site_a)?d_M_fwd[bond.id] :d_M_bwd[bond.id];
+                    float* psi_a=d_psi_a[src]; float* psi_b=d_psi_b[src];
+                    auto get_M=[&](int k)->float*{
+                        int bk=sm.bond_id[k];
+                        return (src==grid_a.bonds[bk].site_a)?d_M_bwd[bk]:d_M_fwd[bk];
+                    };
+                    if(nb==1){
+                        rocblas_sgemm(handle,rocblas_operation_none,rocblas_operation_transpose,
+                            cb_skip,ca_skip,D,&one,psi_b,cb_skip,psi_a,ca_skip,&zero,out_M,cb_skip);
+                    } else if(nb==2){
+                        int k1=(skip_k==0)?1:0;
+                        int ca1=sm.chi_a[k1],cb1=sm.chi_b[k1];
+                        if(skip_k==0)
+                            _cpu_msg_update_deg2_skip1(src,1,0,ca_skip,cb_skip,ca1,cb1,
+                                psi_a,psi_b,get_M(k1),old_M,out_M,max_delta_sweep);
+                        else
+                            _cpu_msg_update_deg2_skip1(src,skip_k,k1,ca_skip,cb_skip,ca1,cb1,
+                                psi_a,psi_b,get_M(k1),old_M,out_M,max_delta_sweep);
+                    } else {
+                        _cpu_msg_update_deg3(src,skip_k,psi_a,psi_b,get_M,old_M,out_M,max_delta_sweep);
+                    }
+                }
+            }
+            for(int bid=0;bid<n_bonds;bid++){
+                std::swap(d_M_fwd[bid],d_M_fwd2[bid]);
+                std::swap(d_M_bwd[bid],d_M_bwd2[bid]);
+            }
+
+            // Apply damping: M ← alpha*M_new + (1-alpha)*M_old
+            float max_delta=0.f;
+            for (auto& bond : grid_a.bonds) {
+                int bid=bond.id;
+                int ca=frozen_chi_a[bid], cb=frozen_chi_b[bid];
+                int n=ca*cb;
+                std::vector<float> nf(n), nb_v(n);
+                HIP_CHECK(hipMemcpy(nf.data(), d_M_fwd[bid], n*sizeof(float), hipMemcpyDeviceToHost));
+                HIP_CHECK(hipMemcpy(nb_v.data(), d_M_bwd[bid], n*sizeof(float), hipMemcpyDeviceToHost));
+                for(int i=0;i<n;i++){
+                    float df=alpha*nf[i]+(1.f-alpha)*old_fwd[bid][i];
+                    float db=alpha*nb_v[i]+(1.f-alpha)*old_bwd[bid][i];
+                    max_delta=std::max(max_delta,std::abs(df-old_fwd[bid][i]));
+                    max_delta=std::max(max_delta,std::abs(db-old_bwd[bid][i]));
+                    nf[i]=df; nb_v[i]=db;
+                }
+                // normalize
+                float sf=0.f,sb=0.f;
+                for(auto v:nf)sf=std::max(sf,std::abs(v));
+                for(auto v:nb_v)sb=std::max(sb,std::abs(v));
+                if(sf>1e-20f)for(auto&v:nf)v/=sf;
+                if(sb>1e-20f)for(auto&v:nb_v)v/=sb;
+                HIP_CHECK(hipMemcpy(d_M_fwd[bid],nf.data(),n*sizeof(float),hipMemcpyHostToDevice));
+                HIP_CHECK(hipMemcpy(d_M_bwd[bid],nb_v.data(),n*sizeof(float),hipMemcpyHostToDevice));
+            }
+
+            if(verbose) printf("  [BLF_GPU2 damped a=%.2f] sweep %d max_delta=%.2e\n",alpha,sweep,max_delta);
+            if(max_delta < tol){ if(verbose) printf("  converged sweep %d\n",sweep); break; }
+        }
+
+        float result = _bethe_cpu();
+        if(t_ms_out){
+            auto t1=std::chrono::high_resolution_clock::now();
+            *t_ms_out=std::chrono::duration<double,std::milli>(t1-t0).count();
+        }
+        return result;
+    }
+
 private:
     void _build_smeta() {
         for (auto& site : grid_a.sites) {

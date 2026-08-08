@@ -117,9 +117,11 @@ def main():
     poly_data = parse_poly_log(args.poly) if args.poly else {}
     pm_data  = poor_mans_mpf(ip_data)
 
-    print(f"\n{'Step':>5}  {'C_nl':>10}  {'C_mpf_poly':>12}  {'C_mpf_pm':>10}  "
-          f"{'C_mpf_ip':>10}  {'|Δpoly|':>9}  {'|Δpm|':>9}  {'|Δip|':>9}")
-    print("-" * 90)
+    # ── Header ────────────────────────────────────────────────────────────────
+    print(f"\n{'Step':>4}  {'C_nl':>8}  {'C_pm':>8}  {'C_ip':>8}  "
+          f"{'|Δpm|':>8}  {'|Δip|':>8}  "
+          f"{'A_diag':>16}  {'A_hat(01,02,12)':>22}  {'x_ip':>22}")
+    print("-" * 115)
 
     for s in sorted(ip_data.keys()):
         d    = ip_data[s]
@@ -130,15 +132,28 @@ def main():
 
         C_mpf_ip, x_ip = solve_lagrange(A, B, C_n)
         C_mpf_pm  = pm_data.get(s, float('nan'))
-        C_mpf_poly = poly_data.get(s, float('nan'))
 
-        d_poly = abs(C_mpf_poly - C_nl) if not np.isnan(C_mpf_poly) else float('nan')
-        d_pm   = abs(C_mpf_pm   - C_nl)
-        d_ip   = abs(C_mpf_ip   - C_nl) if not np.isnan(C_mpf_ip)   else float('nan')
+        d_pm   = abs(C_mpf_pm  - C_nl)
+        d_ip   = abs(C_mpf_ip  - C_nl) if not np.isnan(C_mpf_ip) else float('nan')
 
-        print(f"{s:>5}  {C_nl:+10.6f}  {C_mpf_poly:+12.6f}  {C_mpf_pm:+10.6f}  "
-              f"{C_mpf_ip:+10.6f}  {d_poly:9.2e}  {d_pm:9.2e}  {d_ip:9.2e}")
-        print(f"       x_ip=[{x_ip[0]:+.3f} {x_ip[1]:+.3f} {x_ip[2]:+.3f}] sum={x_ip.sum():.3f}")
+        # Normalized A matrix: A_hat[i,j] = A[i,j]/sqrt(A[i,i]*A[j,j])
+        # Diagonal should be ~1 (self-overlap), off-diagonals show state discrimination.
+        diag = np.array([A[i,i] for i in range(3)])
+        with np.errstate(invalid='ignore', divide='ignore'):
+            A_hat = A / np.sqrt(np.outer(diag, diag))
+
+        # Clamp huge x_ip for display
+        def fmt(v):
+            return f'{v:+.2f}' if abs(v) < 999 else f'{v:+.0e}'
+
+        d_ip_str = f'{d_ip:.2e}' if not np.isnan(d_ip) else '  nan   '
+        x_str    = f'[{fmt(x_ip[0])},{fmt(x_ip[1])},{fmt(x_ip[2])}]'
+        diag_str = f'[{diag[0]:.3f},{diag[1]:.3f},{diag[2]:.3f}]'
+        ahat_str = f'[{A_hat[0,1]:+.2f},{A_hat[0,2]:+.2f},{A_hat[1,2]:+.2f}]'
+
+        print(f"{s:>4}  {C_nl:+8.4f}  {C_mpf_pm:+8.4f}  {C_mpf_ip:+8.4f}  "
+              f"{d_pm:8.2e}  {d_ip_str}  "
+              f"{diag_str:>16}  {ahat_str:>22}  {x_str:>22}")
 
     # ── Plot ──────────────────────────────────────────────────────────────────
     steps  = sorted(ip_data.keys())

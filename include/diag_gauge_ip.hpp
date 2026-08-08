@@ -161,21 +161,40 @@ struct DIAG_GAUGE_IP {
         memcpy(psi_out, buf1.data(), totD * sizeof(double));
     }
 
-    // Upload: download psi and messages from GPU, eigendecompose, gauge-transform.
+    // Upload: eigendecompose state_a messages only → apply same rotation to both.
+    // This is the Julia approach: use A_a as the shared basis, apply sqrt(|D_a|)*A_a^T
+    // to psi_a and A_a^T only (without sqrt) to psi_b.
+    //
+    // After transform:
+    //   tpsi_a[i] = sum_j sqrt(|D_a[i]|) * A_a[j,i] * psi_a[j]
+    //   tpsi_b[i] = sum_j              1  * A_a[j,i] * psi_b[j]
+    //
+    // Inner product:
+    //   a_v = sum_{i,d} tpsi_a[v,i,d] * tpsi_b[v,i,d]
+    //       = sum_{i,d} sqrt(|D_a[i]|) * (A_a^T psi_a)[i,d] * (A_a^T psi_b)[i,d]
+    //
+    // Edge correction:
+    //   z_e = sum_i |D_a[i]|   (eigenvalues of M_a, normalizer for the transform)
+    //
+    // This preserves the discriminating structure between states because A_a
+    // is state-a specific — it does NOT symmetrize the two states.
     void upload(
         const std::vector<float*>& psi_a_src,
         const std::vector<float*>& msg_a_src,
         const std::vector<float*>& psi_b_src,
         const std::vector<float*>& msg_b_src)
     {
-        // ── Eigendecompose messages ───────────────────────────────────────────
+        // ── Eigendecompose state_a messages only ──────────────────────────────
         for (auto& bond : grid.bonds) {
             int bid = bond.id;
             int chi = bond.chi;
             gauge_a[bid].chi = chi;
             gauge_b[bid].chi = chi;
+            // Only eigendecompose M_a — use A_a as shared basis
             _eigen(msg_a_src[bond.msg_from_a()], chi, gauge_a[bid].A, gauge_a[bid].D);
-            _eigen(msg_b_src[bond.msg_from_a()], chi, gauge_b[bid].A, gauge_b[bid].D);
+            // gauge_b reuses A_a but with unit eigenvalues (no sqrt scaling for psi_b)
+            gauge_b[bid].A = gauge_a[bid].A;
+            gauge_b[bid].D.assign(chi, 1.0);  // no sqrt scaling for psi_b
         }
 
         // ── Download psi and apply gauge transform per site ───────────────────
@@ -259,28 +278,28 @@ struct DIAG_GAUGE_IP {
         }
 
         // ── Edge correction ────────────────────────────────────────────────────
-        // On a tree with same gauge: z_e = sum_i D[i] = 1 (normalized messages).
-        // For cross-state pairs (D_a != D_b): z_e = sum_i sqrt(|D_a[i]*D_b[i]|).
+        // We applied sqrt(|D_a|)*A_a^T to psi_a and A_a^T to psi_b.
+        // The normalizer is the trace of M_a in the eigenbasis = sum_i |D_a[i]|.
+        // Sign of D_a[i] is tracked separately.
         double log_den = 0.0, sign_den = 1.0;
         for (auto& bond : grid.bonds) {
             int bid = bond.id;
             int chi = bond.chi;
-            double ze = 0.0;
-            double max_a = 0.0, max_b = 0.0;
-            for (int i = 0; i < chi; i++) {
+            double max_a = 0.0;
+            for (int i = 0; i < chi; i++)
                 max_a = std::max(max_a, std::abs(gauge_a[bid].D[i]));
-                max_b = std::max(max_b, std::abs(gauge_b[bid].D[i]));
-            }
-            double thresh_a = eig_cutoff * max_a, thresh_b = eig_cutoff * max_b;
+            double thresh = eig_cutoff * max_a;
+            double ze_pos = 0.0, ze_neg = 0.0;
             for (int i = 0; i < chi; i++) {
                 double da = gauge_a[bid].D[i];
-                double db = gauge_b[bid].D[i];
-                if (std::abs(da) < thresh_a || std::abs(db) < thresh_b) continue;
-                ze += std::sqrt(std::abs(da) * std::abs(db));
+                if (std::abs(da) < thresh) continue;
+                if (da > 0.0) ze_pos += da;
+                else          ze_neg -= da;  // add |da|
             }
-            if (ze > 1e-30) {
-                sign_den *= 1.0;
-                log_den  += std::log(ze);
+            double ze = ze_pos - ze_neg;
+            if (std::abs(ze) > 1e-30) {
+                sign_den *= (ze > 0.0) ? 1.0 : -1.0;
+                log_den  += std::log(std::abs(ze));
             }
         }
 

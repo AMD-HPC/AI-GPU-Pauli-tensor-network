@@ -32,6 +32,10 @@
 #include "heavyhex_noisy_eps010_gamma1_data.hpp"
 #include "heavyhex_noisy_eps010_gamma2_data.hpp"
 #include "heavyhex_noisy_eps010_gamma3_data.hpp"
+// Ergodic amplification: fixed gamma=2, varying eps=0.10/0.15/0.20
+#include "heavyhex_ideal_kick_eps010_gamma2_data.hpp"
+#include "heavyhex_ideal_kick_eps015_gamma2_data.hpp"
+#include "heavyhex_ideal_kick_eps020_gamma2_data.hpp"
 #include "bilinear_form_blf_gpu2.hpp"
 #include "sqrt_gauge_ip.hpp"
 #include "diag_gauge_ip.hpp"
@@ -55,9 +59,17 @@ static double now_ms() {
 }
 
 using PtmFunc = const float*(*)(int);
-static const float* ptm_n1(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA1_GAMMA1_0[b];}
-static const float* ptm_n2(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA2_GAMMA2_0[b];}
-static const float* ptm_n3(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA3_GAMMA3_0[b];}
+// Gamma-MPF: fixed eps=0.10, varying gamma=1/2/3
+static const float* ptm_g1(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA1_GAMMA1_0[b];}
+static const float* ptm_g2(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA2_GAMMA2_0[b];}
+static const float* ptm_g3(int b){return HEAVY_HEX_3x3_NOISY_EPS010_GAMMA3_GAMMA3_0[b];}
+// Ergodic: fixed gamma=2, varying eps=0.10/0.15/0.20
+static const float* ptm_e1(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS010_GAMMA2[b];}
+static const float* ptm_e2(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS015_GAMMA2[b];}
+static const float* ptm_e3(int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS020_GAMMA2[b];}
+
+// Site PTM for ergodic: use eps=0.10 gamma=2 site PTM
+static const float* ergodic_site_ptm = HEAVY_HEX_3x3_IDEAL_KICK_EPS010_GAMMA2_SITE_PTM;
 
 // ── enable P2P ────────────────────────────────────────────────────────────────
 static void enable_p2p(int n_gpus) {
@@ -70,7 +82,8 @@ static void enable_p2p(int n_gpus) {
 static void do_trotter(HeavyHexState& state, FlatHeavyHexGrid& grid,
                        PtmFunc ptm_fn, const float* nl_ptm,
                        Workspace& ws, GateOps& gate_ops,
-                       int chi_max, float cutoff)
+                       int chi_max, float cutoff,
+                       const float* site_ptm=HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM)
 {
     int nm = 2*grid.n_bonds;
     size_t alloc = (size_t)chi_max*chi_max*sizeof(Scalar);
@@ -116,8 +129,7 @@ static void do_trotter(HeavyHexState& state, FlatHeavyHexGrid& grid,
     }
     Scalar* tmp; HIP_CHECK(hipMalloc(&tmp,tsz*sizeof(Scalar)));
     for (auto& s:grid.sites)
-        gate_ops.apply_unary_gate(state.psi[s.id],s,grid,
-            HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,tmp);
+        gate_ops.apply_unary_gate(state.psi[s.id],s,grid,site_ptm,tmp);
     HIP_CHECK(hipFree(tmp));
 }
 
@@ -126,12 +138,14 @@ int main(int argc, char** argv) {
     int    n_steps  = (argc>2)?atoi(argv[2]):10;
     float  cutoff   = (argc>3)?atof(argv[3]):1e-3f;
     int    center   = (argc>4)?atoi(argv[4]):13;
-    double eig_cut  = 1e-2;
+    double eig_cut   = 1e-2;
     int    sb_sweeps = 0;
+    bool   ergodic   = false;
     for (int i=1;i<argc;i++) {
         std::string a(argv[i]);
         if (a.substr(0,10)=="--eig-cut=")  eig_cut  = atof(argv[i]+10);
         if (a.substr(0,12)=="--sb-sweeps=") sb_sweeps = atoi(argv[i]+12);
+        if (a=="--ergodic") ergodic = true;
     }
 
     int n_gpus=0;
@@ -140,8 +154,9 @@ int main(int argc, char** argv) {
     enable_p2p(n_gpus);
 
     printf("# main_gauge_compare — QR vs SQRT gauge inner product\n");
-    printf("# chi=%d n_steps=%d cutoff=%.0e center=%d eig_cut=%.0e sb_sweeps=%d\n",
-           chi_max, n_steps, (double)cutoff, center, eig_cut, sb_sweeps);
+    printf("# chi=%d n_steps=%d cutoff=%.0e center=%d eig_cut=%.0e sb_sweeps=%d mode=%s\n",
+           chi_max, n_steps, (double)cutoff, center, eig_cut, sb_sweeps,
+           ergodic ? "ergodic(eps=0.10/0.15/0.20 gamma=2)" : "gamma-MPF(gamma=1/2/3 eps=0.10)");
     printf("# STEP  C_nl C_n1 C_n2 C_n3\n");
     printf("# QR/SQ N  A00 A01 A02 A11 A12 A22  B0 B1 B2\n");
     fflush(stdout);
@@ -157,7 +172,9 @@ int main(int argc, char** argv) {
     GateOps          gate_ops0(h0);
     state_nl.init_heisenberg(grid_nl, center);
 
-    PtmFunc ptm_fns[N_GAMMA] = {ptm_n1, ptm_n2, ptm_n3};
+    PtmFunc ptm_fns[N_GAMMA];
+    if (ergodic) { ptm_fns[0]=ptm_e1; ptm_fns[1]=ptm_e2; ptm_fns[2]=ptm_e3; }
+    else         { ptm_fns[0]=ptm_g1; ptm_fns[1]=ptm_g2; ptm_fns[2]=ptm_g3; }
     FlatHeavyHexGrid* grids_n[N_GAMMA];
     HeavyHexState*    states_n[N_GAMMA];
     Workspace*        ws_n[N_GAMMA];
@@ -206,16 +223,13 @@ int main(int argc, char** argv) {
             dg_A[i][j] = new DIAG_GAUGE_IP(*grids_n[i], chi_max, eig_cut);
     }
 
-    // SB gauge: SQRT gauge transform + BP from identity warm-start
+    // SB gauge: symmetric SQRT gauge, diagonal messages, no eigendecomposition
     SQRT_BP_IP* sb_B[N_GAMMA];
     SQRT_BP_IP* sb_A[N_GAMMA][N_GAMMA];
     for (int i=0;i<N_GAMMA;i++) {
-        rocblas_handle hB; rocblas_create_handle(&hB);
-        sb_B[i] = new SQRT_BP_IP(grid_nl, *grids_n[i], hB, chi_max, eig_cut);
-        for (int j=i;j<N_GAMMA;j++) {
-            rocblas_handle hA; rocblas_create_handle(&hA);
-            sb_A[i][j] = new SQRT_BP_IP(*grids_n[i], *grids_n[j], hA, chi_max, eig_cut);
-        }
+        sb_B[i] = new SQRT_BP_IP(grid_nl, *grids_n[i], chi_max, eig_cut);
+        for (int j=i;j<N_GAMMA;j++)
+            sb_A[i][j] = new SQRT_BP_IP(*grids_n[i], *grids_n[j], chi_max, eig_cut);
     }
 
     // ── Cycle loop ────────────────────────────────────────────────────────────
@@ -224,11 +238,14 @@ int main(int argc, char** argv) {
 
         // ── GPU 0: Trotter all 4 states ───────────────────────────────────────
         HIP_CHECK(hipSetDevice(0));
+        const float* noisy_site_ptm = ergodic
+            ? ergodic_site_ptm
+            : HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM;
         do_trotter(state_nl, grid_nl, nullptr, nl_ptm_buf.data(),
                    ws_nl, gate_ops0, chi_max, cutoff);
         for (int g=0;g<N_GAMMA;g++)
             do_trotter(*states_n[g], *grids_n[g], ptm_fns[g], nullptr,
-                       *ws_n[g], gate_ops0, chi_max, cutoff);
+                       *ws_n[g], gate_ops0, chi_max, cutoff, noisy_site_ptm);
 
         // BP for autocorrelation
         float C_nl = meas.autocorrelation_with_bp(
@@ -308,14 +325,12 @@ int main(int argc, char** argv) {
                 dg_A_val[i][j] = dg_A[i][j]->compute();
         }
 
-        // Compute SB (SQRT gauge + n_sweeps BP from identity warm-start)
+        // Compute SB (SQRT gauge, diagonal messages, sign-aware edge correction)
         float sb_B_val[N_GAMMA], sb_A_val[N_GAMMA][N_GAMMA]={};
-        HIP_CHECK(hipSetDevice(1));
         for (int i=0;i<N_GAMMA;i++) {
-            double t_sb;
-            sb_B_val[i] = sb_B[i]->compute(sb_sweeps, 1e-5f, false, &t_sb);
+            sb_B_val[i] = sb_B[i]->compute(sb_sweeps);
             for (int j=i;j<N_GAMMA;j++)
-                sb_A_val[i][j] = sb_A[i][j]->compute(sb_sweeps, 1e-5f);
+                sb_A_val[i][j] = sb_A[i][j]->compute(sb_sweeps);
         }
 
         double t1 = now_ms();
