@@ -32,6 +32,7 @@
 #include "heavyhex.hpp"
 #include "heavyhex_physics.hpp"
 #include "diag_gauge_ip.hpp"
+#include "trotter.hpp"
 
 #include "heavyhex_ideal_kick_eps010_data.hpp"
 
@@ -92,47 +93,11 @@ struct SimNoiseless {
     SimNoiseless(rocblas_handle h):handle(h),gate_ops(h){}
     void step(HeavyHexState& state,FlatHeavyHexGrid& grid,
               Workspace& ws,int chi_max,float cutoff){
-        int nm=2*grid.n_bonds;
-        std::vector<int> frozen_chi(grid.n_bonds);
-        std::vector<Scalar*> frozen_msg(nm,nullptr),new_msg(nm,nullptr);
-        size_t alloc=(size_t)chi_max*chi_max*sizeof(Scalar);
-        for(auto& bond:grid.bonds) for(int d=0;d<2;d++){
-            int idx=(d==0)?bond.msg_from_a():bond.msg_from_b();
-            HIP_CHECK(hipMalloc(&frozen_msg[idx],alloc));
-            HIP_CHECK(hipMalloc(&new_msg[idx],alloc));
-        }
-        for(int c=0;c<3;c++){
-            for(auto& b:grid.bonds) frozen_chi[b.id]=b.chi;
-            for(auto& bond:grid.bonds){
-                int chi=bond.chi; size_t sz=(size_t)chi*chi*sizeof(Scalar);
-                for(int d=0;d<2;d++){
-                    int idx=(d==0)?bond.msg_from_a():bond.msg_from_b();
-                    HIP_CHECK(hipMemcpy(frozen_msg[idx],state.messages[idx],sz,hipMemcpyDeviceToDevice));
-                    HIP_CHECK(hipMemcpy(new_msg[idx],state.messages[idx],sz,hipMemcpyDeviceToDevice));
-                }
-            }
-            for(auto& gate:grid.colors[c]){
-                const float* G=HEAVY_HEX_3x3_IDEAL_KICK_EPS010[gate.bond_id];
-                gate_ops.apply_binary_gate(state.psi[gate.site_a],state.psi[gate.site_b],
-                    gate,grid,new_msg,frozen_msg,frozen_chi,G,ws,chi_max,cutoff);
-            }
-            for(auto& gate:grid.colors[c]){
-                const Bond& bond=grid.bonds[gate.bond_id];
-                int chi=bond.chi; size_t sz=(size_t)chi*chi*sizeof(Scalar);
-                for(int d=0;d<2;d++){
-                    int idx=(d==0)?bond.msg_from_a():bond.msg_from_b();
-                    HIP_CHECK(hipMemcpy(state.messages[idx],new_msg[idx],sz,hipMemcpyDeviceToDevice));
-                }
-            }
-        }
-        for(auto p:frozen_msg) if(p) HIP_CHECK(hipFree(p));
-        for(auto p:new_msg)    if(p) HIP_CHECK(hipFree(p));
-        size_t tsz=0;
-        for(auto& s:grid.sites){int vol=D;for(int d=0;d<MAX_DEGREE;d++)if(s.bond_id[d]>=0)vol*=grid.bonds[s.bond_id[d]].chi;tsz=std::max(tsz,(size_t)vol);}
-        Scalar* tmp; HIP_CHECK(hipMalloc(&tmp,tsz*sizeof(Scalar)));
-        for(auto& s:grid.sites)
-            gate_ops.apply_unary_gate(state.psi[s.id],s,grid,HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,tmp);
-        HIP_CHECK(hipFree(tmp));
+        do_trotter(state.psi, state.messages, static_cast<Grid&>(grid),
+                   [](int b){return HEAVY_HEX_3x3_IDEAL_KICK_EPS010[b];},
+                   nullptr,
+                   HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,
+                   ws, gate_ops, chi_max, cutoff);
     }
 };
 
@@ -141,47 +106,10 @@ struct SimNoisy {
     SimNoisy(rocblas_handle h,PtmFunc fn):handle(h),gate_ops(h),ptm_fn(fn){}
     void step(HeavyHexState& state,FlatHeavyHexGrid& grid,
               Workspace& ws,int chi_max,float cutoff){
-        int nm=2*grid.n_bonds;
-        std::vector<int> frozen_chi(grid.n_bonds);
-        std::vector<Scalar*> frozen_msg(nm,nullptr),new_msg(nm,nullptr);
-        size_t alloc=(size_t)chi_max*chi_max*sizeof(Scalar);
-        for(auto& bond:grid.bonds) for(int d=0;d<2;d++){
-            int idx=(d==0)?bond.msg_from_a():bond.msg_from_b();
-            HIP_CHECK(hipMalloc(&frozen_msg[idx],alloc));
-            HIP_CHECK(hipMalloc(&new_msg[idx],alloc));
-        }
-        for(int c=0;c<3;c++){
-            for(auto& b:grid.bonds) frozen_chi[b.id]=b.chi;
-            for(auto& bond:grid.bonds){
-                int chi=bond.chi; size_t sz=(size_t)chi*chi*sizeof(Scalar);
-                for(int d=0;d<2;d++){
-                    int idx=(d==0)?bond.msg_from_a():bond.msg_from_b();
-                    HIP_CHECK(hipMemcpy(frozen_msg[idx],state.messages[idx],sz,hipMemcpyDeviceToDevice));
-                    HIP_CHECK(hipMemcpy(new_msg[idx],state.messages[idx],sz,hipMemcpyDeviceToDevice));
-                }
-            }
-            for(auto& gate:grid.colors[c]){
-                const float* G=ptm_fn(gate.bond_id);
-                gate_ops.apply_binary_gate(state.psi[gate.site_a],state.psi[gate.site_b],
-                    gate,grid,new_msg,frozen_msg,frozen_chi,G,ws,chi_max,cutoff);
-            }
-            for(auto& gate:grid.colors[c]){
-                const Bond& bond=grid.bonds[gate.bond_id];
-                int chi=bond.chi; size_t sz=(size_t)chi*chi*sizeof(Scalar);
-                for(int d=0;d<2;d++){
-                    int idx=(d==0)?bond.msg_from_a():bond.msg_from_b();
-                    HIP_CHECK(hipMemcpy(state.messages[idx],new_msg[idx],sz,hipMemcpyDeviceToDevice));
-                }
-            }
-        }
-        for(auto p:frozen_msg) if(p) HIP_CHECK(hipFree(p));
-        for(auto p:new_msg)    if(p) HIP_CHECK(hipFree(p));
-        size_t tsz=0;
-        for(auto& s:grid.sites){int vol=D;for(int d=0;d<MAX_DEGREE;d++)if(s.bond_id[d]>=0)vol*=grid.bonds[s.bond_id[d]].chi;tsz=std::max(tsz,(size_t)vol);}
-        Scalar* tmp; HIP_CHECK(hipMalloc(&tmp,tsz*sizeof(Scalar)));
-        for(auto& s:grid.sites)
-            gate_ops.apply_unary_gate(state.psi[s.id],s,grid,HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,tmp);
-        HIP_CHECK(hipFree(tmp));
+        do_trotter(state.psi, state.messages, static_cast<Grid&>(grid),
+                   ptm_fn, nullptr,
+                   HEAVY_HEX_3x3_IDEAL_KICK_EPS010_SITE_PTM,
+                   ws, gate_ops, chi_max, cutoff);
     }
 };
 
