@@ -59,7 +59,13 @@ main_generic_lightcone: $(SRC)/main_generic_lightcone.cpp $(HEADERS) \
 	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) $(DFLAGS) -o $@ $(SRC)/$@.cpp $(LIBS)
-	@echo "Built $@ (graph=$(if $(DFLAGS),$(DFLAGS),heavy_hex_3x3))"
+	@echo "Built $@ (heavy_hex_3x3)"
+
+main_generic_lightcone_rect7x7: $(SRC)/main_generic_lightcone.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/rect_7x7.hpp include/rect_7x7_ideal_kick_eps010_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_7x7 -o $@ $(SRC)/main_generic_lightcone.cpp $(LIBS)
+	@echo "Built $@ (rect_7x7)"
 
 main_lightcone: $(SRC)/main_lightcone.cpp $(HEADERS) \
 	include/heavyhex.hpp include/heavyhex_physics.hpp \
@@ -150,6 +156,19 @@ test_blf_cpu2: test/test_blf_cpu2.cpp $(HEADERS) include/heavyhex.hpp include/he
 	include/heavyhex_noisy_eps010_gamma1_data.hpp \
 	include/bilinear_form_bp.hpp include/bilinear_form_bp_cpu2.hpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o test/$@ test/$@.cpp $(LIBS)
+	@echo "Built test/$@"
+
+test_rect7x7_trotter: test/test_rect7x7_trotter.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/rect_7x7.hpp include/rect_7x7_ideal_kick_eps010_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o test/$@ test/$@.cpp $(LIBS)
+	@echo "Built test/$@"
+
+test_rect7x7: test/test_rect7x7.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/rect_7x7.hpp include/rect_7x7_ideal_kick_eps010_data.hpp \
+	include/trotter.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o test/$@ test/$@.cpp $(LIBS)
 	@echo "Built test/$@"
 
 test_heavyhex: test/test_heavyhex.cpp $(HEADERS) \

@@ -108,7 +108,8 @@ struct HeavyHexState {
     int chi_max;
     int n_sites, n_bonds;
 
-    explicit HeavyHexState(const FlatHeavyHexGrid& g)
+    // Constructor from any Grid subclass (topology-agnostic)
+    explicit HeavyHexState(const Grid& g)
         : chi_max(g.chi_max), n_sites(g.n_sites), n_bonds(g.n_bonds)
     {
         psi.resize(n_sites, nullptr);
@@ -128,6 +129,10 @@ struct HeavyHexState {
         }
     }
 
+    // Convenience: construct from FlatHeavyHexGrid (backward compat)
+    explicit HeavyHexState(const FlatHeavyHexGrid& g)
+        : HeavyHexState(static_cast<const Grid&>(g)) {}
+
     ~HeavyHexState() {
         for (auto p : psi)      if (p) HIP_CHECK(hipFree(p));
         for (auto p : messages) if (p) HIP_CHECK(hipFree(p));
@@ -136,7 +141,7 @@ struct HeavyHexState {
     HeavyHexState(const HeavyHexState&) = delete;
     HeavyHexState& operator=(const HeavyHexState&) = delete;
 
-    void init_heisenberg(FlatHeavyHexGrid& g, int center_site) {
+    void init_heisenberg(Grid& g, int center_site) {
         // Heisenberg picture: evolve Z operator at center, I everywhere else
         // Initial state ρ enters at measurement time, not here
         std::vector<Scalar> h_I = {1.f, 0.f, 0.f, 0.f};  // I operator

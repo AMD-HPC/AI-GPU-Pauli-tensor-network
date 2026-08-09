@@ -235,7 +235,7 @@ def load_noise(noise_path):
 
 # ── HPP writer ─────────────────────────────────────────────────────────────────
 
-def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=None):
+def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=None, prefix=None):
     """
     ptms_by_gamma: dict gamma_str -> list of 76 flat col-major PTMs
     For ideal models: gammas=['ideal'], ptms_by_gamma={'ideal': [...]}
@@ -249,9 +249,10 @@ def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=N
     lines.append("#pragma once")
     lines.append("#include <cmath>")
     lines.append("")
-    lines.append(f"static constexpr float HEAVY_HEX_3x3_{model}_EPSILON = {epsilon:.8f}f;")
-    lines.append(f"static constexpr float HEAVY_HEX_3x3_{model}_PHI     = {phi:.8f}f;")
-    lines.append(f"static constexpr float HEAVY_HEX_3x3_{model}_DT      = {epsilon:.8f}f;  // physical time step per cycle")
+    pfx = prefix if prefix else "HEAVY_HEX_3x3"
+    lines.append(f"static constexpr float {pfx}_{model}_EPSILON = {epsilon:.8f}f;")
+    lines.append(f"static constexpr float {pfx}_{model}_PHI     = {phi:.8f}f;")
+    lines.append(f"static constexpr float {pfx}_{model}_DT      = {epsilon:.8f}f;  // physical time step per cycle")
     lines.append("")
 
     # Initial state from graph JSON — +1=|0>, -1=|1>
@@ -268,7 +269,7 @@ def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=N
                 state_array[site_0] = int(val)
         vals = ', '.join(str(v) for v in state_array)
         lines.append(f"// Initial device state: +1=|0> (I+Z)/2, -1=|1> (I-Z)/2")
-        lines.append(f"static constexpr int HEAVY_HEX_3x3_{model}_INITIAL_STATE[68] = {{{vals}}};")
+        lines.append(f"static constexpr int {pfx}_{model}_INITIAL_STATE[68] = {{{vals}}};")
         lines.append("")
 
     # 4×4 single-site kick PTM (col-major) — only for kick models
@@ -276,14 +277,14 @@ def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=N
         Mk = PTM_kick_site(phi)
         vals = ', '.join(f'{x:.8f}f' for x in Mk.flatten(order='F'))
         lines.append(f"// Rx(2*phi) single-site PTM [4x4 col-major] — applied once per site after bond gates")
-        lines.append(f"static const float HEAVY_HEX_3x3_{model}_SITE_PTM[16] = {{{vals}}};")
+        lines.append(f"static const float {pfx}_{model}_SITE_PTM[16] = {{{vals}}};")
         lines.append("")
 
     is_ideal = (gammas == ['ideal'])
 
     if is_ideal:
         ptms = ptms_by_gamma['ideal']
-        lines.append(f"static const float HEAVY_HEX_3x3_{model}[{n_bonds}][256] = {{")
+        lines.append(f"static const float {pfx}_{model}[{n_bonds}][256] = {{")
         for bond_id, ptm in enumerate(ptms):
             u, v = EDGES[bond_id]
             vals = ', '.join(f'{x:.8f}f' for x in ptm)
@@ -291,19 +292,19 @@ def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=N
         lines.append("};")
         lines.append("")
         lines.append(f"inline const float* heavy_hex_3x3_{model.lower()}_ptm(int bond_id) {{")
-        lines.append(f"    return HEAVY_HEX_3x3_{model}[bond_id];")
+        lines.append(f"    return {pfx}_{model}[bond_id];")
         lines.append("}")
     else:
         n_gamma = len(gammas)
         gamma_floats = [float(g) for g in gammas]
-        lines.append(f"static constexpr int   HEAVY_HEX_3x3_{model}_N_GAMMA = {n_gamma};")
-        lines.append(f"static constexpr float HEAVY_HEX_3x3_{model}_GAMMAS[{n_gamma}] = "
+        lines.append(f"static constexpr int   {pfx}_{model}_N_GAMMA = {n_gamma};")
+        lines.append(f"static constexpr float {pfx}_{model}_GAMMAS[{n_gamma}] = "
                      f"{{{', '.join(f'{g:.1f}f' for g in gamma_floats)}}};")
         lines.append("")
         for gamma_str in gammas:
             cname = gamma_str.replace('.', '_')
             ptms  = ptms_by_gamma[gamma_str]
-            lines.append(f"static const float HEAVY_HEX_3x3_{model}_GAMMA{cname}[{n_bonds}][256] = {{")
+            lines.append(f"static const float {pfx}_{model}_GAMMA{cname}[{n_bonds}][256] = {{")
             for bond_id, ptm in enumerate(ptms):
                 u, v = EDGES[bond_id]
                 vals = ', '.join(f'{x:.8f}f' for x in ptm)
@@ -312,17 +313,17 @@ def write_hpp(out_path, model, gammas, ptms_by_gamma, epsilon, phi, graph_data=N
             lines.append("")
         lines.append(f"inline const float* heavy_hex_3x3_{model.lower()}_ptm(int bond_id, float gamma) {{")
         lines.append(f"    int best = 0;")
-        lines.append(f"    float best_diff = fabsf(gamma - HEAVY_HEX_3x3_{model}_GAMMAS[0]);")
-        lines.append(f"    for (int i = 1; i < HEAVY_HEX_3x3_{model}_N_GAMMA; i++) {{")
-        lines.append(f"        float diff = fabsf(gamma - HEAVY_HEX_3x3_{model}_GAMMAS[i]);")
+        lines.append(f"    float best_diff = fabsf(gamma - {pfx}_{model}_GAMMAS[0]);")
+        lines.append(f"    for (int i = 1; i < {pfx}_{model}_N_GAMMA; i++) {{")
+        lines.append(f"        float diff = fabsf(gamma - {pfx}_{model}_GAMMAS[i]);")
         lines.append(f"        if (diff < best_diff) {{ best = i; best_diff = diff; }}")
         lines.append(f"    }}")
         for i, gamma_str in enumerate(gammas):
             cname = gamma_str.replace('.', '_')
             if i < n_gamma - 1:
-                lines.append(f"    if (best == {i}) return HEAVY_HEX_3x3_{model}_GAMMA{cname}[bond_id];")
+                lines.append(f"    if (best == {i}) return {pfx}_{model}_GAMMA{cname}[bond_id];")
             else:
-                lines.append(f"    return HEAVY_HEX_3x3_{model}_GAMMA{cname}[bond_id];")
+                lines.append(f"    return {pfx}_{model}_GAMMA{cname}[bond_id];")
         lines.append("}")
 
     with open(out_path, 'w') as f:
@@ -340,6 +341,7 @@ def main():
     gamma_filter = None  # None = all gammas; '1.0' = gamma=1.0 only
     graph_override = None
     out_override = None
+    prefix_override = None  # e.g. 'RECT_7x7' to override HEAVY_HEX_3x3 prefix
     positional = []
     for arg in sys.argv[1:]:
         if arg.startswith('--epsilon='):
@@ -352,6 +354,8 @@ def main():
             graph_override = arg[8:]
         elif arg.startswith('--out='):
             out_override = arg[6:]
+        elif arg.startswith('--prefix='):
+            prefix_override = arg[9:]
         else:
             positional.append(arg)
 
@@ -400,7 +404,7 @@ def main():
             ptm = build_bond_ptm(model, alpha, delta, phi, None)
             ptms.append(list(ptm.flatten(order='F')))
         print(f"  {model_tag}: {n_bonds} PTMs computed")
-        write_hpp(out_file, model_tag, ['ideal'], {'ideal': ptms}, epsilon, phi, graph_data)
+        write_hpp(out_file, model_tag, ['ideal'], {'ideal': ptms}, epsilon, phi, graph_data, prefix=prefix_override)
     else:
         gammas, noise_per_gamma = load_noise(noise_json)
         if gamma_filter is not None:
@@ -435,7 +439,7 @@ def main():
                 ptms.append(list(ptm.flatten(order='F')))
             ptms_by_gamma[gamma_str] = ptms
             print(f"  gamma={gamma_str}: {n_bonds} PTMs computed (per-bond color-class noise)")
-        write_hpp(out_file, model_tag, gammas, ptms_by_gamma, epsilon, phi, graph_data)
+        write_hpp(out_file, model_tag, gammas, ptms_by_gamma, epsilon, phi, graph_data, prefix=prefix_override)
 
 if __name__ == '__main__':
     main()

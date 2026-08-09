@@ -38,18 +38,12 @@
 
 // ── Graph selection at compile time ──────────────────────────────────────────
 #if defined(GRAPH_rect_7x7)
+  #include "rect_7x7.hpp"
   #include "rect_7x7_ideal_kick_eps010_data.hpp"
   #define GRID_TAG      "rect_7x7"
   #define GRID_CLASS    FlatRect7x7Grid
   static PtmFn  s_bond_ptm = [](int b) -> const float* { return RECT_7x7_IDEAL_KICK_EPS010[b]; };
   static const float* s_site_ptm = RECT_7x7_IDEAL_KICK_EPS010_SITE_PTM;
-
-#elif defined(GRAPH_rect_8x8)
-  #include "rect_8x8_ideal_kick_eps010_data.hpp"
-  #define GRID_TAG      "rect_8x8"
-  #define GRID_CLASS    FlatRect8x8Grid
-  static PtmFn  s_bond_ptm = [](int b) -> const float* { return RECT_8x8_IDEAL_KICK_EPS010[b]; };
-  static const float* s_site_ptm = RECT_8x8_IDEAL_KICK_EPS010_SITE_PTM;
 
 #else
   // Default: heavy_hex_3x3
@@ -109,7 +103,21 @@ int main(int argc, char** argv) {
     fflush(stdout);
 
     rocblas_handle handle; rocblas_create_handle(&handle);
-    Workspace   ws(chi_max, (int)grid.colors.size());
+    // Workspace sized by max_degree of grid sites.
+    // Note: degree-4 (rect) needs chi^3 workspace — use small chi_max for large grids.
+    int max_deg = 1;
+    for (auto& site : grid.sites) {
+        int deg=0; for(int d=0;d<MAX_DEGREE;d++) if(site.bond_id[d]>=0) deg++;
+        max_deg = std::max(max_deg, deg);
+    }
+    // Safety: warn if workspace will be large
+    {
+        long long m = 1;
+        for(int i=0;i<max_deg-1;i++) m*=chi_max;
+        if(m > 100000)
+            fprintf(stderr,"[WARNING] Workspace m_max=%lld — consider smaller chi_max for degree-%d grid\n",m,max_deg);
+    }
+    Workspace   ws(chi_max, max_deg);
     HeavyHexState state(grid);
     Measures    meas(handle, ws);
     GateOps     gate_ops(handle);
