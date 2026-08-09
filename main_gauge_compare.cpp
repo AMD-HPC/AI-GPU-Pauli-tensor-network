@@ -215,12 +215,16 @@ int main(int argc, char** argv) {
     }
 
     // DIAG gauge: eigendecompose messages, absorb sqrt(D)*A^T into psi, float64 CPU
+    // DG gauge: fully GPU — rocsolver eigendecomposition + rocBLAS GEMM
     DIAG_GAUGE_IP* dg_B[N_GAMMA];
     DIAG_GAUGE_IP* dg_A[N_GAMMA][N_GAMMA];
     for (int i=0;i<N_GAMMA;i++) {
-        dg_B[i] = new DIAG_GAUGE_IP(grid_nl, chi_max, eig_cut);
-        for (int j=i;j<N_GAMMA;j++)
-            dg_A[i][j] = new DIAG_GAUGE_IP(*grids_n[i], chi_max, eig_cut);
+        rocblas_handle hdgB; rocblas_create_handle(&hdgB);
+        dg_B[i] = new DIAG_GAUGE_IP(grid_nl, hdgB, chi_max, eig_cut);
+        for (int j=i;j<N_GAMMA;j++) {
+            rocblas_handle hdgA; rocblas_create_handle(&hdgA);
+            dg_A[i][j] = new DIAG_GAUGE_IP(*grids_n[i], hdgA, chi_max, eig_cut);
+        }
     }
 
     // SB gauge: symmetric SQRT gauge, diagonal messages, no eigendecomposition
@@ -247,17 +251,20 @@ int main(int argc, char** argv) {
             do_trotter(*states_n[g], *grids_n[g], ptm_fns[g], nullptr,
                        *ws_n[g], gate_ops0, chi_max, cutoff, noisy_site_ptm);
 
-        // BP for autocorrelation
+        // Compute C(t) — uses temp copy of messages internally, does NOT modify state.messages
         float C_nl = meas.autocorrelation_with_bp(
             static_cast<Grid&>(grid_nl), state_nl.psi, state_nl.messages,
             center, BP_SWEEPS);
         float C_n[N_GAMMA];
-        for (int g=0;g<N_GAMMA;g++) {
-            // Use meas with ws_nl (same chi_max) — autocorrelation only needs handle
+        for (int g=0;g<N_GAMMA;g++)
             C_n[g] = meas.autocorrelation_with_bp(
                 static_cast<Grid&>(*grids_n[g]), states_n[g]->psi,
                 states_n[g]->messages, center, BP_SWEEPS);
-        }
+
+        // DG gauge uses state.messages directly (post-Trotter, pre-BP).
+        // BP-converged messages make all noisy states look identical → A_hat≈1.
+        // Trotter messages retain state-specific structure → good discrimination.
+        // No copy needed — DG upload reads from GPU 0, doesn't modify messages.
 
         printf("STEP %d  C_nl %+.6f  C_n1 %+.6f  C_n2 %+.6f  C_n3 %+.6f\n",
                step, C_nl, C_n[0], C_n[1], C_n[2]);
@@ -280,14 +287,14 @@ int main(int argc, char** argv) {
                 sq_A[i][j]->upload(states_n[i]->psi, states_n[i]->messages, states_n[j]->psi);
         }
 
-        // Upload to DIAG objects (psi_a + msg_a + psi_b + msg_b, CPU float64)
+        // Upload to DIAG objects using state.messages (post-Trotter, pre-BP)
         HIP_CHECK(hipSetDevice(0));
         for (int i=0;i<N_GAMMA;i++) {
-            dg_B[i]->upload(state_nl.psi,    state_nl.messages,
-                            states_n[i]->psi, states_n[i]->messages);
+            dg_B[i]->upload(state_nl.psi,     0, state_nl.messages,
+                            states_n[i]->psi, 0, states_n[i]->messages);
             for (int j=i;j<N_GAMMA;j++)
-                dg_A[i][j]->upload(states_n[i]->psi, states_n[i]->messages,
-                                   states_n[j]->psi, states_n[j]->messages);
+                dg_A[i][j]->upload(states_n[i]->psi, 0, states_n[i]->messages,
+                                   states_n[j]->psi, 0, states_n[j]->messages);
         }
         HIP_CHECK(hipSetDevice(1));
 

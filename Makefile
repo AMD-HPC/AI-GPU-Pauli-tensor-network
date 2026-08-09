@@ -189,7 +189,7 @@ main_gauge_compare: main_gauge_compare.cpp $(HEADERS) include/heavyhex.hpp inclu
 	include/sqrt_gauge_ip.hpp \
 	include/diag_gauge_ip.hpp \
 	include/sqrt_bp_ip.hpp
-	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o main_gauge_compare main_gauge_compare.cpp $(LIBS) -llapack -lblas
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o main_gauge_compare main_gauge_compare.cpp $(LIBS)
 	@echo "Built main_gauge_compare"
 
 test_blf_cpu2: test_blf_cpu2.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
