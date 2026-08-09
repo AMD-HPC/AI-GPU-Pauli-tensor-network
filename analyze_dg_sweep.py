@@ -117,14 +117,39 @@ def main():
     colors_qr = ['navy','royalblue','cornflowerblue']
     colors_dg = ['darkred','red','salmon','orange','gold']
 
-    # ── Panel 1: MPF error |C_mpf - C_nl| for ALL curves ────────────────────
-    # Poor man's from reference log (delta=1e-3 QR)
+    # ── Panel 1: |C(t)| — ideal, noisy, MPF corrections ─────────────────────
+    # Collect C_nl and C_n across all QR delta values to show bands
+    all_Cnl  = {}  # step → list of |C_nl| across runs
+    all_Cn1  = {}  # step → list of |C_n[0]| (gamma=1)
+    all_Cn2  = {}  # step → list of |C_n[1]| (gamma=2)
+    for logf in qr_logs:
+        qs = parse_qr(logf)
+        for s,d in qs.items():
+            all_Cnl.setdefault(s,[]).append(abs(d['C_nl']))
+            all_Cn1.setdefault(s,[]).append(abs(d['C_n'][0]))
+            all_Cn2.setdefault(s,[]).append(abs(d['C_n'][1]))
+
+    sl_ref = sorted(all_Cnl.keys())
+    Cnl_mid = [np.mean(all_Cnl[s]) for s in sl_ref]
+    Cn1_mid = [np.mean(all_Cn1[s]) for s in sl_ref]
+    Cn2_mid = [np.mean(all_Cn2[s]) for s in sl_ref]
+    Cn1_lo  = [np.min(all_Cn1[s])  for s in sl_ref]
+    Cn1_hi  = [np.max(all_Cn1[s])  for s in sl_ref]
+    Cn2_lo  = [np.min(all_Cn2[s])  for s in sl_ref]
+    Cn2_hi  = [np.max(all_Cn2[s])  for s in sl_ref]
+
+    ax1.plot(sl_ref, Cnl_mid, 'k-o', lw=2.5, label=r'$|C_{\rm nl}|$ (ideal)', zorder=5)
+    ax1.plot(sl_ref, Cn1_mid, 'steelblue', lw=1.5, alpha=0.8, label=r'$|C_{n,\gamma=1}|$')
+    ax1.fill_between(sl_ref, Cn1_lo, Cn1_hi, alpha=0.15, color='steelblue')
+    ax1.plot(sl_ref, Cn2_mid, 'salmon', lw=1.5, alpha=0.8, label=r'$|C_{n,\gamma=2}|$')
+    ax1.fill_between(sl_ref, Cn2_lo, Cn2_hi, alpha=0.15, color='salmon')
+
+    # Poor man's — accurate but potentially biased (same sign correction each cycle)
     ref_log = qr_logs[0]
     ref_steps = parse_qr(ref_log)
     pm = poor_mans(ref_steps)
-    sl_ref = sorted(ref_steps.keys())
-    pm_err = [abs(pm.get(s,float('nan')) - ref_steps[s]['C_nl']) for s in sl_ref]
-    ax1.semilogy(sl_ref, pm_err, 'g--s', lw=2, label="Poor man's (δ=1e-3)", zorder=5)
+    pm_v = [abs(pm.get(s,float('nan'))) for s in sl_ref]
+    ax1.plot(sl_ref, pm_v, 'g--s', lw=1.8, label="Poor man's MPF", zorder=4)
 
     # QR MPF curves (one per delta)
     trotter_linestyles = ['-', '--', ':']
@@ -136,10 +161,11 @@ def main():
         ip_v  = [errs[s]['ip'] for s in sl]   # |error| for panel 2
         tip_v = [errs[s]['t_ip'] for s in sl]
         # Actual C_mpf for panel 1
-        err_v = [abs(solve_lagrange(steps[s]['A'],steps[s]['B'],steps[s]['C_n']) - steps[s]['C_nl'])
-                 for s in sl]
+        cmpf_v = [abs(solve_lagrange(steps[s]['A'],steps[s]['B'],steps[s]['C_n']))
+                  for s in sl]
         col=colors_qr[k%len(colors_qr)]
-        ax1.semilogy(sl, err_v, '-^', color=col, lw=1.5, label=f'QR {tag}', zorder=3)
+        ax1.plot(sl, cmpf_v, '-^', color=col, lw=1.5, alpha=0.8,
+                 label=f'QR MPF {tag}', zorder=3)
         ax2.plot(sl, tip_v, '-^', color=col, lw=1.5, label=f'QR IP {tag}')
         # Trotter in panel 3
         tsl2, ttr_v = [], []
@@ -155,14 +181,17 @@ def main():
         errs  = mpf_errors(steps)
         sl = sorted(s for s in errs)
         tip_v = [errs[s]['t_ip'] for s in sl]
-        err_v = [abs(solve_lagrange(steps[s]['A'],steps[s]['B'],steps[s]['C_n']) - steps[s]['C_nl'])
-                 for s in sl]
+        cmpf_v = [abs(solve_lagrange(steps[s]['A'],steps[s]['B'],steps[s]['C_n']))
+                  for s in sl]
         col=colors_dg[k%len(colors_dg)]
-        ax1.semilogy(sl, err_v, '--o', color=col, lw=1.5, label=f'DG {tag}', zorder=3)
+        ax1.plot(sl, cmpf_v, '--o', color=col, lw=1.5, alpha=0.8,
+                 label=f'DG MPF {tag}', zorder=3)
         ax2.plot(sl, tip_v, '--o', color=col, lw=1.5, label=f'DG IP {tag}')
 
-    ax1.set_xlabel('Cycle'); ax1.set_ylabel('|C_mpf - C_nl|')
-    ax1.set_title('MPF error: all QR and DG configurations')
+    ax1.set_xlabel('Cycle'); ax1.set_ylabel('|C(t)|')
+    ax1.set_title('|C(t)|: ideal, noisy band, MPF corrections\n'
+                  '(QR biased, DG unbiased but larger scatter)')
+    ax1.legend(fontsize=6, ncol=2)
     ax1.legend(fontsize=6, ncol=2); ax1.grid(True, alpha=0.3)
 
     ax2.set_yscale('symlog', linthresh=1.0)
@@ -213,6 +242,85 @@ def main():
     outfile=args.out or os.path.join(args.dir,'dg_sweep_summary.png')
     plt.savefig(outfile, dpi=150)
     print(f"\nFigure: {outfile}")
+
+    # ── C(t) table: rows=cycles, cols=C_nl, C_n1, C_n2, QR_*, DG_* ──────────
+    # Collect all configs
+    all_configs = {}  # label → {step: |C_mpf|}
+    for logf in qr_logs:
+        tag = os.path.basename(logf).replace('QR_','QR ').replace('.log','')
+        steps = parse_qr(logf)
+        all_configs[tag] = {s: abs(solve_lagrange(d['A'],d['B'],d['C_n']))
+                            for s,d in steps.items()}
+    for logf in dg_logs:
+        tag = os.path.basename(logf).replace('DG_','DG ').replace('.log','')
+        steps = parse_dg(logf)
+        all_configs[tag] = {s: abs(solve_lagrange(d['A'],d['B'],d['C_n']))
+                            for s,d in steps.items()}
+
+    # Reference C_nl, C_n1, C_n2 from first QR log
+    ref = parse_qr(qr_logs[0])
+    pm_ref = poor_mans(ref)
+    all_steps = sorted(ref.keys())
+
+    # Header
+    cols = ['C_nl','C_n1','C_n2','PM'] + list(all_configs.keys())
+    col_w = 10
+    print(f"\n{'Cycle':>5}  " + "  ".join(f"{c[:col_w]:>{col_w}}" for c in cols))
+    print("─" * (7 + (col_w+2)*len(cols)))
+
+    for s in all_steps:
+        d = ref[s]
+        cnl = abs(d['C_nl'])
+        cn1 = abs(d['C_n'][0])
+        cn2 = abs(d['C_n'][1])
+        pm_v = abs(pm_ref.get(s, float('nan')))
+        row = [cnl, cn1, cn2, pm_v]
+        for cfg in all_configs:
+            v = all_configs[cfg].get(s, float('nan'))
+            row.append(v)
+        print(f"{s:>5}  " + "  ".join(f"{v:>{col_w}.4f}" if not np.isnan(v)
+                                       else f"{'nan':>{col_w}}" for v in row))
+    print()
+
+    # ── Summary table ─────────────────────────────────────────────────────────
+    print(f"\n{'Config':<30} {'Steps':>5} {'Mean|Δ|':>10} {'Max|Δ|':>10} "
+          f"{'Mean t_ip':>10} {'Bias?':>8}")
+    print("─"*78)
+
+    # Poor man's reference
+    ref_steps = parse_qr(qr_logs[0])
+    pm = poor_mans(ref_steps)
+    pm_errs = [abs(pm.get(s,float('nan'))-ref_steps[s]['C_nl'])
+               for s in sorted(ref_steps) if not np.isnan(pm.get(s,float('nan')))]
+    # Bias: check if errors are consistently one-sided
+    pm_signed = [pm.get(s,float('nan'))-ref_steps[s]['C_nl']
+                 for s in sorted(ref_steps)]
+    pm_bias = "yes(+)" if all(v>0 for v in pm_signed if not np.isnan(v)) else \
+              "yes(-)" if all(v<0 for v in pm_signed if not np.isnan(v)) else "mixed"
+    print(f"{'Poor mans (δ=1e-3)':<30} {len(pm_errs):>5} "
+          f"{np.mean(pm_errs):>10.2e} {np.max(pm_errs):>10.2e} {'—':>10} {pm_bias:>8}")
+
+    print()
+    for logf in qr_logs+dg_logs:
+        tag = os.path.basename(logf).replace('.log','')
+        is_dg = 'DG' in tag
+        steps = (parse_dg if is_dg else parse_qr)(logf)
+        errs_d = mpf_errors(steps)
+        sl = sorted(s for s in errs_d if not np.isnan(errs_d[s]['ip']))
+        if not sl: continue
+        ip_v  = [errs_d[s]['ip'] for s in sl]
+        ti_v  = [errs_d[s]['t_ip'] for s in sl if not np.isnan(errs_d[s]['t_ip'])]
+        # Signed errors to detect bias
+        signed = [solve_lagrange(steps[s]['A'],steps[s]['B'],steps[s]['C_n'])
+                  - steps[s]['C_nl'] for s in sl]
+        signed = [v for v in signed if not np.isnan(v) and abs(v)<2]
+        bias = "yes(+)" if len(signed)>2 and sum(v>0 for v in signed)/len(signed)>0.75 else \
+               "yes(-)" if len(signed)>2 and sum(v<0 for v in signed)/len(signed)>0.75 else "mixed"
+        mean_ip = np.mean(ip_v) if ip_v else float('nan')
+        max_ip  = np.max(ip_v)  if ip_v else float('nan')
+        mean_ti = np.mean(ti_v) if ti_v else float('nan')
+        print(f"{tag:<30} {len(sl):>5} {mean_ip:>10.2e} {max_ip:>10.2e} "
+              f"{mean_ti:>10.2f}s {bias:>8}")
 
 if __name__=='__main__':
     main()
