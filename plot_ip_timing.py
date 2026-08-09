@@ -76,13 +76,18 @@ def parse_log(path):
 
     return steps, serial_times
 
-def solve_lagrange(A, B, C_n):
-    M = np.zeros((N+1, N+1))
-    M[:N,:N] = A; M[:N,N] = 1.0; M[N,:N] = 1.0
-    rhs = np.zeros(N+1); rhs[:N] = B; rhs[N] = 1.0
+def solve_lagrange(A, B, C_n, normalize=False):
+    """Solve MPF. Clip result if |C_mpf| > 3*|C_nl| (ill-conditioned Lagrange)."""
     try:
+        M = np.zeros((N+1, N+1))
+        M[:N,:N] = A; M[:N,N] = 1.0; M[N,:N] = 1.0
+        rhs = np.zeros(N+1); rhs[:N] = B; rhs[N] = 1.0
         sol = np.linalg.solve(M, rhs)
-        return float(sol[:N] @ C_n)
+        result = float(sol[:N] @ C_n)
+        # Clip wildly ill-conditioned results
+        if abs(result) > 3 * abs(C_n).max() + 1.0:
+            return float('nan')
+        return result
     except: return float('nan')
 
 def poor_mans_mpf(steps):
