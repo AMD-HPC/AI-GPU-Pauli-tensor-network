@@ -140,12 +140,16 @@ int main(int argc, char** argv) {
     int    center   = (argc>4)?atoi(argv[4]):13;
     double eig_cut   = 1e-2;
     int    sb_sweeps = 0;
-    bool   ergodic   = false;
+    bool   ergodic    = false;
+    bool   qr_dg_only = false;  // skip SQ and SB
+    bool   dg_only    = false;  // skip QR, SQ, SB — DG only (avoids BLF_GPU2 CPU fallback)
     for (int i=1;i<argc;i++) {
         std::string a(argv[i]);
         if (a.substr(0,10)=="--eig-cut=")  eig_cut  = atof(argv[i]+10);
         if (a.substr(0,12)=="--sb-sweeps=") sb_sweeps = atoi(argv[i]+12);
-        if (a=="--ergodic") ergodic = true;
+        if (a=="--ergodic")    ergodic    = true;
+        if (a=="--qr-dg-only") qr_dg_only = true;
+        if (a=="--dg-only")  { dg_only    = true; qr_dg_only = true; }
     }
 
     int n_gpus=0;
@@ -214,17 +218,20 @@ int main(int argc, char** argv) {
             sq_A[i][j] = new SQRT_GAUGE_IP(*grids_n[i], chi_max);
     }
 
-    // DIAG gauge: eigendecompose messages, absorb sqrt(D)*A^T into psi, float64 CPU
-    // DG gauge: fully GPU — rocsolver eigendecomposition + rocBLAS GEMM
-    DIAG_GAUGE_IP* dg_B[N_GAMMA];
-    DIAG_GAUGE_IP* dg_A[N_GAMMA][N_GAMMA];
+    // DG gauge: 4 eigendecompositions (1 nl + 3 noisy), shared across 9 pairs
+    rocblas_handle hdg; rocblas_create_handle(&hdg);
+    DG_StateGauge* dg_gauge_nl = new DG_StateGauge(grid_nl, hdg, chi_max, eig_cut);
+    DG_StateGauge* dg_gauge_n[N_GAMMA];
+    for (int i=0;i<N_GAMMA;i++)
+        dg_gauge_n[i] = new DG_StateGauge(*grids_n[i], hdg, chi_max, eig_cut);
+
+    // 9 DG_Pair objects (no eigendecomposition — just GEMM + sdot)
+    DG_Pair* dgp_B[N_GAMMA];     // B[i] = IP(nl, ni) — uses gauge_nl
+    DG_Pair* dgp_A[N_GAMMA][N_GAMMA]={};  // A[i][j] = IP(ni, nj) — uses gauge_n[i]
     for (int i=0;i<N_GAMMA;i++) {
-        rocblas_handle hdgB; rocblas_create_handle(&hdgB);
-        dg_B[i] = new DIAG_GAUGE_IP(grid_nl, hdgB, chi_max, eig_cut);
-        for (int j=i;j<N_GAMMA;j++) {
-            rocblas_handle hdgA; rocblas_create_handle(&hdgA);
-            dg_A[i][j] = new DIAG_GAUGE_IP(*grids_n[i], hdgA, chi_max, eig_cut);
-        }
+        dgp_B[i] = new DG_Pair(grid_nl, hdg, chi_max);
+        for (int j=i;j<N_GAMMA;j++)
+            dgp_A[i][j] = new DG_Pair(*grids_n[i], hdg, chi_max);
     }
 
     // SB gauge: symmetric SQRT gauge, diagonal messages, no eigendecomposition
@@ -272,69 +279,72 @@ int main(int argc, char** argv) {
         // ── GPU 1: QR and SQRT inner products ─────────────────────────────────
         HIP_CHECK(hipSetDevice(1));
 
-        // Upload to QR objects
-        for (int i=0;i<N_GAMMA;i++) {
+        // Upload to QR objects (skipped in --dg-only mode)
+        if (!dg_only) for (int i=0;i<N_GAMMA;i++) {
             blf_B[i]->upload(state_nl.psi,      0, states_n[i]->psi, 0,
                              &state_nl.messages, &states_n[i]->messages);
             for (int j=i;j<N_GAMMA;j++)
                 blf_A[i][j]->upload(states_n[i]->psi, 0, states_n[j]->psi, 0,
                                     &states_n[i]->messages, &states_n[j]->messages);
         }
-        // Upload to SQRT objects (psi + messages of psi_a side)
-        for (int i=0;i<N_GAMMA;i++) {
+        // Upload to SQRT objects (skipped in --qr-dg-only mode)
+        if (!qr_dg_only) for (int i=0;i<N_GAMMA;i++) {
             sq_B[i]->upload(state_nl.psi, state_nl.messages, states_n[i]->psi);
             for (int j=i;j<N_GAMMA;j++)
                 sq_A[i][j]->upload(states_n[i]->psi, states_n[i]->messages, states_n[j]->psi);
         }
 
-        // Upload to DIAG objects using state.messages (post-Trotter, pre-BP)
+        // DG gauge: 4 precomputes (shared across pairs)
         HIP_CHECK(hipSetDevice(0));
+        dg_gauge_nl->precompute(state_nl.psi, state_nl.messages, 0);
+        for (int i=0;i<N_GAMMA;i++)
+            dg_gauge_n[i]->precompute(states_n[i]->psi, states_n[i]->messages, 0);
+
+        // 9 pair contractions using precomputed gauges
         for (int i=0;i<N_GAMMA;i++) {
-            dg_B[i]->upload(state_nl.psi,     0, state_nl.messages,
-                            states_n[i]->psi, 0, states_n[i]->messages);
+            dgp_B[i]->compute_pair(*dg_gauge_nl, states_n[i]->psi, 0);
             for (int j=i;j<N_GAMMA;j++)
-                dg_A[i][j]->upload(states_n[i]->psi, 0, states_n[i]->messages,
-                                   states_n[j]->psi, 0, states_n[j]->messages);
+                dgp_A[i][j]->compute_pair(*dg_gauge_n[i], states_n[j]->psi, 0);
         }
         HIP_CHECK(hipSetDevice(1));
 
-        // Upload to SB objects (SQRT gauge transform CPU + BP on GPU 1)
-        HIP_CHECK(hipSetDevice(1));
+        // Upload to SB objects (skipped in --qr-dg-only mode)
+        if (!qr_dg_only) { HIP_CHECK(hipSetDevice(1));
         for (int i=0;i<N_GAMMA;i++) {
             sb_B[i]->upload(state_nl.psi,     0, state_nl.messages,
                             states_n[i]->psi,  0, states_n[i]->messages);
             for (int j=i;j<N_GAMMA;j++)
                 sb_A[i][j]->upload(states_n[i]->psi, 0, states_n[i]->messages,
                                    states_n[j]->psi, 0, states_n[j]->messages);
-        }
+        }}
 
-        // Compute QR
-        float qr_B[N_GAMMA], qr_A[N_GAMMA][N_GAMMA]={};
-        for (int i=0;i<N_GAMMA;i++) {
+        // Compute QR (skipped in --dg-only mode)
+        float qr_B[N_GAMMA]={}, qr_A[N_GAMMA][N_GAMMA]={};
+        if (!dg_only) for (int i=0;i<N_GAMMA;i++) {
             qr_B[i] = blf_B[i]->compute(25, 1e-5f);
             for (int j=i;j<N_GAMMA;j++)
                 qr_A[i][j] = blf_A[i][j]->compute(25, 1e-5f);
         }
 
-        // Compute SQRT
-        float sq_B_val[N_GAMMA], sq_A_val[N_GAMMA][N_GAMMA]={};
-        for (int i=0;i<N_GAMMA;i++) {
+        // Compute SQRT (skipped in --qr-dg-only mode)
+        float sq_B_val[N_GAMMA]={}, sq_A_val[N_GAMMA][N_GAMMA]={};
+        if (!qr_dg_only) for (int i=0;i<N_GAMMA;i++) {
             sq_B_val[i] = sq_B[i]->compute();
             for (int j=i;j<N_GAMMA;j++)
                 sq_A_val[i][j] = sq_A[i][j]->compute();
         }
 
-        // Compute DIAG
-        float dg_B_val[N_GAMMA], dg_A_val[N_GAMMA][N_GAMMA]={};
+        // DG gauge: Bethe PF (uses precomputed h_log_av from compute_pair)
+        float dg_B_val[N_GAMMA]={}, dg_A_val[N_GAMMA][N_GAMMA]={};
         for (int i=0;i<N_GAMMA;i++) {
-            dg_B_val[i] = dg_B[i]->compute();
+            dg_B_val[i] = dgp_B[i]->bethe(*dg_gauge_nl);
             for (int j=i;j<N_GAMMA;j++)
-                dg_A_val[i][j] = dg_A[i][j]->compute();
+                dg_A_val[i][j] = dgp_A[i][j]->bethe(*dg_gauge_n[i]);
         }
 
-        // Compute SB (SQRT gauge, diagonal messages, sign-aware edge correction)
-        float sb_B_val[N_GAMMA], sb_A_val[N_GAMMA][N_GAMMA]={};
-        for (int i=0;i<N_GAMMA;i++) {
+        // Compute SB (skipped in --qr-dg-only mode)
+        float sb_B_val[N_GAMMA]={}, sb_A_val[N_GAMMA][N_GAMMA]={};
+        if (!qr_dg_only) for (int i=0;i<N_GAMMA;i++) {
             sb_B_val[i] = sb_B[i]->compute(sb_sweeps);
             for (int j=i;j<N_GAMMA;j++)
                 sb_A_val[i][j] = sb_A[i][j]->compute(sb_sweeps);
@@ -381,12 +391,15 @@ int main(int argc, char** argv) {
     // Cleanup
     HIP_CHECK(hipSetDevice(1));
     for (int i=0;i<N_GAMMA;i++) {
-        delete blf_B[i]; delete sq_B[i]; delete dg_B[i]; delete sb_B[i];
+        delete blf_B[i]; delete sq_B[i]; delete sb_B[i];
+        delete dg_gauge_n[i]; delete dgp_B[i];
         for (int j=i;j<N_GAMMA;j++) {
-            delete blf_A[i][j]; delete sq_A[i][j];
-            delete dg_A[i][j];  delete sb_A[i][j];
+            delete blf_A[i][j]; delete sq_A[i][j]; delete sb_A[i][j];
+            delete dgp_A[i][j];
         }
     }
+    delete dg_gauge_nl;
+    rocblas_destroy_handle(hdg);
     rocblas_destroy_handle(h1);
     HIP_CHECK(hipSetDevice(0));
     for (int g=0;g<N_GAMMA;g++) {
