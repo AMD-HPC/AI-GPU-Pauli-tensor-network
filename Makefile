@@ -180,6 +180,17 @@ test_sqrt_gauge_ip: test_sqrt_gauge_ip.cpp $(HEADERS) include/heavyhex.hpp inclu
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o test_sqrt_gauge_ip test_sqrt_gauge_ip.cpp $(LIBS)
 	@echo "Built test_sqrt_gauge_ip"
 
+main_heavyhex_gamma_mpf_DG_2gpu: main_heavyhex_gamma_mpf_DG_2gpu.cpp $(HEADERS) include/heavyhex.hpp \
+	include/heavyhex_physics.hpp include/diag_gauge_ip.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_gamma1_data.hpp \
+	include/heavyhex_noisy_eps010_gamma2_data.hpp \
+	include/heavyhex_noisy_eps010_gamma3_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 $(DFLAGS) \
+		-o main_heavyhex_gamma_mpf_DG_2gpu \
+		main_heavyhex_gamma_mpf_DG_2gpu.cpp $(LIBS) -lrocsolver
+	@echo "Built main_heavyhex_gamma_mpf_DG_2gpu"
+
 main_gauge_compare: main_gauge_compare.cpp $(HEADERS) include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
 	include/heavyhex_noisy_eps010_gamma1_data.hpp \

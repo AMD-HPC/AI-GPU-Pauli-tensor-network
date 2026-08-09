@@ -1,0 +1,34 @@
+[P2P] Peer access enabled between 3 GPUs
+# CppSim gamma-MPF 2-GPU inner product dump
+# GPU 0: all Trotter  GPU 1: all inner products
+# epsilon=0.1000  chi_max=250  n_steps=10  cutoff=1e-03
+# mode: gamma-MPF  gamma=1.0/2.0/3.0  eps=0.10
+# STEP C_nl C_n1 C_n2 C_n3  IP_A a00 a01 a02 a11 a12 a22  IP_B b0 b1 b2  chi_nl chi_n  t_cycle(s) t_trotter_pure(s) t_ip_wall(s) t_upload(s)
+[Workspace] allocated 1281.8 MB (chi_max=250 m_max=62501 n_max=1000)
+[Measures] f64 BP scratch: 1000.0 MB (chi_max=250)
+[HeavyHexState] D=4 center=13 all chi=1
+[Workspace] allocated 1281.8 MB (chi_max=250 m_max=62501 n_max=1000)
+[HeavyHexState] D=4 center=13 all chi=1
+[Workspace] allocated 1281.8 MB (chi_max=250 m_max=62501 n_max=1000)
+[HeavyHexState] D=4 center=13 all chi=1
+[Workspace] allocated 1281.8 MB (chi_max=250 m_max=62501 n_max=1000)
+[HeavyHexState] D=4 center=13 all chi=1
+STEP 1  C_nl -0.923923  C_n -0.924248 -0.924568 -0.924883  IP_A nan nan nan nan nan nan  IP_B nan nan nan  chi 4 4  t_cycle 0.91  t_trotter_pure 0.91  t_ip_wall nan  t_upload nan
+  [IP] wall=0.87s  serial=6.84s
+STEP 2  C_nl +0.831995  C_n +0.852574 +0.856379 +0.858762  IP_A 0.060121 0.059910 0.059700 0.059701 0.059492 0.059285  IP_B 0.056425 0.056229 0.056034  chi 14 14  t_cycle 0.87  t_trotter_pure 0.48  t_ip_wall 0.87  t_upload 0.16
+  [IP] wall=1.20s  serial=8.95s
+STEP 3  C_nl -0.762741  C_n -0.823765 -0.827597 -0.830288  IP_A 0.040549 0.018859 0.002868 0.025487 0.005911 0.036031  IP_B -0.014445 -0.012110 -0.005644  chi 23 21  t_cycle 1.20  t_trotter_pure 1.07  t_ip_wall 1.20  t_upload 0.15
+  [IP] wall=1.59s  serial=12.02s
+STEP 4  C_nl +0.788534  C_n +0.830360 +0.809689 +0.804346  IP_A 0.018289 -0.000405 0.006714 0.033865 -0.002211 0.019922  IP_B 0.002975 -0.001872 0.001386  chi 36 28  t_cycle 1.59  t_trotter_pure 1.55  t_ip_wall 1.59  t_upload 0.16
+  [IP] wall=1.48s  serial=11.61s
+STEP 5  C_nl -0.828183  C_n -0.845455 -0.801373 -0.788583  IP_A 0.029725 0.004625 0.004877 0.014795 0.006830 0.012585  IP_B -0.004209 -0.004033 -0.003969  chi 52 34  t_cycle 1.91  t_trotter_pure 1.91  t_ip_wall 1.48  t_upload 0.16
+  [IP] wall=2.15s  serial=18.37s
+STEP 6  C_nl +0.850519  C_n +0.846901 +0.792864 +0.776962  IP_A 0.057237 0.009226 0.017250 0.087795 0.009588 0.050618  IP_B 0.000751 -0.008855 0.001207  chi 70 42  t_cycle 2.88  t_trotter_pure 2.88  t_ip_wall 2.15  t_upload 0.18
+  [IP] wall=2.18s  serial=18.54s
+STEP 7  C_nl -0.837661  C_n -0.839269 -0.781278 -0.763702  IP_A 0.097439 0.009989 0.023828 0.078631 0.014426 0.116106  IP_B -0.001757 -0.000809 -0.001376  chi 88 49  t_cycle 3.65  t_trotter_pure 3.65  t_ip_wall 2.18  t_upload 0.19
+  [IP] wall=2.54s  serial=20.52s
+STEP 8  C_nl +0.816878  C_n +0.830895 +0.770089 +0.751804  IP_A 4.565139 0.001075 -0.001181 0.096468 0.044432 0.149992  IP_B 0.000005 -0.003954 -0.003664  chi 113 53  t_cycle 4.83  t_trotter_pure 4.83  t_ip_wall 2.54  t_upload 0.22
+  [IP] wall=2.74s  serial=23.15s
+STEP 9  C_nl -0.803483  C_n -0.822475 -0.756797 -0.738157  IP_A 1.673410 0.006382 -0.049061 2.479295 -0.038834 10.736711  IP_B 0.003473 -0.001760 -0.004123  chi 135 59  t_cycle 6.01  t_trotter_pure 6.01  t_ip_wall 2.74  t_upload 0.25
+  [IP] wall=3.41s  serial=29.67s
+STEP 10  C_nl +0.793092  C_n +0.813682 +0.743120 +0.724450  IP_A 0.951214 0.064575 -0.025479 5.858303 -0.123012 1.711963  IP_B 0.004573 -0.002980 -0.001399  chi 161 65  t_cycle 8.68  t_trotter_pure 8.68  t_ip_wall 3.41  t_upload 0.41

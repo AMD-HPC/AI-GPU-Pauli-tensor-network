@@ -296,6 +296,7 @@ int main(int argc, char** argv) {
 
         // DG gauge: 4 precomputes (shared across pairs)
         HIP_CHECK(hipSetDevice(0));
+        double t_dg0 = now_ms();
         dg_gauge_nl->precompute(state_nl.psi, state_nl.messages, 0);
         for (int i=0;i<N_GAMMA;i++)
             dg_gauge_n[i]->precompute(states_n[i]->psi, states_n[i]->messages, 0);
@@ -306,6 +307,7 @@ int main(int argc, char** argv) {
             for (int j=i;j<N_GAMMA;j++)
                 dgp_A[i][j]->compute_pair(*dg_gauge_n[i], states_n[j]->psi, 0);
         }
+        double t_dg_wall = (now_ms()-t_dg0)/1000.0;
         HIP_CHECK(hipSetDevice(1));
 
         // Upload to SB objects (skipped in --qr-dg-only mode)
@@ -377,14 +379,15 @@ int main(int argc, char** argv) {
                sb_A_val[0][0], sb_A_val[0][1], sb_A_val[0][2],
                sb_A_val[1][1], sb_A_val[1][2], sb_A_val[2][2],
                sb_B_val[0], sb_B_val[1], sb_B_val[2]);
-        // DG gauge — eigendecomposed, float64 CPU, no BP
+        // DG gauge — rocsolver syevd + rocBLAS GEMM, 4 eigendecomps shared across 9 pairs
         printf("STEP %d  C_nl %+.6f  C_n %+.6f %+.6f %+.6f"
                "  IP_A %+.6f %+.6f %+.6f %+.6f %+.6f %+.6f"
-               "  IP_B %+.6f %+.6f %+.6f  gauge DG\n",
+               "  IP_B %+.6f %+.6f %+.6f  gauge DG  t %.2fs\n",
                step, C_nl, C_n[0], C_n[1], C_n[2],
                dg_A_val[0][0], dg_A_val[0][1], dg_A_val[0][2],
                dg_A_val[1][1], dg_A_val[1][2], dg_A_val[2][2],
-               dg_B_val[0], dg_B_val[1], dg_B_val[2]);
+               dg_B_val[0], dg_B_val[1], dg_B_val[2],
+               t_dg_wall);
         fflush(stdout);
     }
 

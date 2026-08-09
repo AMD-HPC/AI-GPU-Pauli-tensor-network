@@ -196,9 +196,12 @@ int main(int argc, char** argv) {
     float cutoff  = (argc>3)?atof(argv[3]):1e-4f;
     int   center  = 2;
     bool  verbose_ip = true;
-    bool  measure_all = false;   // --measure-all: output n(v,t) per site per step
-    for (int i=1; i<argc; i++)
-        if (std::string(argv[i]) == "--measure-all") measure_all = true;
+    bool  measure_all = false;
+    for (int i=1; i<argc; i++) {
+        std::string a(argv[i]);
+        if (a == "--measure-all") measure_all = true;
+        if (a.substr(0,9) == "--center=") center = atoi(argv[i]+9);
+    }
 
     // ── Check 2 GPUs + P2P ───────────────────────────────────────────────────
     int n_gpus = 0;
