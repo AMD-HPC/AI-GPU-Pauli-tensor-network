@@ -1,4 +1,4 @@
-\begin{thebibliography}{1}
+\begin{thebibliography}{10}
 
 \bibitem{heavyhex-topology}
 C.~Chamberland, G.~Zhu, T.~J. Yoder, J.~B. Hertzberg, and A.~W. Cross.
@@ -41,5 +41,22 @@ Paolo D'Alberto.
 G.~Evenbly, N.~Pancotti, A.~Milsted, J.~Gray, and G.~K.-L. Chan.
 \newblock Loop series expansions for tensor networks.
 \newblock {\em Physical Review Research}, 8:013245, 2026.
+
+\bibitem{cobos2025z2higgs}
+R.~Cobos et~al.
+\newblock Observation of deconfinement and string breaking in a {$Z_2$}-{Higgs}
+  lattice gauge theory, 2025.
+
+\bibitem{lmpf-ref}
+N.~F. Robertson, A.~D'Urbano, A.~Dekusar, M.~Rossmannek, E.~D. Switzer, J.~R.
+  Garrison, N.~Lorente, I.~Pasichnyk, P.~D'Alberto, C.~Evangelinos, and
+  S.~Zhuk.
+\newblock Lindblad multiproduct formulas, 2026.
+
+\bibitem{robertson2025dynamic}
+N.~F. Robertson, B.~Pokharel, B.~Fuller, E.~Switzer, O.~Shtanko, M.~Amico,
+  A.~Byrne, A.~D'Urbano, S.~Hayes-Shuptar, A.~Akhriev, et~al.
+\newblock Tensor network enhanced dynamic multiproduct formulas.
+\newblock {\em PRX Quantum}, 6:020360, 2025.
 
 \end{thebibliography}

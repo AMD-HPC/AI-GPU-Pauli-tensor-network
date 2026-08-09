@@ -11,45 +11,82 @@
 \citation{dalberto2026cppsim}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
 \newlabel{sec:intro}{{1}{1}{Introduction}{section.1}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {2}Heavy-Hex Lattice and Hamiltonian}{1}{section.2}\protected@file@percent }
-\newlabel{sec:grid}{{2}{1}{Heavy-Hex Lattice and Hamiltonian}{section.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces One unit cell of the heavy-hex graph. Junction sites (blue, degree 3) connect via arm sites (orange, degree 2). Bonds are 3-edge-colorable (red, blue, green), enabling parallel gate application within each color class.}}{2}{figure.1}\protected@file@percent }
+\newlabel{fig:heavyhex}{{1}{2}{One unit cell of the heavy-hex graph. Junction sites (blue, degree 3) connect via arm sites (orange, degree 2). Bonds are 3-edge-colorable (red, blue, green), enabling parallel gate application within each color class}{figure.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Heavy-Hex Lattice and Hamiltonian}{2}{section.2}\protected@file@percent }
+\newlabel{sec:grid}{{2}{2}{Heavy-Hex Lattice and Hamiltonian}{section.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {3}Hardware Noise Model}{2}{section.3}\protected@file@percent }
+\newlabel{sec:noise}{{3}{2}{Hardware Noise Model}{section.3}{}}
 \citation{tindall2023gauging}
 \citation{evenbly2026loop}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Graph structure}{2}{subsection.2.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Implementation}{2}{subsection.2.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Hamiltonian and gate matrix}{2}{subsection.2.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}Autocorrelation and Chi Convergence}{2}{section.3}\protected@file@percent }
-\newlabel{sec:ct}{{3}{2}{Autocorrelation and Chi Convergence}{section.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle $ for $\chi = 50, 100, 150, 200, 250, 300, 350, 400, 430$ over 30 Trotter steps. The oscillatory behaviour is a genuine quantum recurrence of the XXX model on the finite heavy-hex graph. Curves for $\chi \geq 150$ are visually indistinguishable, indicating convergence.}}{3}{figure.1}\protected@file@percent }
-\newlabel{fig:ct}{{1}{3}{Autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle $ for $\chi = 50, 100, 150, 200, 250, 300, 350, 400, 430$ over 30 Trotter steps. The oscillatory behaviour is a genuine quantum recurrence of the XXX model on the finite heavy-hex graph. Curves for $\chi \geq 150$ are visually indistinguishable, indicating convergence}{figure.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Convergence with $\chi $}{3}{subsection.3.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Operator lightcone}{3}{subsection.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Performance}{3}{section.4}\protected@file@percent }
-\newlabel{sec:perf}{{4}{3}{Performance}{section.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Autocorrelation and Chi Convergence}{3}{section.4}\protected@file@percent }
+\newlabel{sec:ct}{{4}{3}{Autocorrelation and Chi Convergence}{section.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle $ for $\chi = 50, 100, 150, 200, 250, 300, 350, 400, 430$ over 30 Trotter steps at $\varepsilon =0.25$. The oscillatory behaviour is a genuine quantum recurrence of the XXX model on the finite heavy-hex graph. Curves for $\chi \geq 150$ are visually indistinguishable, indicating convergence.}}{3}{figure.2}\protected@file@percent }
+\newlabel{fig:ct}{{2}{3}{Autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle $ for $\chi = 50, 100, 150, 200, 250, 300, 350, 400, 430$ over 30 Trotter steps at $\varepsilon =0.25$. The oscillatory behaviour is a genuine quantum recurrence of the XXX model on the finite heavy-hex graph. Curves for $\chi \geq 150$ are visually indistinguishable, indicating convergence}{figure.2}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Lightcone frontier analysis at $\chi =70$, cutoff $=10^{-3}$, $\varepsilon =0.10$, center site 13 (degree-3 junction, 3 hops from physical boundary). \emph  {Left}: maximum non-identity Pauli weight $n(v,t)$ per distance shell (BFS distance from site 13) vs Trotter cycle — the spreading wavefront is visible as a propagating bright ridge. \emph  {Right}: frontier distance (furthest active shell, threshold $10^{-4}$) vs cycle, with linear fit giving $v_{\rm  hop}=0.253$ hops/cycle (slope after one-step transient; fitted intercept $+1.65$ from initial spread to nearest neighbors at cycle 1). The frontier reaches the physical boundary (distance 3) by cycle $\sim $8; the faithful simulation regime is $\lesssim 12$ cycles.}}{4}{figure.3}\protected@file@percent }
+\newlabel{fig:lightcone_frontier}{{3}{4}{Lightcone frontier analysis at $\chi =70$, cutoff $=10^{-3}$, $\varepsilon =0.10$, center site 13 (degree-3 junction, 3 hops from physical boundary). \emph {Left}: maximum non-identity Pauli weight $n(v,t)$ per distance shell (BFS distance from site 13) vs Trotter cycle — the spreading wavefront is visible as a propagating bright ridge. \emph {Right}: frontier distance (furthest active shell, threshold $10^{-4}$) vs cycle, with linear fit giving $v_{\rm hop}=0.253$ hops/cycle (slope after one-step transient; fitted intercept $+1.65$ from initial spread to nearest neighbors at cycle 1). The frontier reaches the physical boundary (distance 3) by cycle $\sim $8; the faithful simulation regime is $\lesssim 12$ cycles}{figure.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{Lightcone frontier calibration.}{4}{section*.1}\protected@file@percent }
+\citation{cobos2025z2higgs}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Lightcone frontier velocity $v_{\rm  hop}$ sweep over $(\chi _{\max }, \delta )$ for the \texttt  {heavy\_hex\_3x3} graph, center site 13, $\varepsilon =0.10$, $J=1$, 20 cycles. Velocity converges to $v_{\rm  hop} = 0.253\pm 0.002$ hops/cycle across all $(\chi _{\max }, \delta )$ combinations, confirming that $\chi =70$, $\delta ^*=10^{-3}$ is the faithful operating point and that $\chi $ is not the bottleneck.}}{5}{table.1}\protected@file@percent }
+\newlabel{tab:lightcone}{{1}{5}{Lightcone frontier velocity $v_{\rm hop}$ sweep over $(\chi _{\max }, \delta )$ for the \texttt {heavy\_hex\_3x3} graph, center site 13, $\varepsilon =0.10$, $J=1$, 20 cycles. Velocity converges to $v_{\rm hop} = 0.253\pm 0.002$ hops/cycle across all $(\chi _{\max }, \delta )$ combinations, confirming that $\chi =70$, $\delta ^*=10^{-3}$ is the faithful operating point and that $\chi $ is not the bottleneck}{table.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}Performance}{5}{section.5}\protected@file@percent }
+\newlabel{sec:perf}{{5}{5}{Performance}{section.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Wall-clock time per cycle. GPU runs: $\chi $ capped at 430, float32, Householder QR, cutoff=$10^{-4}$. CPU: float64, no $\chi $ cap (grows freely to $\chi _{\rm  CPU}$). Julia: GPU, noiseless evolution time only. `---': not measured.}}{5}{table.2}\protected@file@percent }
+\newlabel{tab:comparison}{{2}{5}{Wall-clock time per cycle. GPU runs: $\chi $ capped at 430, float32, Householder QR, cutoff=$10^{-4}$. CPU: float64, no $\chi $ cap (grows freely to $\chi _{\rm CPU}$). Julia: GPU, noiseless evolution time only. `---': not measured}{table.2}{}}
+\citation{mpf-ref}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Multi-Product Formula Application}{7}{section.6}\protected@file@percent }
+\newlabel{sec:mpf}{{6}{7}{Multi-Product Formula Application}{section.6}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces MPF error $|C_{\mathrm  {mpf}}(t) - C_{\mathrm  {nl}}(t)|$ (log scale) for gamma-MPF with $\chi =200$, $\varepsilon =0.1$, 20 Trotter cycles. Left: $|C_{\mathrm  {mpf}}(t)|$ vs $|C_{\mathrm  {nl}}|$ reference (dashed). Right: error comparison — poor man's MPF (red, correlation matrix) outperforms polynomial extrapolation (blue) by 2--3 orders of magnitude up to cycle 12. Band shows variation across all $\chi $/cutoff values.}}{7}{figure.4}\protected@file@percent }
+\newlabel{fig:mpf}{{4}{7}{MPF error $|C_{\mathrm {mpf}}(t) - C_{\mathrm {nl}}(t)|$ (log scale) for gamma-MPF with $\chi =200$, $\varepsilon =0.1$, 20 Trotter cycles. Left: $|C_{\mathrm {mpf}}(t)|$ vs $|C_{\mathrm {nl}}|$ reference (dashed). Right: error comparison — poor man's MPF (red, correlation matrix) outperforms polynomial extrapolation (blue) by 2--3 orders of magnitude up to cycle 12. Band shows variation across all $\chi $/cutoff values}{figure.4}{}}
+\newlabel{eq:Tv}{{4}{7}{Quantum inner product via double-layer belief propagation}{equation.6.4}{}}
+\newlabel{eq:bethe_formula}{{5}{8}{Quantum inner product via double-layer belief propagation}{equation.6.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{Message update without building $T_v$.}{8}{section*.3}\protected@file@percent }
+\newlabel{eq:msg_init}{{6}{8}{Message update without building $T_v$}{equation.6.6}{}}
+\newlabel{eq:step1}{{7}{8}{Message update without building $T_v$}{equation.6.7}{}}
+\newlabel{eq:step2}{{8}{8}{Message update without building $T_v$}{equation.6.8}{}}
+\@writefile{toc}{\contentsline {paragraph}{Matrix formulation.}{8}{section*.4}\protected@file@percent }
+\newlabel{eq:gemm1}{{9}{8}{Matrix formulation}{equation.6.9}{}}
+\newlabel{eq:gemm2}{{10}{8}{Matrix formulation}{equation.6.10}{}}
+\newlabel{eq:gemm3}{{11}{9}{Matrix formulation}{equation.6.11}{}}
+\newlabel{eq:gemm4}{{12}{9}{Matrix formulation}{equation.6.12}{}}
+\newlabel{eq:gemm5}{{13}{9}{Matrix formulation}{equation.6.13}{}}
+\newlabel{eq:bethe_v}{{14}{9}{Matrix formulation}{equation.6.14}{}}
+\newlabel{eq:bethe_e}{{15}{9}{Matrix formulation}{equation.6.15}{}}
+\@writefile{toc}{\contentsline {paragraph}{Two-GPU pipeline and timing.}{9}{section*.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Per-cycle wall-clock times at $\chi _{\max }=250$, 10 cycles. $t_{\rm  cycle} = \max (t_{\rm  Trotter}, t_{\rm  IP})$. $t_{\rm  Trotter}$: GPU~0 Trotter time (4 states sequential). $t_{\rm  IP}$: GPU~1 wall-clock for all 9 inner products (parallel streams). Trotter dominates from cycle 3 — inner products add zero overhead.}}{9}{table.3}\protected@file@percent }
+\newlabel{tab:timing}{{3}{9}{Per-cycle wall-clock times at $\chi _{\max }=250$, 10 cycles. $t_{\rm cycle} = \max (t_{\rm Trotter}, t_{\rm IP})$. $t_{\rm Trotter}$: GPU~0 Trotter time (4 states sequential). $t_{\rm IP}$: GPU~1 wall-clock for all 9 inner products (parallel streams). Trotter dominates from cycle 3 — inner products add zero overhead}{table.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{Validation of inner product MPF.}{9}{section*.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces \emph  {Left}: $|C(t)|$ at $\chi _{\max }=250$, 10 cycles, center site~13. Black: noiseless reference $|C_{\rm  nl}|$. Blue/red: noisy states $|C_{n,\gamma =1}|$ and $|C_{n,\gamma =2}|$ with shaded band. $\gamma =1$ decays slower than $C_{\rm  nl}$; $\gamma =2$ kills the quantum recurrence at cycle~5 and drops below $C_{\rm  nl}$, bracketing the ideal between the two noisy curves from cycle~5 onward — the MPF operates in a genuine interpolation regime, not extrapolation. Green: poor man's MPF. Blue curves: QR inner product MPF at $\delta =10^{-3}, 10^{-4}, 10^{-5}$. \emph  {Right}: wall-clock timing (symlog scale). Black lines: Trotter time per $\delta $ (grows with $\chi $). Blue curves: QR inner product wall-clock per $\delta $. At $\delta =10^{-3}$: IP hidden under Trotter throughout. At $\delta =10^{-5}$: IP dominates — inner products become the bottleneck. The operating point $\delta =10^{-3}$ balances accuracy and zero IP overhead.}}{10}{figure.5}\protected@file@percent }
+\newlabel{fig:ip_timing}{{5}{10}{\emph {Left}: $|C(t)|$ at $\chi _{\max }=250$, 10 cycles, center site~13. Black: noiseless reference $|C_{\rm nl}|$. Blue/red: noisy states $|C_{n,\gamma =1}|$ and $|C_{n,\gamma =2}|$ with shaded band. $\gamma =1$ decays slower than $C_{\rm nl}$; $\gamma =2$ kills the quantum recurrence at cycle~5 and drops below $C_{\rm nl}$, bracketing the ideal between the two noisy curves from cycle~5 onward — the MPF operates in a genuine interpolation regime, not extrapolation. Green: poor man's MPF. Blue curves: QR inner product MPF at $\delta =10^{-3}, 10^{-4}, 10^{-5}$. \emph {Right}: wall-clock timing (symlog scale). Black lines: Trotter time per $\delta $ (grows with $\chi $). Blue curves: QR inner product wall-clock per $\delta $. At $\delta =10^{-3}$: IP hidden under Trotter throughout. At $\delta =10^{-5}$: IP dominates — inner products become the bottleneck. The operating point $\delta =10^{-3}$ balances accuracy and zero IP overhead}{figure.5}{}}
+\@writefile{toc}{\contentsline {paragraph}{Rank-1 message approximation.}{10}{section*.7}\protected@file@percent }
+\newlabel{eq:rank1}{{16}{10}{Rank-1 message approximation}{equation.6.16}{}}
+\@writefile{toc}{\contentsline {paragraph}{Symmetric gauge: diagonal messages.}{10}{section*.8}\protected@file@percent }
 \citation{rudolph2025simulating}
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces C(t) truncation error $|C(t,\chi ) - C(t,\chi =430)|$ vs cycle for each $\chi $ value. Errors onset when the bond dimension first saturates at the cap (visible as the left edge of each curve), then grow as more bonds are affected. At cycle 10: $\chi =400$ gives error $3\times 10^{-6}$, $\chi =150$ gives $1.7\times 10^{-4}$.}}{4}{figure.2}\protected@file@percent }
-\newlabel{fig:error}{{2}{4}{C(t) truncation error $|C(t,\chi ) - C(t,\chi =430)|$ vs cycle for each $\chi $ value. Errors onset when the bond dimension first saturates at the cap (visible as the left edge of each curve), then grow as more bonds are affected. At cycle 10: $\chi =400$ gives error $3\times 10^{-6}$, $\chi =150$ gives $1.7\times 10^{-4}$}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Chi scaling}{4}{subsection.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}CppSim vs Julia/AMDGPU.jl}{4}{subsection.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Conclusion}{4}{section.5}\protected@file@percent }
-\newlabel{sec:conclusion}{{5}{4}{Conclusion}{section.5}{}}
-\citation{tindall2023gauging}
+\citation{mpf-ref}
+\citation{lmpf-ref}
+\citation{robertson2025dynamic}
+\citation{evenbly2026loop}
+\newlabel{eq:sqrt_av}{{17}{11}{Symmetric gauge: diagonal messages}{equation.6.17}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces MPF error $|C_{\rm  mpf}(t) - C_{\rm  nl}(t)|$ vs cycle for $\chi _{\max } \in \{50,100,150,200,250\}$ and cutoff $\in \{2\times 10^{-2}, 10^{-2}, 2\times 10^{-3}, 10^{-3}, 10^{-4}\}$. Solid lines: poor man's MPF. Dashed lines: inner product MPF. \emph  {Poor man's MPF} shows significant variation across chi and cutoff — it genuinely improves with tighter approximation. \emph  {Inner product MPF} curves cluster tightly regardless of chi or cutoff — the error is gauge-limited, not compute-limited. Both methods show error growth at $\chi =250$ cycle~10 where chi saturates and truncation error accumulates — a physics limit, not an MPF artifact.}}{11}{figure.6}\protected@file@percent }
+\newlabel{fig:ip_mpf}{{6}{11}{MPF error $|C_{\rm mpf}(t) - C_{\rm nl}(t)|$ vs cycle for $\chi _{\max } \in \{50,100,150,200,250\}$ and cutoff $\in \{2\times 10^{-2}, 10^{-2}, 2\times 10^{-3}, 10^{-3}, 10^{-4}\}$. Solid lines: poor man's MPF. Dashed lines: inner product MPF. \emph {Poor man's MPF} shows significant variation across chi and cutoff — it genuinely improves with tighter approximation. \emph {Inner product MPF} curves cluster tightly regardless of chi or cutoff — the error is gauge-limited, not compute-limited. Both methods show error growth at $\chi =250$ cycle~10 where chi saturates and truncation error accumulates — a physics limit, not an MPF artifact}{figure.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusion}{11}{section.7}\protected@file@percent }
+\newlabel{sec:conclusion}{{7}{11}{Conclusion}{section.7}{}}
+\citation{evenbly2026loop}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces Pareto frontier: mean error (cycles 3--10) vs total compute time for all 25 (chi, cutoff) combinations. Filled markers: poor man's MPF. Open markers: inner product MPF. Shape encodes $\chi _{\max }$; color encodes cutoff. \emph  {The Pareto frontier is entirely dominated by poor man's MPF} — no inner product point achieves competitive accuracy at any compute budget. Poor man's MPF achieves mean error $\sim 3\times 10^{-4}$ across the full compute range; inner product MPF stays at $\sim 5\times 10^{-2}$, two orders of magnitude worse. The inner product points are vertically flat (insensitive to chi/cutoff), confirming that the error is set by the QR gauge approximation bias, not by approximation quality.}}{12}{figure.7}\protected@file@percent }
+\newlabel{fig:ip_pareto}{{7}{12}{Pareto frontier: mean error (cycles 3--10) vs total compute time for all 25 (chi, cutoff) combinations. Filled markers: poor man's MPF. Open markers: inner product MPF. Shape encodes $\chi _{\max }$; color encodes cutoff. \emph {The Pareto frontier is entirely dominated by poor man's MPF} — no inner product point achieves competitive accuracy at any compute budget. Poor man's MPF achieves mean error $\sim 3\times 10^{-4}$ across the full compute range; inner product MPF stays at $\sim 5\times 10^{-2}$, two orders of magnitude worse. The inner product points are vertically flat (insensitive to chi/cutoff), confirming that the error is set by the QR gauge approximation bias, not by approximation quality}{figure.7}{}}
 \bibstyle{unsrt}
 \bibdata{heavyhex}
 \bibcite{heavyhex-topology}{1}
 \bibcite{tindall2023gauging}{2}
 \bibcite{tindall2024eagle}{3}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces Non-identity Pauli weight $n(v,t)$ at each site of the heavy\_hex\_3x3 graph over 20 Trotter steps, initialised at site 13 (mid-graph degree-3 junction). The operator spreads radially outward with 3-fold hexagonal symmetry, reaching the graph boundary by cycle $\sim $17. Color scale is per-panel normalized.}}{13}{figure.8}\protected@file@percent }
+\newlabel{fig:lightcone}{{8}{13}{Non-identity Pauli weight $n(v,t)$ at each site of the heavy\_hex\_3x3 graph over 20 Trotter steps, initialised at site 13 (mid-graph degree-3 junction). The operator spreads radially outward with 3-fold hexagonal symmetry, reaching the graph boundary by cycle $\sim $17. Color scale is per-panel normalized}{figure.8}{}}
 \bibcite{tindall2025disordered}{4}
 \bibcite{rudolph2025simulating}{5}
 \bibcite{mpf-ref}{6}
 \bibcite{dalberto2026cppsim}{7}
 \bibcite{evenbly2026loop}{8}
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Wall-clock time per cycle. GPU runs: $\chi $ capped at 430, float32, Householder QR, cutoff=$10^{-4}$. CPU: float64, no $\chi $ cap (grows freely to $\chi _{\rm  CPU}$). Julia: GPU, noiseless evolution time only. `---': not measured.}}{5}{table.1}\protected@file@percent }
-\newlabel{tab:comparison}{{1}{5}{Wall-clock time per cycle. GPU runs: $\chi $ capped at 430, float32, Householder QR, cutoff=$10^{-4}$. CPU: float64, no $\chi $ cap (grows freely to $\chi _{\rm CPU}$). Julia: GPU, noiseless evolution time only. `---': not measured}{table.1}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Non-identity Pauli weight $n(v,t)$ at each site of the heavy\_hex\_3x3 graph over 20 Trotter steps, initialised at site 13 (mid-graph degree-3 junction, marked cyan). The operator spreads radially outward with 3-fold hexagonal symmetry, reaching the graph boundary by cycle $\sim $17. Color scale is per-panel normalized.}}{6}{figure.3}\protected@file@percent }
-\newlabel{fig:lightcone}{{3}{6}{Non-identity Pauli weight $n(v,t)$ at each site of the heavy\_hex\_3x3 graph over 20 Trotter steps, initialised at site 13 (mid-graph degree-3 junction, marked cyan). The operator spreads radially outward with 3-fold hexagonal symmetry, reaching the graph boundary by cycle $\sim $17. Color scale is per-panel normalized}{figure.3}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Maximum bond dimension vs cycle for each $\chi $ cap. All runs saturate at their cap by cycle 7-9. The dashed vertical lines mark the saturation cycle for each cap value.}}{7}{figure.4}\protected@file@percent }
-\newlabel{fig:chi_growth}{{4}{7}{Maximum bond dimension vs cycle for each $\chi $ cap. All runs saturate at their cap by cycle 7-9. The dashed vertical lines mark the saturation cycle for each cap value}{figure.4}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Wall-clock time of the last computed cycle vs $\chi $ cap, on a 32\,GB GPU. Time scales approximately as $\chi ^3$ reflecting the Householder QR cost $\mathcal  {O}(\chi ^2 D \cdot (\chi D)^2)$ for degree-3 sites.}}{8}{figure.5}\protected@file@percent }
-\newlabel{fig:timing}{{5}{8}{Wall-clock time of the last computed cycle vs $\chi $ cap, on a 32\,GB GPU. Time scales approximately as $\chi ^3$ reflecting the Householder QR cost $\mathcal {O}(\chi ^2 D \cdot (\chi D)^2)$ for degree-3 sites}{figure.5}{}}
-\gdef \@abspage@last{8}
+\bibcite{cobos2025z2higgs}{9}
+\bibcite{lmpf-ref}{10}
+\bibcite{robertson2025dynamic}{11}
+\gdef \@abspage@last{14}

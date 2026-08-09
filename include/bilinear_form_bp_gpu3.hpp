@@ -560,13 +560,14 @@ private:
                     for(int k=0;k<3;k++) if(k!=sk){if(k1<0)k1=k;else k2=k;}
                     int ca1=sm.chi_a[k1],cb1=sm.chi_b[k1],ca2=sm.chi_a[k2],cb2=sm.chi_b[k2];
                     int BD=cb2*D_BLF_G3, K=cb1*cb2*D_BLF_G3;
-                    // d_inter_T: max of step A output [D,ca_skip*ca1,cb2] and step B output [BD,ca_skip,cb1]
                     max_inter  = std::max(max_inter,  D_BLF_G3*ca_skip*ca1*cb2);
                     max_inter  = std::max(max_inter,  BD*ca_skip*cb1);
-                    // d_scratch2: psi_a_r [ca_skip,ca1,ca2,D], inter1_r [BD,ca_skip,ca1], inter2 [ca_skip,K]
+                    // d_scratch2: message update + Bethe PF needs cb0*cb1*cb2*D for rearrange_deg3
                     max_scratch= std::max(max_scratch, ca_skip*ca1*ca2*D_BLF_G3);
                     max_scratch= std::max(max_scratch, BD*ca_skip*ca1);
                     max_scratch= std::max(max_scratch, ca_skip*K);
+                    // Bethe PF needs cb0*cb1*cb2*D for psi_b rearrangement
+                    max_scratch= std::max(max_scratch, cb_skip*cb1*cb2*D_BLF_G3);
                 }
             }
         }
