@@ -594,27 +594,29 @@ launched as concurrent streams on GPU~1, while GPU~0 runs the four-state
 Trotter step.
 The total cycle time is $t_{\rm cycle} = \max(t_{\rm Trotter},\, t_{\rm IP})$
 (Fig.~\ref{fig:ip_timing}).
-Table~\ref{tab:timing} shows the measured breakdown:
-Trotter dominates from cycle 3 onward, so inner products add zero wall-clock
-overhead for the remainder of the simulation.
-At $\chi=250$ (cycle 10): $t_{\rm Trotter}\approx 80$\,s,
-$t_{\rm IP}\approx 11$\,s — inner products are $7\times$ faster than Trotter.
-Compared to the Julia reference at $350$\,s per cycle,
-CppSim achieves a $4\times$ improvement at the same bond dimension.
+Table~\ref{tab:timing} shows the measured breakdown at $\delta=10^{-3}$.
+Figure~\ref{fig:ip_timing} characterises the operating regime by sweeping
+$\delta \in \{10^{-3}, 10^{-4}, 10^{-5}\}$ at $\chi_{\max}=250$, 10 cycles,
+showing both the MPF extrapolation quality and the timing trade-off.
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=\columnwidth]{ip_chi250_timing.png}
-    \caption{Per-cycle timing at $\chi_{\max}=250$, 10 cycles.
-    \emph{Left}: MPF extrapolation — noiseless $C_{\rm nl}$ (black),
-    poor man's MPF (red), inner product MPF (blue).
-    \emph{Right}: wall-clock breakdown.
-    Black: total cycle time $t_{\rm cycle} = \max(t_{\rm Trotter}, t_{\rm IP})$.
-    Red: pure Trotter time (4 states, GPU~0).
-    Blue: IP wall-clock (9 pairs, parallel streams, GPU~1).
-    Green dashed: P2P upload overhead.
-    Crossover at cycle 2--3: IP bottleneck early ($\chi\lesssim 41$),
-    Trotter dominates thereafter.}
+    \includegraphics[width=\columnwidth]{fig4_qr_sweep.png}
+    \caption{\emph{Left}: $|C(t)|$ at $\chi_{\max}=250$, 10 cycles, center site~13.
+    Black: noiseless reference $|C_{\rm nl}|$.
+    Blue/red: noisy states $|C_{n,\gamma=1}|$ and $|C_{n,\gamma=2}|$ with shaded band.
+    $\gamma=1$ decays slower than $C_{\rm nl}$; $\gamma=2$ kills the quantum
+    recurrence at cycle~5 and drops below $C_{\rm nl}$, bracketing the ideal
+    between the two noisy curves from cycle~5 onward — the MPF operates in a
+    genuine interpolation regime, not extrapolation.
+    Green: poor man's MPF. Blue curves: QR inner product MPF at
+    $\delta=10^{-3}, 10^{-4}, 10^{-5}$.
+    \emph{Right}: wall-clock timing (symlog scale).
+    Black lines: Trotter time per $\delta$ (grows with $\chi$).
+    Blue curves: QR inner product wall-clock per $\delta$.
+    At $\delta=10^{-3}$: IP hidden under Trotter throughout.
+    At $\delta=10^{-5}$: IP dominates — inner products become the bottleneck.
+    The operating point $\delta=10^{-3}$ balances accuracy and zero IP overhead.}
     \label{fig:ip_timing}
 \end{figure}
 
