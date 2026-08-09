@@ -1,482 +1,147 @@
-# CppSim — 2D Ising Heisenberg-Picture Tensor Network Simulator
+# CppSim — GPU Tensor Network Simulator for Quantum Dynamics
 
-A C++/HIP implementation of real-time quantum dynamics for the 2D transverse-field
-Ising model, using Tensor Network (TN) methods in the Heisenberg picture on AMD GPUs.
+High-performance C++/HIP tensor network simulator for real-time quantum dynamics
+on AMD GPUs. Implements operator evolution in the Heisenberg picture using Pauli
+transfer matrices (PTMs) and belief propagation (BP) on the Bethe lattice.
 
-Companion to the Julia reference implementation
-`2dIsing_dynamics_Heisenbergpicture_multi.jl`. Achieves **2.4× faster trotter per layer**
-at chi=50 and has demonstrated the first tensor-network simulation of a 10×10 and 11×11
-grid at χ=100 on AMD MI355X (309 GB HBM3E).
+## Papers
 
----
+- **2D Ising lightcone** (`Paper/`): first χ=100 TN simulation of 10×10 and 11×11
+  grids on AMD MI355X. arXiv:2606.30985
+- **Heavy-hex MPF** (`PaperHeavyHex/`): Heisenberg model on heavy-hex lattice,
+  gamma-MPF extrapolation to zero noise. arXiv:2607.22827
 
-## Physics
-
-The simulator computes the spin autocorrelation function
-
-```
-C(t) = <Z_c(t) Z_c(0)>
-```
-
-for the 2D transverse-field Ising Hamiltonian on a k×l rectangular lattice:
-
-```
-H = -J Σ_{<ij>} X_i X_j  -  h Σ_i Z_i
-```
-
-Time evolution uses a **first-order Trotter decomposition** in the Heisenberg picture:
-
-```
-Rz(h·dt) → Rxx(2J·dt) → Rz(h·dt)   per layer
-```
-
-The operator `Z_c(t)` is represented as a tensor network in the **D=4 Pauli basis**
-{I, X, Y, Z}. Bond dimension chi controls the accuracy of the truncated TN.
-
-The correlation function is evaluated via **Belief Propagation (BP)** on the Bethe
-lattice approximation with observable-specific messages:
-
-```
-C(t) = exp( Σ_v log|vs_v|  −  Σ_e log|Z_e| ) × sign
-```
-
-where `Z_e = Σ_i μ_{a→b}[i] × μ_{b→a}[i]` is the Bethe edge correction.
-
----
-
-## Requirements
-
-- ROCm ≥ 5.x with HIP, rocBLAS, rocSOLVER
-- AMD GPU: MI100 (GFX908) recommended; MI60 (GFX906) supported up to chi ≈ 110
-- C++17 compiler (`hipcc`)
-
-### Architecture notes
-
-| GPU    | Architecture   | VRAM    | chi limit (4×4) | Notes |
-|--------|---------------|---------|-----------------|-------|
-| MI60   | GFX906 (Vega)  | 32 GB  | ~110 | rocBLAS Tensile gaps at large GEMM dims |
-| MI100  | GFX908 (CDNA1) | 32 GB  | 125  | Primary development target |
-| MI355X | GFX942 (CDNA4) | 309 GB | 200+ | Enables 10×10/11×11 at χ=100 |
-
-Different ROCm Docker images are required per architecture family.
-
----
-
-## Build
-
-**PHYS_DIM=4 is mandatory** for all physics runs (Pauli basis). The Makefile default
-is 4, but always pass it explicitly to avoid silent mismatches:
-
-```bash
-make clean && make main PHYS_DIM=4
-```
-
-This is equivalent to:
-```bash
-hipcc -O3 -std=c++17 -DPHYS_DIM=4 -I./include -o main main.cpp \
-      -lrocblas -lrocsolver -lm
-```
-
-Tests (use PHYS_DIM=2 for unit tests; PHYS_DIM=4 for golden-value test):
-```bash
-make tests PHYS_DIM=4       # build and run all tests
-make test_3x3_golden PHYS_DIM=4
-```
-
----
-
-## Usage
-
-```
-./main [nx] [ny] [chi_max] [n_steps] [dt] [h] [J] [cutoff] [--qr=MODE] [--bp=MODE]
-```
-
-| Argument | Default | Description |
-|----------|---------|-------------|
-| `nx` | 4 | Grid rows |
-| `ny` | 4 | Grid columns |
-| `chi_max` | 50 | Maximum bond dimension |
-| `n_steps` | 20 | Number of Trotter layers |
-| `dt` | 0.1 | Time step |
-| `h` | -1.0 | Transverse field strength |
-| `J` | -1.0 | Ising coupling |
-| `cutoff` | 1e-11 | SVD singular value cutoff |
-| `--qr=householder` | **default** | Backward-stable QR; uniform gauge; always safe |
-| `--qr=adaptive` | | Cholesky-QR for large tall-thin matrices, Householder otherwise; 22–35% faster on MI355X |
-| `--qr=cholesky` | | Always attempt Cholesky; for benchmarking only |
-| `--bp=diag` | **default** | Undamped diagonal BP messages |
-| `--bp=damped --alpha=X` | | Damped BP with momentum factor α ∈ (0,1]; helps escape traps |
-
-**Note**: `--qr=adaptive` is faster on MI355X (HBM3E unlocks Cholesky compute advantage)
-but is equivalent to Householder on MI100 (bandwidth-bound). All published results use
-`--qr=householder` for reproducibility across GPU generations.
-
-### Example runs
-
-```bash
-# Standard 4×4 benchmark (all paper results)
-./main 4 4 50 20 0.1 -1.0 -1.0 1e-11 --qr=householder
-
-# High bond dimension on MI355X
-./main 10 10 100 38 0.1 -1.0 -1.0 1e-11 --qr=householder
-
-# Adaptive QR (MI355X recommended)
-./main 4 4 50 20 0.1 -1.0 -1.0 1e-11 --qr=adaptive
-
-# Check memory before running large grids
-python3 estimate_memory.py
-```
-
-### Output format
-
-```
-Layer  chi_min  chi_max  C(t)         total(s)    trotter(ms)  bp(ms)     Cfn(ms)    sweeps  delta
-------  -------  -------  ------------ ----------  ------------ ---------- ---------- ------- ----------
-1       1        2        0.922619     0.237       191.5        43.1       2.1        3       0.00e+00
-...
-```
-
-`chi_min`/`chi_max`: min and max bond dimension across all bonds after that layer.
-`sweeps`: BP iterations to convergence. `delta`: final max message change — together
-these identify BP traps (sweeps ≥ 30 with delta < 1e-5 = converged to wrong fixed point).
-
----
-
-## Memory estimator
-
-`estimate_memory.py` predicts GPU memory requirements before running:
-
-```bash
-python3 estimate_memory.py
-```
-
-Generates four tables:
-- **Table 1** — Total GPU memory (GB) for all grids × chi values
-- **Table 2** — Breakdown: psi tensors / messages / workspace / measures
-- **Table 3** — Maximum chi_max that fits on each GPU (MI60 through MI300X)
-- **Table 4** — Per-gate and per-layer FLOP estimates
-
-Memory model (float32, D=4):
-
-```
-State:     psi tensors  = (n_corner·chi² + n_edge·chi³ + n_interior·chi⁴) × D
-           messages     = 2 × n_bonds × chi²
-
-Workspace: 4 × chi³ × D·chi   (large: cv1, cv2, Q1, Q2)
-         + 9 × (D·chi)²        (small: R, Rinv, RR, U, Vt, gram, S)
-         + 8 × chi²            (env: sqrt_env, inv_sqrt_env)
-```
-
-Validated against hardware measurements (error < 0.5%):
-
-| Grid | chi | Predicted | Measured VRAM |
-|------|-----|-----------|---------------|
-| 4×4  | 50  | 0.82 GB   | ~3% of 32 GB  |
-| 4×4  | 80  | 5.3 GB    | 16% of 32 GB  |
-| 4×4  | 100 | 12.9 GB   | 38% of 32 GB  |
-| 4×4  | 120 | 26.8 GB   | ~84% of 32 GB |
-
----
-
-## Design
-
-### Zero-malloc simulation
-
-All GPU buffers (workspace, psi tensors, messages) are allocated **once at startup**
-and reused for every gate in every layer. This eliminates:
-- GC pressure (the primary bottleneck in the Julia reference)
-- Memory fragmentation
-- Allocator lock contention
-
-Peak VRAM is reached at startup and remains constant throughout the run.
-
-### GPU-native operations
-
-All hot-path operations run on GPU:
-
-| Operation | Implementation |
-|-----------|---------------|
-| Tensor permutation | Custom HIP kernel (`permute_gpu.hpp`) |
-| QR decomposition | Cholesky-QR via rocSOLVER POTRF + rocBLAS GEMM |
-| SVD | rocSOLVER SGESVD |
-| Environment absorption | rocBLAS strided-batched GEMM |
-| BP message update | rocBLAS SGEMV + GPU reduction |
-| Tensor reconstruction | rocBLAS SGEMM (Q × M bridge matrices) |
-
-The GPU tensor permutation kernel (`permute_gpu.hpp`) was the key performance fix:
-replacing CPU D2H + shuffle + H2D with a pure device-to-device kernel reduced trotter
-time from ~49,000 ms/layer to ~6,400 ms/layer at chi=50 saturation (**7.6× speedup**).
-
-### Adaptive QR
-
-At each gate, QR is chosen based on matrix shape:
-
-```
-if n > 150 and m/n > 150:
-    use Cholesky-QR  (squares condition number, very fast for tall matrices)
-else:
-    use Householder-QR  (backward stable, used at small chi)
-```
-
-### Vidal gauge normalization
-
-Singular values stored as messages satisfy Σλ²=1. This bounds message magnitudes
-and prevents float32 overflow at chi ≥ 50 saturation.
-
-### BP convergence
-
-BP uses adaptive early exit: sweeps stop when the maximum diagonal message change
-`delta < 1e-5`. At chi=100, some layers require the full 100-sweep budget (up to
-11 minutes of BP per layer at saturation).
-
----
-
-## Physics results — 4×4 Ising, h=J=-1, dt=0.1 (MI100)
-
-### Chi convergence of C(t=20)
-
-| chi | C(t=20) | Note |
-|-----|---------|------|
-| 50  | 0.007225 | Truncation artifact |
-| 70  | 0.054961 | |
-| 80  | 0.054254 | |
-| 100 | 0.053758 | |
-
-The chi=50 result is a well-known truncation artifact — the bond dimension is
-insufficient to represent the operator at late times. chi ≥ 70 gives consistent
-results; the residual gap between chi=80 and chi=100 is 0.0005.
-
-### Full C(t) trajectory (4×4, chi=80, MI100)
-
-```
-t=1:  0.922619    t=6:  0.131518    t=11: 0.115131    t=16: 0.071167
-t=2:  0.724904    t=7:  0.128375    t=12: 0.103555    t=17: 0.065524
-t=3:  0.488101    t=8:  0.134859    t=13: 0.093682    t=18: 0.060938
-t=4:  0.291804    t=9:  0.135000    t=14: 0.085262    t=19: 0.057278
-t=5:  0.175284    t=10: 0.126956    t=15: 0.077793    t=20: 0.054254
-```
-
-### Performance at saturation (4×4, MI100)
-
-| chi | trotter/layer | Total 20 layers |
-|-----|--------------|-----------------|
-| 50  | ~13 s  | ~5 min  |
-| 80  | ~55 s  | ~14 min |
-| 100 | ~127 s | ~65 min |
-
-Trotter scales approximately as chi^3.9 (vs naive chi^4), indicating good GPU
-utilization at larger bond dimensions. Julia reference: ~20 s/layer at chi=50.
-**CppSim is 3× faster than Julia at chi=50.**
-
----
-
-## File structure
+## Repository Structure
 
 ```
 CppSim/
-├── main.cpp                  — Driver: argument parsing, timing, output table
-├── estimate_memory.py        — GPU memory predictor (Tables 1–4)
-├── run_exp.sh                — Single experiment runner with VRAM capture
-├── complete_run_exp.sh       — Full experiment suite (Series A + B)
-├── include/
-│   ├── types.hpp             — Scalar=float32, HIP_CHECK, RB_CHECK, D=4
-│   ├── grid.hpp              — Lattice, Site/Bond, bond_local indexing
-│   ├── tensor.hpp            — IsingState allocation (pre-allocated at chi_max)
-│   ├── workspace.hpp         — Pre-allocated GPU buffer pool (zero malloc during sim)
-│   ├── permute_gpu.hpp       — HIP kernel: GPU tensor permutation (no PCIe traffic)
-│   ├── gate.hpp              — apply_binary_gate: permute→QR→SVD→reconstruct
-│   ├── physics.hpp           — IsingSimulator, trotter_layer, apply_rxx_layer
-│   └── measures.hpp          — autocorrelation_with_bp, bp_update, bp_partitionfunction
-├── tests/
-│   └── test_3x3_golden.cpp   — Golden-value correctness test (3×3 grid)
-└── results/                  — Experiment logs (hostname_KxL_chiXXX.log)
+├── include/          # Core library headers (topology-agnostic kernels)
+│   ├── types.hpp             # Scalar type, D constant
+│   ├── grid.hpp              # Base Grid class (Site, Bond, Gate)
+│   ├── heavyhex.hpp          # FlatHeavyHexGrid — 68 sites, 76 bonds
+│   ├── heavyhex_physics.hpp  # HeavyHexState, SimNoiseless, SimNoisy
+│   ├── gate.hpp              # apply_binary_gate (hot path)
+│   ├── measures.hpp          # BP, autocorrelation, Pauli weight profile
+│   ├── workspace.hpp         # Pre-allocated GPU buffer pool
+│   ├── diag_gauge_ip.hpp     # DG gauge inner product (GPU)
+│   └── heavyhex_*_data.hpp   # Pre-built PTMs (ideal, noisy, ergodic)
+│
+├── examples/         # Simulation binaries (build with Makefile)
+│   ├── main_heavyhex_gamma_mpf_2gpu.cpp   # PRIMARY: gamma-MPF, 2-GPU
+│   ├── main_heavyhex_gamma_mpf_DG_2gpu.cpp  # DG gauge (research)
+│   ├── main_lightcone.cpp                 # Lightcone measurement
+│   ├── main_gauge_compare.cpp             # Gauge comparison
+│   └── ...                               # Legacy variants
+│
+├── scripts/          # Analysis and plotting
+│   ├── analyze_ip_mpf.py      # MPF extrapolation analysis
+│   ├── analyze_lightcone.py   # Lightcone frontier velocity
+│   ├── make_fig4_qr_sweep.py  # Figure 4 generation
+│   ├── plot_ip_timing.py      # Timing + MPF figure
+│   ├── build_ptm.py           # Build PTMs from graph JSON
+│   ├── run_lightcone_sweep.sh # Parallel lightcone sweep
+│   └── run_dg_sweep.sh        # DG parameter sweep
+│
+├── test/             # Unit and validation tests
+├── data/graphs/      # Graph topologies (heavy_hex_3x3, rect_7x7, rect_8x8)
+├── logs/             # Simulation output logs
+├── archive/          # Legacy code and checkpoints
+├── Paper/            # 2D Ising lightcone paper (arXiv:2606.30985)
+├── PaperAnonymous/   # Anonymous submission version
+└── PaperHeavyHex/   # Heavy-hex MPF paper (arXiv:2607.22827)
 ```
 
----
+## Build
 
-## Computational Pipeline
+```bash
+# Primary MPF binary (gamma-MPF, 2-GPU pipeline)
+make PHYS_DIM=4 main_heavyhex_gamma_mpf_2gpu
 
-This section spells out the complete sequence of GPU operations for each time
-step. Every operation named here corresponds to an explicit kernel launch or
-library call — there are no hidden allocations, host-side loops, or implicit
-GPU-CPU transfers in the hot path. The intent is to make the computation that
-the Julia reference performs implicitly entirely unambiguous.
+# Lightcone measurement
+make PHYS_DIM=4 main_lightcone
 
-### Outer loop (per Trotter step)
-
-```
-Initialize:
-  psi[center] = Z, psi[all others] = I
-  messages    = I_chi (identity, chi=1)
-
-for t = 1 .. T:
-  ① Trotter layer   Rz(h·dt)  →  Rxx(2J·dt)  →  Rz(h·dt)
-     └─ 4-color sweep of 2-site gates; each color class is sequential
-  ② BP update       sweep messages until max_delta < 1e-5 or 100 sweeps
-  ③ Measure C(t)    Bethe partition function in log-space with sign tracking
+# Gauge comparison tool
+make PHYS_DIM=4 main_gauge_compare
 ```
 
-### Per gate: `apply_binary_gate(v1, v2)` — 24 calls/layer on a 4×4 grid
+Requires: ROCm ≥ 6.0, rocBLAS, rocSOLVER, HIP C++17.
+Always pass `PHYS_DIM=4` (Pauli basis, D=4).
 
-All steps run on `rbstream` (the rocBLAS handle's stream).  No CPU computation
-except step 12 (singular value truncation threshold — ~kfull floats D2H).
+## Quick Start
 
-| # | Operation | GPU primitive | Workspace written |
-|---|-----------|---------------|-------------------|
-| 1a | Symmetrize msg M on device | `symmetrize_copy<<<>>>` | `sqrt_env[li]` |
-| 1b | Eigendecompose: M = V·W·Vᵀ | `rocsolver_ssyevd` | `syevd_W`, `syevd_V` |
-| 1c | Form √M and M⁻¹/² from V, W | `form_sqrt_matrices<<<>>>` | `sqrt_env[li]`, `inv_sqrt_env[li]` |
-| ↑ | **pseudo_sqrt** (steps 1a–1c) runs for every non-cut bond of v1, then v2 | | |
-| 2 | Scale v1 by √μ on all env bonds | `rocblas_sgemm_strided_batched` | `cv1` |
-| 3 | Scale v2 by √μ on all env bonds | `rocblas_sgemm_strided_batched` | `cv2` |
-| 4 | Move cut bond to last index | `gpu_tensor_permute<<<>>>` | `cv1`, `cv2` |
-| 5 | QR(v1): `cv1[m1×n1]` = Q1·R1 | `rocsolver_spotrf`+`rocblas_strsm` (Cholesky) | `Q1`, `R1` |
-| 6 | QR(v2): `cv2[m2×n2]` = Q2·R2 | or `rocsolver_sgeqrf`+`sorgqr` (Householder) | `Q2`, `R2` |
-| 7 | Reshape R1→A1, R2→A2 (separate χ, D indices) | `reshape_R_to_A<<<>>>` ×2 | `A1`, `A2` |
-| 8 | Form RR4 = A1·A2ᵀ | `rocblas_sgemm` | `RR4` |
-| 9 | Apply gate G to RR4 → oR4 | `apply_gate_to_RR4<<<>>>` (shared-mem G) | `oR4` |
-| 10 | SVD(oR4) = U·S·Vtᵀ | `rocsolver_sgesvd` | `U`, `S`, `Vt` |
-| 11 | Truncate to χ_new; Vidal normalize | D2H S → CPU → compute χ_new, inv_snorm | — |
-| 12 | Build M1=U·√S, M2=Vtᵀ·√S | `build_M_from_U<<<>>>`, `build_M_from_Vt<<<>>>` | `A1`, `A2` |
-| 13 | cv1=Q1·M1, cv2=Q2·M2 | `rocblas_sgemm` ×2 | `cv1`, `cv2` |
-| 14 | Restore canonical index order | `gpu_tensor_permute<<<>>>` | `cv1`, `cv2` |
-| 15 | **pseudo_sqrt** again + scale by μ⁻¹/² | same as 1a–1c + strided GEMM | `cv1`, `cv2` |
-| 16 | psi_v1 ← cv1, psi_v2 ← cv2 | `hipMemcpy` D2D | `psi_v1`, `psi_v2` |
-| 17 | bond.chi ← χ_new; μ ← diag(S/‖S‖) | H2D diagonal matrix | `out_messages` |
+### Gamma-MPF: zero-noise extrapolation
 
-**pseudo_sqrt call count**: up to (deg(v1)−1 + deg(v2)−1) × 2 per gate call
-(once for absorb, once for deabsorb).  At saturation on a 4×4 grid interior gate:
-3+3 env bonds per site × 2 = 12 calls/gate × 24 gates = 288 calls/layer.
+```bash
+# 2-GPU: GPU 0 Trotter, GPU 1 inner products (overlapped)
+./main_heavyhex_gamma_mpf_2gpu 250 10 1e-3 --center=13 2>/dev/null | \
+    tee logs/mpf_run.log
 
-**Adaptive QR**: Cholesky-QR (POTRF+STRSM) when n > 150 and m/n > 150;
-Householder (GEQRF+ORGQR+`extract_upper_triangle` kernel) otherwise.
+# Analyze
+python3 scripts/plot_ip_timing.py --ip logs/mpf_run.log
+```
 
----
+### Lightcone calibration
 
-## Known limitations
+```bash
+# Measure operator spreading
+./main_lightcone 70 20 1e-3 --center=13 > logs/lightcone.dat
 
-- **rocBLAS Tensile coverage**: On MI60 (GFX906), GEMM kernels for the large matrix
-  dimensions at chi ≥ 120 are not pre-built. The practical chi ceiling on MI60 is ~110.
-  A different ROCm Docker image is required vs MI100.
+# Analyze: v_hop, heatmap
+python3 scripts/analyze_lightcone.py \
+    --dat logs/lightcone.dat \
+    --graph data/graphs/heavy_hex_3x3.json \
+    --center 13 --out lightcone_analysis.png
+```
 
-- **BP sweep budget**: The 100-sweep limit is occasionally insufficient at chi=100
-  for hard layers (e.g., layers 17 and 20 hit the limit; layer 19 shows a spurious
-  near-zero C(t) due to premature BP convergence at tol=1e-5). This does not affect
-  C(t=20) which is the primary convergence metric.
+### Delta sweep (Figure 4)
 
-- **Float32 precision**: Single precision is used throughout for performance.
-  The Vidal gauge normalization (Σλ²=1) prevents overflow but does not eliminate
-  all float32 cancellation in the Bethe partition function at late times.
+```bash
+bash scripts/run_dg_sweep.sh 250 10
+python3 scripts/make_fig4_qr_sweep.py --dir logs/dg_sweep_XXXXX
+```
 
----
-
-## Hardware requirements and achieved results
-
-From `estimate_memory.py` (float32, D=4):
-
-| Grid  | chi | Memory  | Fits on        | Status |
-|-------|-----|---------|----------------|--------|
-| 4×4   | 100 | 12.9 GB | MI100, MI60    | ✓ done |
-| 4×4   | 120 | 26.8 GB | MI100, MI60    | ✓ done |
-| 10×10 | 100 | ~109 GB | MI355X         | ✓ done (38 layers, job 2208) |
-| 11×11 | 100 | ~130 GB | MI355X         | ✓ done (38 layers, job 2208) |
-| 10×10 | 120 | ~207 GB | MI355X         | feasible (not yet run) |
-
-The 10×10 and 11×11 at χ=100 are the first tensor-network simulations of these
-system sizes and are the primary experimental results of the companion paper.
-
----
-
-## Reference
-
-Julia reference implementation:
-`2dIsing_dynamics_Heisenbergpicture_multi.jl`
-
-Physics background: Heisenberg-picture tensor network methods for 2D quantum
-dynamics; Bethe approximation for operator inner products; Vidal canonical form
-for matrix product operators.
-
----
-
-## Heavy-Hex MPF Extension
-
-Extension of CppSim to the heavy-hex lattice (68 sites, 76 bonds) used in
-superconducting quantum processors, with hardware noise model and
-Multi-Product Formula (MPF) quantum error mitigation.
-
-### Paper
-
-**"Tensor Network Simulation of the Heisenberg Model on Heavy-Hex Lattices"**
-Paolo D'Alberto + Claude (Anthropic). arXiv:2606.30985 [cs.MS].
-
-### Key results
+## Key Results (heavy-hex 3×3, 68 sites)
 
 | Metric | Value |
 |--------|-------|
-| Chi convergence | χ=200 gives \|error\|<1e-4 (ref χ=430) |
-| Speedup vs Julia | 9-10× at saturated χ=430 |
-| Gamma-MPF (γ=1/2/3, ε=0.1) | 7-8% error at 10 cycles, 4.4s total |
-| Inner product MPF, GPU | 0.2s per cycle at χ=50 (4× faster than Julia) |
-| Pareto result | Poor man's MPF dominates at all χ and cutoff in QR gauge |
+| Chi convergence | χ=200: \|err\| < 10⁻⁴ (ref χ=430) |
+| Lightcone velocity | v_hop = 0.253 ± 0.002 hops/cycle (ε=0.10) |
+| Faithful cycles | 12 from site 13 (3 hops to boundary) |
+| Speedup vs Julia | ~10× at χ=430 |
+| IP overhead at δ=10⁻³ | Zero — hidden under Trotter |
+| MPF error (QR, δ=10⁻³) | ~3.8e-2 mean \|ΔC\| over 10 cycles |
 
-### Binaries
+### Timing at χ=250, 10 cycles
 
-```bash
-# Build all heavy-hex targets
-make PHYS_DIM=4 main_heavyhex_gamma_mpf      # gamma-MPF, C(t) only
-make PHYS_DIM=4 main_heavyhex_gamma_mpf_ip   # single-GPU inner product dump
-make PHYS_DIM=4 main_heavyhex_gamma_mpf_2gpu # 2-GPU: Trotter + inner products
-```
+| δ | Trotter (s) | QR IP (s) | Hidden? |
+|---|------------|-----------|---------|
+| 10⁻³ | ~10 | ~8 | yes |
+| 10⁻⁴ | ~25 | ~60 | no |
 
-### Run gamma-MPF
+Operating point: **δ=10⁻³** balances accuracy and zero IP overhead.
 
-```bash
-./main_heavyhex_gamma_mpf_ip [chi_max] [n_steps] [cutoff]
-# Output: STEP C_nl C_n1 C_n2 C_n3  IP_A ...  IP_B ...  chi t_cycle t_trotter t_ip_wall
-```
+### MPF physics (gamma=1,2 noisy states)
 
-### Run sweep (25 combinations: 5 chi × 5 cutoff)
+- γ=1: slower decay than C_nl (noise slows quantum spreading)
+- γ=2: kills quantum recurrence at cycle 5, drops below C_nl
+- From cycle 5: C_nl bracketed between γ=1 (above) and γ=2 (below)
+  → MPF operates as **interpolation**, not extrapolation → better conditioning
 
-```bash
-bash run_ip_sweep.sh
-# Logs → logs/ip_sweep_YYYYMMDD_HHMMSS/
-```
+## Design
 
-### Generate figures
+**Topology-agnostic**: `apply_binary_gate`, `bp_update`, `autocorrelation_with_bp`
+work on any `Grid` subclass. New topology = new grid class + PTMs, no kernel changes.
 
-```bash
-# Multi-chi log-error comparison + Pareto frontier
-python3 plot_ip_sweep.py --logdir logs/ip_sweep_YYYYMMDD_HHMMSS
+**Heisenberg picture + PTMs**: operators evolve, not states. PTMs are 16×16 real
+matrices acting on the Pauli basis {I,X,Y,Z}⊗².
 
-# Per-cycle timing (t_cycle, t_Trotter, t_IP_wall)
-python3 plot_ip_timing.py --ip /path/to/log.log
+**2-GPU pipeline**: GPU 0: Trotter (4 states); GPU 1: 9 inner product pairs
+(parallel streams). Cycle time = max(t_Trotter, t_IP).
 
-# Single-run MPF comparison (poor man's vs inner product)
-python3 analyze_ip_mpf.py --ip /path/to/log.log
-```
+**Lightcone**: n(v,t) Pauli weight per site measures operator spreading.
+v_hop = 0.253 hops/cycle is topology+ε dependent only — not χ or δ.
+Center site 13 gives 12 faithful cycles before boundary reflection.
 
-### 2-GPU architecture
+## Authors
 
-```
-GPU 0: all Trotter (noiseless + 3 noisy states, sequential)
-GPU 1: all inner products (9 pairs in parallel streams)
-t_cycle = max(t_Trotter, t_IP_wall)
-```
-
-At χ=250: t_Trotter≈80s, t_IP≈11s — inner products add zero wall-clock overhead.
-Compared to Julia reference at 350s/cycle: **4× speedup**.
-
-### Scientific conclusion
-
-Inner product MPF with QR gauge is **gauge-limited**, not compute-limited:
-- Error is insensitive to χ or cutoff — Pareto frontier entirely dominated by poor man's MPF
-- Consistent systematic bias (not random scatter) confirms correct implementation
-- Path forward: symmetric gauge → diagonal messages → inner product MPF competitive
-
-### Python dependencies (plotting only)
-
-```
-numpy matplotlib
-```
-
-No special dependencies beyond rocBLAS/rocSOLVER already required for building.
+Paolo D'Alberto (AMD) · developed in collaboration with Claude (Anthropic)

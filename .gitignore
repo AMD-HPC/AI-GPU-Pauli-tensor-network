@@ -1,0 +1,38 @@
+# Compiled binaries
+main_*
+test_*
+!main_*.cpp
+!test_*.cpp
+
+# GPU core dumps
+gpucore.*
+
+# Python cache
+__pycache__/
+*.pyc
+
+# LaTeX build artifacts (outside Paper directories)
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.pdf
+*.tex~
+*~
+\#*\#
+
+# Data dumps
+*.txt
+!README.md
+
+# Scratch PNGs and GIFs in root
+/*.png
+/*.gif
+
+# Misc
+Thumbs.db
+out.err
+--epsilon*
+paolod@*
