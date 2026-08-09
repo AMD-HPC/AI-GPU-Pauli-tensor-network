@@ -55,6 +55,12 @@ main_heavyhex_gamma_mpf_DG_2gpu: $(SRC)/main_heavyhex_gamma_mpf_DG_2gpu.cpp $(HE
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) $(DFLAGS) -o $@ $(SRC)/$@.cpp $(LIBS)
 	@echo "Built $@"
 
+main_generic_lightcone: $(SRC)/main_generic_lightcone.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) $(DFLAGS) -o $@ $(SRC)/$@.cpp $(LIBS)
+	@echo "Built $@ (graph=$(if $(DFLAGS),$(DFLAGS),heavy_hex_3x3))"
+
 main_lightcone: $(SRC)/main_lightcone.cpp $(HEADERS) \
 	include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp
