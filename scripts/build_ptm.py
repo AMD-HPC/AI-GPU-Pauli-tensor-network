@@ -342,6 +342,7 @@ def main():
     graph_override = None
     out_override = None
     prefix_override = None  # e.g. 'RECT_7x7' to override HEAVY_HEX_3x3 prefix
+    depolarizing_p = None   # --depolarizing=p: use uniform depolarizing noise at rate p
     positional = []
     for arg in sys.argv[1:]:
         if arg.startswith('--epsilon='):
@@ -356,6 +357,8 @@ def main():
             out_override = arg[6:]
         elif arg.startswith('--prefix='):
             prefix_override = arg[9:]
+        elif arg.startswith('--depolarizing='):
+            depolarizing_p = float(arg[15:])
         else:
             positional.append(arg)
 
@@ -394,6 +397,34 @@ def main():
     alpha_map, delta_map = load_graph(graph_json, epsilon)
 
     is_ideal = model in ('IDEAL', 'IDEAL_KICK')
+
+    # ── Synthetic depolarizing noise path ─────────────────────────────────────
+    if depolarizing_p is not None:
+        # Depolarizing channel at rate p per gate application:
+        #   E(rho) = (1-p)*rho + p/4 * I
+        # PTM: D[i,j] = (1-p)*U[i,j] for i,j>0; D[0,j]=delta(j,0)
+        # Compose: ideal gate PTM then scale non-identity elements by (1-p)
+        gammas_to_build = [gamma_filter] if gamma_filter else ['1.0', '2.0', '3.0']
+        ptms_by_gamma = {}
+        for gamma_str in gammas_to_build:
+            p_eff = depolarizing_p * float(gamma_str)  # scale by gamma
+            p_eff = min(p_eff, 0.75)  # cap at max physical value
+            ptms = []
+            for bond_id, (u, v) in enumerate(EDGES):
+                key = (min(u,v), max(u,v))
+                alpha = alpha_map.get(key, epsilon)
+                delta_val = delta_map.get(key, 1.0)
+                # Build ideal PTM first
+                ideal_ptm = build_bond_ptm('IDEAL_KICK', alpha, delta_val, phi, None)
+                # Apply depolarizing: scale off-diagonal elements by (1-p_eff)
+                noisy_ptm = ideal_ptm.copy()
+                noisy_ptm[1:, :] *= (1.0 - p_eff)  # rows 1..15 scaled
+                ptms.append(list(noisy_ptm.flatten(order='F')))
+            ptms_by_gamma[gamma_str] = ptms
+            print(f"  gamma={gamma_str} (p_eff={p_eff:.4f}): {n_bonds} PTMs computed")
+        gammas = list(ptms_by_gamma.keys())
+        write_hpp(out_file, model_tag, gammas, ptms_by_gamma, epsilon, phi, graph_data, prefix=prefix_override)
+        exit(0)
 
     if is_ideal:
         ptms = []

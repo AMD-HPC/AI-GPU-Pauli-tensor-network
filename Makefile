@@ -55,6 +55,25 @@ main_heavyhex_gamma_mpf_DG_2gpu: $(SRC)/main_heavyhex_gamma_mpf_DG_2gpu.cpp $(HE
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) $(DFLAGS) -o $@ $(SRC)/$@.cpp $(LIBS)
 	@echo "Built $@"
 
+main_pauli_sweep: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp \
+	include/heavyhex_noisy_eps010_gamma1_data.hpp \
+	include/heavyhex_noisy_eps010_gamma2_data.hpp \
+	include/heavyhex_noisy_eps010_gamma3_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o $@ $(SRC)/$@.cpp $(LIBS)
+	@echo "Built $@ (heavy_hex_3x3)"
+
+main_pauli_sweep_rect7x7: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/rect_7x7.hpp \
+	include/rect_7x7_ideal_kick_eps010_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma1_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma2_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma3_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_7x7 -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
+	@echo "Built $@ (rect_7x7)"
+
 main_generic_lightcone: $(SRC)/main_generic_lightcone.cpp $(HEADERS) \
 	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp
