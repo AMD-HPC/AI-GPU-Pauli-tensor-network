@@ -29,16 +29,31 @@ COMBOS=(
 
 GRAPH="data/graphs/heavy_hex_3x3.json"
 
+# Each run uses 1 GPU — run 3 in parallel, then next batch
+pids=()
+gpus=(0 1 2 0 1 2)
+idx=0
 for combo in "${COMBOS[@]}"; do
     chi=$(echo $combo | awk '{print $1}')
     delta=$(echo $combo | awk '{print $2}')
-    tag="chi${chi}_d${delta}"
-    log="$LOGDIR/${tag}.log"
-    echo "Running chi=$chi delta=$delta ..."
-    ./main_heavyhex_gamma_mpf_2gpu $chi $N $delta --center=$CENTER --measure-all \
-        2>/dev/null > "$log"
-    echo "  Done: $log"
+    tag="chi${chi}_cut${delta}"
+    log="logs/spatial_mpf_chi${chi}_${delta}.log"
+    gpu=${gpus[$idx]}
+    echo "Launching chi=$chi cutoff=$delta on GPU $gpu → $log"
+    ROCR_VISIBLE_DEVICES=$gpu \
+        ./main_heavyhex_gamma_mpf_2gpu $chi $N $delta --center=$CENTER --measure-all \
+        2>/dev/null > "$log" &
+    pids+=($!)
+    idx=$((idx+1))
+    # 3 GPUs → run 3 at a time
+    if [ ${#pids[@]} -eq 3 ]; then
+        echo "Waiting for batch..."
+        for pid in "${pids[@]}"; do wait $pid; done
+        pids=()
+    fi
 done
+for pid in "${pids[@]}"; do wait $pid; done
+echo "All runs done."
 
 echo ""
 echo "=== Frontier analysis (threshold=$THRESHOLD) ==="
@@ -48,7 +63,7 @@ printf "%-20s  %6s  %6s  %6s  %6s  %6s\n" "Config" "F_nl" "F_n1" "F_n2" "F_n3" "
 for combo in "${COMBOS[@]}"; do
     chi=$(echo $combo | awk '{print $1}')
     delta=$(echo $combo | awk '{print $2}')
-    tag="chi${chi}_d${delta}"
+    tag="chi${chi}_cut${delta}"
     log="$LOGDIR/${tag}.log"
 
     # Extract frontier per gamma using analyze_lightcone.py
