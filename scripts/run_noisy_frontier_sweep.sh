@@ -25,6 +25,9 @@ COMBOS=(
     "200  1e-3"
     "200  5e-4"
     "200  1e-4"
+    "230  1e-3"
+    "230  5e-4"
+    "230  1e-5"
 )
 
 GRAPH="data/graphs/heavy_hex_3x3.json"
@@ -41,7 +44,7 @@ for combo in "${COMBOS[@]}"; do
     gpu=${gpus[$idx]}
     echo "Launching chi=$chi cutoff=$delta on GPU $gpu → $log"
     ROCR_VISIBLE_DEVICES=$gpu \
-        ./main_heavyhex_gamma_mpf_2gpu $chi $N $delta --center=$CENTER --measure-all \
+        ./main_pauli_sweep $chi $N $delta --center=$CENTER \
         2>/dev/null > "$log" &
     pids+=($!)
     idx=$((idx+1))
@@ -64,15 +67,12 @@ for combo in "${COMBOS[@]}"; do
     chi=$(echo $combo | awk '{print $1}')
     delta=$(echo $combo | awk '{print $2}')
     tag="chi${chi}_cut${delta}"
-    log="$LOGDIR/${tag}.log"
+    log="logs/spatial_mpf_chi${chi}_${delta}.log"  # actual log location
 
-    # Extract frontier per gamma using analyze_lightcone.py
-    # Create per-gamma PAULI files
+    # Extract per-gamma PAULI files
     for label in NL N1 N2 N3; do
-        grep "PAULI_${label}" "$log" | sed "s/PAULI_${label}/PAULI/" \
-            > "$LOGDIR/${tag}_${label}.dat"
-        # Add STEP lines for C_nl (needed by analyze_lightcone)
-        grep "^STEP" "$log" >> "$LOGDIR/${tag}_${label}.dat"
+        grep "PAULI_${label}" "$log" 2>/dev/null | sed "s/PAULI_${label}/PAULI/" \
+            > "/tmp/${tag}_${label}.dat"
     done
 
     # Get frontier at last cycle for each gamma
@@ -86,10 +86,10 @@ for combo in "${COMBOS[@]}"; do
             tail -1 | awk '{print $2}'
     }
 
-    F_nl=$(get_frontier_last "$LOGDIR/${tag}_NL.dat")
-    F_n1=$(get_frontier_last "$LOGDIR/${tag}_N1.dat")
-    F_n2=$(get_frontier_last "$LOGDIR/${tag}_N2.dat")
-    F_n3=$(get_frontier_last "$LOGDIR/${tag}_N3.dat")
+    F_nl=$(get_frontier_last "/tmp/${tag}_NL.dat")
+    F_n1=$(get_frontier_last "/tmp/${tag}_N1.dat")
+    F_n2=$(get_frontier_last "/tmp/${tag}_N2.dat")
+    F_n3=$(get_frontier_last "/tmp/${tag}_N3.dat")
 
     # Check if all frontiers match noiseless
     same="no"
