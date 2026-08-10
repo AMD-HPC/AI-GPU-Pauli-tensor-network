@@ -36,7 +36,15 @@ def parse_log(path):
     steps = {}
     with open(path) as f:
         for line in f:
+            # Format 1: main_heavyhex_gamma_mpf_2gpu: C_n x y z
             m = re.match(r"STEP (\d+)\s+C_nl ([+-][\d.e+-]+)\s+C_n ([+-][\d.e+-]+) ([+-][\d.e+-]+) ([+-][\d.e+-]+)", line)
+            if m:
+                s = int(m.group(1))
+                if s not in steps: steps[s] = {}
+                steps[s]['C_nl'] = float(m.group(2))
+                steps[s]['C_n']  = np.array([float(m.group(i)) for i in [3,4,5]])
+            # Format 2: main_pauli_sweep: C_n1 x C_n2 y C_n3 z
+            m = re.match(r"STEP (\d+)\s+C_nl ([+-][\d.e+-]+)\s+C_n1 ([+-][\d.e+-]+)\s+C_n2 ([+-][\d.e+-]+)\s+C_n3 ([+-][\d.e+-]+)", line)
             if m:
                 s = int(m.group(1))
                 if s not in steps: steps[s] = {}
@@ -149,6 +157,8 @@ def main():
     Ac = np.zeros((N_GAMMA, N_GAMMA)); Bc = np.zeros(N_GAMMA)
     c_pm_list = []
     for i, s in enumerate(step_list):
+        if 'C_n' not in steps[s] or 'C_nl' not in steps[s]:
+            c_pm_list.append(np.array([1./N_GAMMA]*N_GAMMA)); continue
         cn = steps[s]['C_n']; cnl = steps[s]['C_nl']
         for ii in range(N_GAMMA):
             Bc[ii] += cn[ii]*cnl
