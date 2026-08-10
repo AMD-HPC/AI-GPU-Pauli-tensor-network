@@ -26,6 +26,7 @@ Usage:
 
 import argparse, re, json, numpy as np
 from collections import deque
+from scipy.optimize import minimize
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -88,6 +89,35 @@ def frontier(N_vt, dist, threshold):
         active = [dist[v] for v in range(N_vt.shape[1]) if N_vt[t,v] > threshold]
         f.append(max(active) if active else 0)
     return np.array(f)
+
+def cycle_frontier_coeffs(N_nl_t, N_n_t, dist, f_nl_t, threshold):
+    """
+    Per-cycle coefficients using ONLY frontier shell sites at cycle t.
+    Frontier shell: sites where n_nl > threshold AND d(v) == F_nl(t).
+    """
+    mask = np.array([dist[v] == f_nl_t and N_nl_t[v] > threshold
+                     for v in range(len(dist))])
+    n_frontier = mask.sum()
+    if n_frontier == 0:
+        return np.array([1./N_GAMMA]*N_GAMMA)
+
+    A = np.zeros((N_GAMMA, N_GAMMA))
+    B = np.zeros(N_GAMMA)
+    for i in range(N_GAMMA):
+        B[i] = np.sum(N_n_t[i][mask] * N_nl_t[mask])
+        for j in range(N_GAMMA):
+            A[i,j] = np.sum(N_n_t[i][mask] * N_n_t[j][mask])
+
+    M = np.zeros((N_GAMMA+1, N_GAMMA+1))
+    M[:N_GAMMA,:N_GAMMA] = A; M[:N_GAMMA,N_GAMMA] = 1; M[N_GAMMA,:N_GAMMA] = 1
+    rhs = np.zeros(N_GAMMA+1); rhs[:N_GAMMA] = B; rhs[N_GAMMA] = 1
+    try:
+        sol = np.linalg.solve(M, rhs)
+        c = sol[:N_GAMMA]
+        if np.any(np.abs(c) > 100): c = np.array([1./N_GAMMA]*N_GAMMA)
+    except:
+        c = np.array([1./N_GAMMA]*N_GAMMA)
+    return c
 
 def frontier_mpf_coeffs(N_nl, N_n, threshold):
     """
@@ -177,18 +207,111 @@ def main():
             N_pm[i] += c_pm_list[i][g] * N_n[g][i]
     N_pm = np.clip(N_pm, 0, None)
 
-    # ── Frontier distances ─────────────────────────────────────────────────────
+    # ── Per-cycle frontier coefficients ───────────────────────────────────────
     f_nl  = frontier(N_nl,  dist, args.threshold)
     f_n   = [frontier(N_n[g], dist, args.threshold) for g in range(N_GAMMA)]
     f_mpf = frontier(N_mpf, dist, args.threshold)
     f_pm  = frontier(N_pm,  dist, args.threshold)
 
+    # Per-cycle: c_i(t) from frontier shell only, apply to get corrected frontier
+    N_cycle_fmpf = np.zeros_like(N_nl)
+    c_per_cycle = []
+    for i, s in enumerate(step_list):
+        N_n_t = [N_n[g][i] for g in range(N_GAMMA)]
+        c_t = cycle_frontier_coeffs(N_nl[i], N_n_t, dist, int(f_nl[i]), args.threshold)
+        c_per_cycle.append(c_t)
+        for g in range(N_GAMMA):
+            N_cycle_fmpf[i] += c_t[g] * N_n[g][i]
+    N_cycle_fmpf = np.clip(N_cycle_fmpf, 0, None)
+    f_cycle_fmpf = frontier(N_cycle_fmpf, dist, args.threshold)
+
+    # ── Deficit formulation: δ_i(t) = F_nl(t) - F_ni(t) ─────────────────────
+    # MPF on deficits: find c_i s.t. sum c_i * δ_i(t) ≈ 0 (recover noiseless)
+    # Equivalent: F_corrected = F_nl - sum c_i * δ_i  (deficit cancellation)
+    delta_n = [f_nl - f_n[g] for g in range(N_GAMMA)]  # [N_GAMMA][T]
+
+    # Fit: c_i minimize ||sum c_i * delta_i||^2 s.t. sum c_i = 1
+    # Build system from deficits
+    T = len(step_list)
+    A_def = np.zeros((N_GAMMA, N_GAMMA))
+    B_def = np.zeros(N_GAMMA)
+    for i in range(N_GAMMA):
+        B_def[i] = np.sum(delta_n[i] * f_nl)  # want sum c_i delta_i = 0 → B = 0
+        for j in range(N_GAMMA):
+            A_def[i,j] = np.sum(delta_n[i] * delta_n[j])
+
+    # Min ||A_def c||^2 s.t. sum c = 1
+    # → A_def^T A_def c + lambda*1 = 0, sum c = 1
+    try:
+        M = np.zeros((N_GAMMA+1, N_GAMMA+1))
+        M[:N_GAMMA,:N_GAMMA] = A_def.T @ A_def
+        M[:N_GAMMA,N_GAMMA] = 1; M[N_GAMMA,:N_GAMMA] = 1
+        rhs = np.zeros(N_GAMMA+1); rhs[N_GAMMA] = 1
+        c_def = np.linalg.solve(M, rhs)[:N_GAMMA]
+        if np.any(np.abs(c_def) > 50): c_def = np.array([1./N_GAMMA]*N_GAMMA)
+    except:
+        c_def = np.array([1./N_GAMMA]*N_GAMMA)
+
+    # Corrected frontier: F_nl - sum c_i * delta_i (should ≈ F_nl if deficit cancelled)
+    f_deficit = np.array([f_nl[i] - sum(c_def[g]*delta_n[g][i] for g in range(N_GAMMA))
+                          for i in range(T)])
+    f_deficit = np.clip(np.round(f_deficit).astype(int), 0, max_dist)
+
+    print(f"\nDeficit MPF coefficients: c = [{c_def[0]:+.4f}, {c_def[1]:+.4f}, {c_def[2]:+.4f}]  sum={c_def.sum():.4f}")
+    print(f"Mean deficit: δ1={delta_n[0].mean():.2f}  δ2={delta_n[1].mean():.2f}  δ3={delta_n[2].mean():.2f}")
+
+    # ── LR-constrained deficit MPF ─────────────────────────────────────────────
+    # Correct LR bound: F_corrected(t) <= F_nl(t)  (noiseless IS the causal ceiling)
+    # i.e. F_nl(t) - sum c_i * delta_i(t) <= F_nl(t)
+    # i.e. sum c_i * delta_i(t) >= 0  for all t  (correction cannot exceed noiseless)
+    # Also: F_corrected(t) >= 0  (non-negative frontier)
+    # i.e. sum c_i * delta_i(t) <= F_nl(t)  for all t
+    v_hop = 0.253  # stored for display only
+
+    def objective(c):
+        return sum((sum(c[g]*delta_n[g][i] for g in range(N_GAMMA)))**2
+                   for i in range(T))
+
+    constraints = [
+        {'type': 'eq', 'fun': lambda c: c.sum() - 1},  # sum c_i = 1
+    ]
+    for i in range(T):
+        idx = i
+        # delta >= 0: correction cannot make F_corrected > F_nl
+        constraints.append({
+            'type': 'ineq',
+            'fun': lambda c, ii=idx: sum(c[g]*delta_n[g][ii] for g in range(N_GAMMA))
+        })
+        # delta <= F_nl: corrected frontier >= 0
+        constraints.append({
+            'type': 'ineq',
+            'fun': lambda c, ii=idx: f_nl[ii] - sum(c[g]*delta_n[g][ii] for g in range(N_GAMMA))
+        })
+
+    try:
+        res = minimize(objective, c_def, method='SLSQP', constraints=constraints,
+                       options={'ftol':1e-10, 'maxiter':1000})
+        c_lr = res.x if res.success else c_def
+        if np.any(np.abs(c_lr) > 50): c_lr = c_def
+    except:
+        c_lr = c_def
+
+    f_lr = np.array([f_nl[i] - sum(c_lr[g]*delta_n[g][i] for g in range(N_GAMMA))
+                     for i in range(T)])
+    f_lr = np.clip(np.round(f_lr).astype(int), 0, max_dist)
+
+    print(f"LR-constrained deficit: c = [{c_lr[0]:+.4f}, {c_lr[1]:+.4f}, {c_lr[2]:+.4f}]  sum={c_lr.sum():.4f}")
+    print(f"Ceiling F_nl(t):        {list(f_nl.astype(int))}")
+
     # ── Print table ───────────────────────────────────────────────────────────
-    print(f"\n{'Cycle':>5}  {'F_nl':>5}  {'F_n1':>5}  {'F_n2':>5}  {'F_n3':>5}  {'F_pm':>6}  {'F_fmpf':>7}")
-    print("-"*50)
+    print(f"\n{'Cycle':>5}  {'F_nl':>5}  {'F_n1':>5}  {'F_n2':>5}  {'F_n3':>5}  "
+          f"{'δ1':>4}  {'δ2':>4}  {'δ3':>4}  "
+          f"{'F_pm':>6}  {'F_fmpf':>7}  {'F_cycle':>8}  {'F_deficit':>10}  {'F_lr':>6}")
+    print("-"*95)
     for i, s in enumerate(step_list):
         print(f"{s:>5}  {f_nl[i]:>5}  {f_n[0][i]:>5}  {f_n[1][i]:>5}  {f_n[2][i]:>5}  "
-              f"{f_pm[i]:>6}  {f_mpf[i]:>7}")
+              f"{delta_n[0][i]:>4}  {delta_n[1][i]:>4}  {delta_n[2][i]:>4}  "
+              f"{f_pm[i]:>6}  {f_mpf[i]:>7}  {f_cycle_fmpf[i]:>8}  {f_deficit[i]:>10}  {f_lr[i]:>6}")
 
     # ── Figure ────────────────────────────────────────────────────────────────
     def heatmap(N, dist, max_dist, step_list):
@@ -227,8 +350,12 @@ def main():
                     [min(f_n[g][i] for g in range(N_GAMMA)) for i in range(len(step_list))],
                     [max(f_n[g][i] for g in range(N_GAMMA)) for i in range(len(step_list))],
                     alpha=0.15, color='gray', label='Noisy band')
-    ax.plot(step_list, f_pm,  'g--^', lw=1.8, label='PM MPF (C(t))')
-    ax.plot(step_list, f_mpf, 'm-o', lw=2, label=f'Frontier MPF\nc=[{c[0]:+.2f},{c[1]:+.2f},{c[2]:+.2f}]')
+    ax.plot(step_list, f_pm,         'g--^', lw=1.8, label='PM MPF (C(t))')
+    ax.plot(step_list, f_mpf,        'm-o',  lw=2,   label=f'Frontier MPF (global)\nc=[{c[0]:+.2f},{c[1]:+.2f},{c[2]:+.2f}]')
+    ax.plot(step_list, f_cycle_fmpf, 'r-D',  lw=2,   label='Per-cycle frontier MPF', zorder=5)
+    ax.plot(step_list, f_deficit,    'c-*',  lw=2,   label=f'Deficit MPF\nc=[{c_def[0]:+.2f},{c_def[1]:+.2f},{c_def[2]:+.2f}]', zorder=5)
+    ax.plot(step_list, f_lr,         'y-P',  lw=2.5, label=f'LR-constrained deficit\nc=[{c_lr[0]:+.2f},{c_lr[1]:+.2f},{c_lr[2]:+.2f}]', zorder=6)
+    ax.plot(step_list, f_nl, 'k:', lw=1.5, alpha=0.4, label='F_nl ceiling (LR bound)')
     ax.set_xlabel('Cycle'); ax.set_ylabel('Frontier distance (hops)')
     ax.set_title('Frontier comparison: PM vs Frontier-weight MPF')
     ax.legend(fontsize=7); ax.grid(True, alpha=0.3)
