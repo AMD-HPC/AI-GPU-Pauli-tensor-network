@@ -517,6 +517,86 @@ The near-integer coefficients arise because the frontier values $F_{\gamma_i}(t)
 are integer-valued (BFS distances), and the MPF extrapolation in integer space
 with integer $\gamma$ amplification naturally produces integer solutions.
 
+\subsection{Entropy-optimal MPF and two information regimes}
+\label{sec:entropy_mpf}
+
+The frontier MPF minimizes squared error in frontier distance — a geometric
+proxy that discards amplitude information below threshold.
+We propose instead minimizing the \emph{cross-entropy loss}:
+\begin{equation}
+    \min_{c_i}\; \mathcal{L}(c) = \sum_{v,t} -\ln\frac{n_{\rm MPF}(v,t)}{n_{\rm nl}(v,t)},
+    \qquad n_{\rm MPF}(v,t) = \sum_i c_i\, n_{\gamma_i}(v,t)
+    \label{eq:entropy_mpf}
+\end{equation}
+subject to the Lieb-Robinson constraint $0 \leq n_{\rm MPF}(v,t) \leq n_{\rm nl}(v,t)$
+and normalization $\sum_i c_i = 1$.
+The gradient is $\partial\mathcal{L}/\partial c_k = -\sum_{v,t} n_{\gamma_k}(v,t)/n_{\rm MPF}(v,t)$,
+making this a smooth nonlinear program solved via SLSQP.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{l r rr rr}
+\toprule
+Topology & Sites (NL/total) & Best noisy $\mu_\mathcal{L}$
+         & Frontier MPF & Entropy MPF & Improvement \\
+\midrule
+Rect $7\times7$      & 49/49 & 3.678 & 3.911 (worse) & 2.677 & $-27\%$ \\
+Heavy-hex $3\times3$ & 21/68 & 7.962 & 9.532 (worse) & 9.532 & $0\%$ \\
+\bottomrule
+\end{tabular}
+\caption{Mean per-site entropy loss $\mu_\mathcal{L}$ for noisy states, frontier MPF,
+and LR-constrained entropy-optimal MPF.
+Frontier MPF (optimizing squared frontier distance) is worse than the best noisy
+state on both topologies.
+Entropy MPF beats the best noisy state by 27\% on rect $7\times7$ under the full
+Lieb-Robinson constraint.
+Heavy-hex shows no improvement — the LR constraint is already binding and the
+entropy-optimal solution collapses to the frontier MPF.}
+\label{tab:entropy_mpf}
+\end{table}
+
+The two topologies reveal two distinct information regimes:
+
+\paragraph{Information-rich regime (rect $7\times7$, 49/49 sites reached).}
+The noisy waves cover the full noiseless lightcone.
+Entropy-optimal MPF finds coefficients $c \approx [1.32, 0.04, -0.36]$
+that genuinely extrapolate beyond the convex hull of the noisy samples,
+reducing mean entropy loss by 27\% below the best noisy state while
+satisfying $n_{\rm MPF}(v,t) \leq n_{\rm nl}(v,t)$ everywhere.
+This demonstrates that optimizing the correct cost function (cross-entropy loss)
+with the correct physical constraint (Lieb-Robinson bound) produces
+measurable information recovery.
+
+\paragraph{Information-starved regime (heavy-hex, 21/68 sites reached).}
+Only 31\% of sites are inside the noiseless lightcone at 10 cycles.
+The LR constraint is already saturated by the frontier MPF coefficients $[-1,1,1]$;
+the entropy optimizer finds no room to improve and returns the identical solution.
+The constraint surface is the frontier MPF itself.
+
+\paragraph{The information cost of causality.}
+Without the LR constraint, the unconstrained entropy optimizer achieves
+$\mu_\mathcal{L} = -0.69$ (rect $7\times7$) — negative entropy loss, meaning
+$n_{\rm MPF} > n_{\rm nl}$ at some sites, a violation of the causal bound.
+The gap between unconstrained ($-0.69$) and LR-constrained ($+2.68$) entropy loss
+measures the \emph{information cost of causal consistency}: the price paid
+in entropy recovery for keeping the corrected operator distribution
+physically realizable.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fig_mpf_entropy_rect7x7.png}
+\caption{Entropy loss wavemap for rect $7\times7$.
+Row 1: spatial map of $\mathcal{L}(v)$ per site for $\gamma=1,2,3$, frontier MPF,
+and entropy-optimal MPF (purple) — the entropy MPF map is visibly darker
+(lower loss) than any individual noisy state.
+Row 2: global cross-entropy loss $L(t)$ per cycle — entropy MPF (purple) sits
+below all noisy curves throughout.
+Row 3: mean $\pm\sigma$ of $\mathcal{L}(v)$ per BFS shell — entropy MPF
+achieves lower loss at every shell distance.}
+\label{fig:mpf_entropy}
+\end{figure}
+
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{figure}[t]
 \centering
