@@ -615,6 +615,29 @@ The LR constraint is already saturated by the frontier MPF coefficients $[-1,1,1
 the entropy optimizer finds no room to improve and returns the identical solution.
 The constraint surface is the frontier MPF itself.
 
+\paragraph{The per-shell entropy loss as a wavefront portrait.}
+Figure~\ref{fig:wavemap_rect7x7} (Row 4) reveals a striking pattern:
+the mean entropy loss $\mu_\mathcal{L}(d)$ per BFS shell peaks at the
+\emph{effective frontier distance} of each noise level.
+At shell $d$, the noiseless wave has arrived and grown, while the noisy wave
+has either not yet crossed threshold or just arrived — maximum information gap.
+For the rect $7\times7$ lattice:
+$\gamma=3$ peaks at shell 3, $\gamma=2$ peaks at shell 4, and the
+entropy-optimal MPF peaks at shell 5 — one shell short of the noiseless
+frontier at shell 6, a 17\% residual error in frontier recovery.
+
+The shell variance $\sigma_\mathcal{L}(d)$ (shaded bands) is large at the
+frontier shell — sites at the same BFS distance have heterogeneous propagation
+paths, some more damped than others — and collapses in the interior where
+the wave has fully saturated and all paths have equilibrated.
+
+The per-shell entropy loss plot therefore encodes three quantities simultaneously:
+(i) the effective frontier distance per noise level (peak position),
+(ii) the total information loss at the frontier (peak height),
+and (iii) the MPF recovery quality (how far the MPF peak is displaced toward
+the noiseless peak).
+This is the most information-dense single plot in the wavemap.
+
 \paragraph{The information cost of causality.}
 Without the LR constraint, the unconstrained entropy optimizer achieves
 $\mu_\mathcal{L} = -0.69$ (rect $7\times7$) — negative entropy loss, meaning
