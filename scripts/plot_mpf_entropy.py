@@ -28,8 +28,10 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as mgrid
 
-GCOL = {'NL':'black','N1':'#2196F3','N2':'#FF9800','N3':'#E91E63','MPF':'#2ECC40'}
-LABS = {'NL':'Noiseless','N1':'γ=1','N2':'γ=2','N3':'γ=3','MPF':'MPF'}
+GCOL = {'NL':'black','N1':'#2196F3','N2':'#FF9800','N3':'#E91E63',
+        'MPF':'#2ECC40','MPF_E':'#9B59B6'}
+LABS = {'NL':'Noiseless','N1':'γ=1','N2':'γ=2','N3':'γ=3',
+        'MPF':'MPF (frontier)','MPF_E':'MPF (entropy)'}
 FLOOR = 1e-7
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -184,33 +186,93 @@ def main():
          [{'type':'ineq','fun':lambda c,t=t:F_nl[t]-(A@c)[t]} for t in range(nc)]
     res=minimize(obj,x0=np.ones(3)/3,jac=jac,method='SLSQP',
                  constraints=cons,options={'ftol':1e-12,'maxiter':2000})
-    c_mpf=res.x
+    c_mpf  = res.x
     mpf_vt = sum(c_mpf[i]*data[gammas[i]] for i in range(len(gammas)))
     t_mpf  = arrival_time(mpf_vt, thr)
-    print(f"MPF coefficients: {np.round(c_mpf,3)}  sum={c_mpf.sum():.3f}")
+    print(f"MPF frontier coefficients: {np.round(c_mpf,3)}  sum={c_mpf.sum():.3f}")
 
-    all_states = gammas + ['MPF']
-    all_vt     = {**data, 'MPF': mpf_vt}
-    all_tg     = {**t_g,  'MPF': t_mpf}
+    # ── Entropy-optimal MPF ───────────────────────────────────────────────────
+    # Objective: minimize sum_{v,t in window} -ln(n_MPF(v,t)/n_nl(v,t))
+    # Gradient:  d/dc_k = -sum_{v,t} n_gamma_k(v,t) / n_MPF(v,t)
+    # Constraint: n_MPF(v,t) > 0 (LR: can't exceed noiseless, ensured by floor)
+    # Also: sum(c) = 1 for normalization
+    ni_stack = np.stack([data[g] for g in gammas], axis=0)  # (3, nc, ns)
 
-    # ── per-site entropy loss ─────────────────────────────────────────────────
+    def mpf_field(c):
+        return np.einsum('i,int->nt', c, ni_stack)
+
+    def entropy_obj(c):
+        n_mpf = np.clip(mpf_field(c), FLOOR, None)
+        n_nl_ = np.clip(nl_vt, FLOOR, None)
+        # only sites inside noiseless lightcone
+        mask  = nl_vt > thr
+        return np.sum(-np.log(n_mpf[mask] / n_nl_[mask]))
+
+    def entropy_jac(c):
+        n_mpf = np.clip(mpf_field(c), FLOOR, None)
+        mask  = nl_vt > thr   # (nc, ns)
+        grad  = np.zeros(len(c))
+        for k in range(len(c)):
+            # d/dc_k = -sum_{v,t in mask} n_gamma_k(v,t) / n_mpf(v,t)
+            grad[k] = -np.sum(ni_stack[k][mask] / n_mpf[mask])
+        return grad
+
+    # Constraints:
+    #   sum(c) = 1  (normalization)
+    #   n_MPF(v,t) >= 0  for all (v,t) inside NL lightcone
+    #   n_MPF(v,t) <= n_nl(v,t)  for all (v,t)  [Lieb-Robinson / causality]
+    # Build constraint matrices over all (t,v) where nl > threshold
+    mask_lr  = nl_vt > thr                         # (nc, ns) bool
+    nl_flat  = nl_vt[mask_lr]                       # (M,)
+    ni_flat  = ni_stack[:, mask_lr]                 # (3, M)
+
+    cons_e = [
+        {'type': 'eq',  'fun': lambda c: np.sum(c) - 1.0},
+        # n_MPF >= 0: c . ni_flat >= 0 for each point
+        {'type': 'ineq','fun': lambda c: ni_flat.T @ c},          # (M,) >= 0
+        # n_MPF <= n_nl: n_nl - c . ni_flat >= 0 for each point
+        {'type': 'ineq','fun': lambda c: nl_flat - ni_flat.T @ c} # (M,) >= 0
+    ]
+    res_e = minimize(entropy_obj, x0=c_mpf.copy(),
+                     jac=entropy_jac, method='SLSQP',
+                     constraints=cons_e,
+                     options={'ftol':1e-10, 'maxiter':3000})
+    c_mpf_e  = res_e.x
+    mpf_e_vt = mpf_field(c_mpf_e)
+    t_mpf_e  = arrival_time(mpf_e_vt, thr)
+    print(f"MPF entropy coefficients:  {np.round(c_mpf_e,3)}  sum={c_mpf_e.sum():.3f}")
+
+    all_states = gammas + ['MPF', 'MPF_E']
+    all_vt     = {**data, 'MPF': mpf_vt,  'MPF_E': mpf_e_vt}
+    all_tg     = {**t_g,  'MPF': t_mpf,   'MPF_E': t_mpf_e}
+
+    # ── per-site entropy loss for all states ─────────────────────────────────
     L_site = {}
     for g in all_states:
         L_site[g] = entropy_loss_site(all_vt[g], nl_vt, t_nl, all_tg[g], dist, thr)
-        vals=L_site[g][~np.isnan(L_site[g])]
+        vals = L_site[g][~np.isnan(L_site[g])]
         print(f"  L_site {g}: mu={vals.mean():.3f}  sigma={vals.std():.3f}  "
               f"min={vals.min():.3f}  max={vals.max():.3f}")
 
-    # ── global entropy loss ───────────────────────────────────────────────────
+    # global entropy loss
     L_glob = {g: entropy_loss_global(all_vt[g], nl_vt, thr) for g in all_states}
 
-    # ── Figure: 3 rows × (1 label + 5 panels) ────────────────────────────────
+    # Best noisy mu for comparison
+    best_noisy_mu = min(np.nanmean(L_site[g][~np.isnan(L_site[g])]) for g in gammas)
+    mpf_mu   = np.nanmean(L_site['MPF'][~np.isnan(L_site['MPF'])])
+    mpfe_mu  = np.nanmean(L_site['MPF_E'][~np.isnan(L_site['MPF_E'])])
+    print(f"\nComparison (mean entropy loss):")
+    print(f"  Best noisy:       {best_noisy_mu:.3f}")
+    print(f"  MPF (frontier):   {mpf_mu:.3f}  {'BETTER' if mpf_mu < best_noisy_mu else 'worse'}")
+    print(f"  MPF (entropy):    {mpfe_mu:.3f}  {'BETTER' if mpfe_mu < best_noisy_mu else 'worse'}")
+
+    # ── Figure: 3 rows × (1 label + 6 panels) ────────────────────────────────
     L_max = max(np.nanmax(L_site[g]) for g in all_states
                 if not np.all(np.isnan(L_site[g])))
     max_d = int(dist[dist>=0].max())
 
-    fig = plt.figure(figsize=(20, 14))
-    gs  = mgrid.GridSpec(3, 6, figure=fig,
+    fig = plt.figure(figsize=(22, 14))
+    gs  = mgrid.GridSpec(3, 7, figure=fig,
                          hspace=0.50, wspace=0.38,
                          left=0.04, right=0.98,
                          top=0.92,  bottom=0.06)
@@ -286,11 +348,15 @@ def main():
     ax_sh.grid(True,alpha=0.3)
 
     # ── Title ─────────────────────────────────────────────────────────────────
-    c_str=', '.join(f'{c:.2f}' for c in c_mpf)
+    cf_str = ', '.join(f'{c:.2f}' for c in c_mpf)
+    ce_str = ', '.join(f'{c:.2f}' for c in c_mpf_e)
     fig.suptitle(
         f'MPF entropy loss recovery — {tag}\n'
-        f'MPF coefficients $c$=[{c_str}]  (sum={c_mpf.sum():.2f})',
-        fontsize=13, y=0.97)
+        f'Frontier MPF $c$=[{cf_str}]    Entropy MPF $c$=[{ce_str}]\n'
+        f'Best noisy μ={best_noisy_mu:.2f} | '
+        f'Frontier MPF μ={mpf_mu:.2f} | '
+        f'Entropy MPF μ={mpfe_mu:.2f}',
+        fontsize=11, y=0.97)
 
     out=args.out or args.log.replace('.log','_mpf_entropy.png')
     plt.savefig(out,dpi=150,bbox_inches='tight')
