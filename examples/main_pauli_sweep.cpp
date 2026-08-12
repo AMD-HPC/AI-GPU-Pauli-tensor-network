@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
             meas_g.compute_pauli_profile(static_cast<Grid&>(*grids[g]),
                                          states[g]->psi, nid.data());
             printf("PAULI_%s %d", labels[g], step);
-            for (int v=0; v<grid.n_sites; v++) printf(" %.4f", nid[v]);
+            for (int v=0; v<grid.n_sites; v++) printf(" %.7f", nid[v]);
             printf("\n");
         }
         fflush(stdout);
