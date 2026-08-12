@@ -349,6 +349,47 @@ noiseless wave has grown more during the delay period.}
 \label{fig:wavemap_ratio}
 \end{figure}
 
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{fig_entropy_wavemap_rect7x7.png}
+\caption{Entropy loss wavemap — rectangular $7\times7$ lattice ($\chi=50$,
+cutoff $\delta=10^{-3}$, 10 cycles, center site 24).
+\textbf{Row 1}: NL arrival cycle $t_{\rm nl}(v)$ (reference, blue) and
+per-site delay $l_\gamma(v) = t_\gamma(v) - t_{\rm nl}(v)$ for $\gamma=1,2,3$
+(green=0 cycles, red=large delay).
+White sites: outside noiseless lightcone.
+\textbf{Row 2}: per-site cross-entropy loss
+$\mathcal{L}_\gamma(v) = \sum_t -\ln(n_\gamma/n_{\rm nl})$
+in the delay-adaptive window $[t_\gamma-\Delta, t_\gamma+\Delta]$,
+$\Delta=\max(1,l_\gamma)$.
+\textbf{Row 3}: global cross-entropy loss $L_\gamma(t) = \sum_v -\ln(n_\gamma/n_{\rm nl})$
+per cycle (solid) and KL divergence $D_{\rm KL}(t)$ (dashed).
+\textbf{Row 4}: mean $\pm\sigma$ of $\mathcal{L}_\gamma(v)$ per BFS shell —
+removes distance bias and shows how information loss accumulates with
+propagation distance from the center.
+Monotone ordering $L_{\gamma=1} < L_{\gamma=2} < L_{\gamma=3}$ at all shells
+is consistent with pure amplitude damping scaling with $\gamma$.}
+\label{fig:wavemap_rect7x7}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{fig_entropy_wavemap_heavyhex.png}
+\caption{Entropy loss wavemap — IBM heavy-hex $3\times3$ lattice ($\chi=70$,
+cutoff $\delta=10^{-3}$, 10 cycles, center site 13, BFS-layer layout).
+Same layout as Fig.~\ref{fig:wavemap_rect7x7}.
+Only 21/68 sites are inside the noiseless lightcone at 10 cycles (BFS distance
+$\leq 5$ hops from center) — the wavemap is sparse compared to rect $7\times7$.
+Non-monotone delay ordering (N1 and N3 reach the same 8 sites; N2 reaches
+10 sites including 2 additional distant sites) reflects the near-degenerate
+PTM eigenvalue spectra at $\gamma=2,3$.
+The per-shell entropy loss (Row 4) shows nearly identical curves for all three
+$\gamma$ values — consistent with the information-starved regime where the
+LR constraint is already binding and entropy-optimal MPF cannot improve
+beyond the frontier MPF solution.}
+\label{fig:wavemap_heavyhex}
+\end{figure}
+
 \section{Results}
 \label{sec:results}
 
