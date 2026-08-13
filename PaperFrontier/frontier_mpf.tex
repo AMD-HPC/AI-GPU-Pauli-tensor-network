@@ -26,8 +26,8 @@
 
 \begin{document}
 
-\title{Site-Centric Operator Wavefront as a Spatial Observable\\
-       for Noise-Amplified Tensor Network Simulation}
+\title{Operator Wavefront as a Space-Time Observable:\\
+       Information-Theoretic Error Analysis Beyond the Autocorrelation}
 
 \author{
  Paolo D'Alberto\thanks{Advanced Micro Devices, Inc. (AMD).
@@ -43,76 +43,118 @@
 \maketitle
 
 \begin{abstract}
-We introduce a site-centric wavefront analysis for operator spreading in
-noisy quantum lattice simulations.
-Running noiseless and noisy Trotter evolution at noise amplification factors
-$\gamma \in \{1,2,3\}$, we assign each lattice site $v$ two natural observables:
-the \emph{arrival delay} $l_\gamma(v) = t_\gamma(v) - t_{\rm nl}(v)$
-(how many cycles later the noisy wave crosses threshold compared to noiseless)
-and the \emph{natural ratio}
-$r_\gamma(v) = n_{\gamma}(v,\, t_\gamma(v)) \,/\, n_{\rm nl}(v,\, t_\gamma(v))$
-(how much the noiseless wave has grown at site $v$ by the time the noisy wave arrives).
-Together these form a \emph{wavemap} — a spatial portrait of noise effects
-across the lattice, with each site receiving a single delay and ratio value
-per noise level.
-We demonstrate on two topologies: an IBM heavy-hex $3\times3$ lattice
-with per-bond hardware characterization noise and a rectangular $7\times7$
-lattice with synthetic depolarizing noise.
-Eigenvalue analysis of the composed Pauli transfer matrices confirms that
-in both cases the noise channel is a near-diagonal damping operator
-(off-diagonal power $< 0.1\%$), and the Pauli mixing structure is entirely
-from the gate ($\sim 36\%$ off-diagonal power, independent of $\gamma$).
-Noise acts as a pure amplitude suppression: it delays the wavefront by
-slowing threshold crossing, and the ratio $r_\gamma(v)$ encodes the
-cumulative damping along each propagation path from center to $v$.
-The wavemap connects to the multi-product formula (MPF): the delay field
-$l_\gamma(v)$ is a spatial version of the temporal error, and the
-Lieb-Robinson bound $F_{\rm nl}(t)$ provides a causal ceiling for
-MPF-corrected frontier recovery.
+Existing multi-product formula (MPF) error mitigation for quantum lattice
+simulations operates on the autocorrelation $C(t) = \langle O(t)O(0)\rangle$
+— a single scalar per cycle, compressing the entire space-time evolution into
+one observable.
+We propose instead using the non-identity Pauli weight $n(v,t)$ — the
+probability that the operator has support at site $v$ at cycle $t$ — as a
+richer, space-time observable that directly reveals how noise deforms the
+operator lightcone across the lattice.
+Visually: the noisy wave travels slower, reaches fewer sites, and arrives
+with less amplitude than the noiseless wave.
+This is immediately visible in the $(v,t)$ heatmap without any model assumption.
+
+We introduce the \emph{wavemap} — a spatial portrait of noise effects
+assigning each site a per-noise-level arrival delay $l_\gamma(v)$ and
+cross-entropy loss $\mathcal{L}_\gamma(v) = \sum_t -\ln(n_\gamma/n_{\rm nl})$
+in a delay-adaptive time window.
+These observables are exact at the wavefront (bond dimension $\chi\approx1$,
+no truncation error) — precisely where classical simulation is most faithful
+and where $C(t)$-based MPF is least informative.
+
+Eigenvalue analysis of the composed gate-plus-noise Pauli transfer matrices
+shows that noise is pure amplitude damping ($<0.1\%$ off-diagonal contribution),
+and that noise amplification $\gamma$ is equivalent to rescaling the effective
+Trotter step $\varepsilon_{\rm eff}(\gamma) < \varepsilon$ — unifying
+$\gamma$-MPF and $\varepsilon$-MPF (ergodic amplification) as the same
+extrapolation differently parameterized.
+
+Replacing squared frontier error with cross-entropy loss as the MPF objective,
+subject to the Lieb-Robinson causal constraint $n_{\rm MPF} \leq n_{\rm nl}$,
+we recover 27\% more information than the best individual noisy sample
+on a uniform-noise rectangular lattice.
+On an IBM heavy-hex lattice with heterogeneous hardware noise, the method
+identifies an information-starved regime where the causal constraint is
+already saturated — pointing to calibrated uniform synthetic noise as the
+next required experiment.
 \end{abstract}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Introduction}
 \label{sec:intro}
 
-The operator lightcone describes the causal structure of quantum information
-spreading under local Hamiltonian evolution~\cite{liebrobinson1972}.
-For a local observable $O_c$ initialized at site $c$, the Heisenberg-picture
-operator $O_c(t) = e^{iHt}O_c e^{-iHt}$ acquires support at progressively
-more distant sites as $t$ grows.
-The non-identity Pauli weight $n(v,t)$ — the fraction of the operator
-living on site $v$ at cycle $t$ — is a direct measure of this spreading.
+\subsection{The starting observation}
 
-Classical tensor network simulators can compute $n(v,t)$ for small systems
-via Pauli transfer matrices~\cite{TODO}, enabling quantitative comparison
-between noiseless and noisy dynamics.
-The \emph{frontier} of the spreading wave defines a frontier velocity
-$v_{\rm hop}$ that calibrates both the Hamiltonian and the simulation
-fidelity~\cite{dalberto2026cppsim}.
+Look at Figure~\ref{fig:heatmap}.
+The noiseless wave (left panels) spreads outward from the center site as
+a clean diagonal ridge in the $({\rm site}, {\rm cycle})$ plane,
+advancing at a steady frontier velocity $v_{\rm hop}$.
+The noisy waves ($\gamma=1,2,3$, right panels) tell an immediately visible story:
+the ridge is fainter, arrives later, and reaches fewer sites as noise increases.
+No model is needed to see this — it is plain in the data.
 
-Hardware quantum processors introduce noise channels between gate
-applications. The central question for quantum error mitigation is:
-how does this noise deform the operator spreading?
-If the noise is a simple amplitude suppression (diagonal Pauli transfer matrix),
-it delays the wavefront and damps its amplitude but does not change the
-spatial structure of propagation — a calibration problem.
-If it introduces Pauli mixing (off-diagonal terms), it scrambles the
-propagation pattern — a fundamentally harder problem.
+This observation motivates the central question of this paper:
+\emph{can we quantify, site by site and cycle by cycle, how much information
+the noisy evolution has lost relative to the noiseless reference?}
 
-In this paper we show, via direct eigenvalue analysis of the composed
-gate-plus-noise Pauli transfer matrices, that both IBM hardware noise
-and synthetic depolarizing noise belong to the first category:
-the noise channel is a near-diagonal damping operator, and all
-Pauli mixing is due to the gate.
-This observation motivates a site-centric wavefront analysis that cleanly
-separates the two effects: delay (noise-induced timing shift) and damping
-ratio (noise-induced amplitude suppression).
+\subsection{Why C(t) is not enough}
 
-The resulting \emph{wavemap} assigns each site $v$ a single delay
-$l_\gamma(v)$ and ratio $r_\gamma(v)$ per noise level $\gamma$,
-forming a spatial portrait of noise effects across the lattice.
-We demonstrate this on two topologies and connect the wavemap to the
-Lieb-Robinson-constrained spatial multi-product formula (MPF).
+The standard MPF approach~\cite{mpf-ref} fits the autocorrelation
+$C(t) = \langle Z_c(t) Z_c(0)\rangle$ across noise levels $\gamma$
+and extrapolates to zero noise.
+This is a single scalar per cycle — the entire space-time evolution compressed
+into one number at each $t$.
+Two limitations follow directly:
+\begin{enumerate}
+    \item \textbf{Spatial information is lost}: sites that are strongly affected
+          by noise and sites that are barely affected both contribute to the same
+          scalar $C(t)$. The spatial structure of noise is invisible.
+    \item \textbf{Interior approximations dominate}: $C(t)$ is dominated by
+          contributions from the interior of the lightcone, where the bond
+          dimension $\chi$ is large and belief propagation (BP) is approximate.
+          The regime where the classical simulation is most faithful — the
+          wavefront, where $\chi\approx1$ and BP is exact — contributes least
+          to $C(t)$.
+\end{enumerate}
+
+\subsection{The Pauli weight as a space-time field}
+
+The non-identity Pauli weight $n(v,t)$ resolves both limitations.
+Formally, $n(v,t)$ is the probability that a Pauli string drawn from the
+operator decomposition $O_c(t) = \sum_P c_P(t) P$ has non-identity support
+at site $v$~\cite{TODO}.
+This makes $n(v,t)$ a \emph{probability distribution over the lattice},
+evolving in time as the operator spreads.
+
+Crucially, $n(v,t)$ at the wavefront is computed exactly at any $\chi$:
+frontier sites have $\chi\approx1$ by construction — they carry only nascent
+correlations and are the first to be reached by the wave.
+This is the opposite of $C(t)$: the wavefront is where the simulation is
+most faithful and where noise effects are most cleanly measurable.
+
+\subsection{This paper}
+
+We introduce the \emph{wavemap} — a spatial portrait of noise effects
+built from $n(v,t)$ — and show that information-theoretic fitting of the
+wavemap recovers more of the noiseless operator distribution than standard
+MPF, under a causal constraint enforced by the Lieb-Robinson bound.
+
+Specifically, we:
+\begin{enumerate}
+    \item Define two exact, parameter-free per-site observables:
+          arrival delay $l_\gamma(v)$ and cross-entropy loss $\mathcal{L}_\gamma(v)$
+    \item Show via PTM eigenvalue analysis that noise is pure amplitude damping
+          — it delays and damps the gate-determined wave without redirecting it
+    \item Show that $\gamma$-MPF and $\varepsilon$-MPF are the same extrapolation
+          differently parameterized, explaining why $\varepsilon$-MPF gives
+          better-conditioned coefficients~\cite{robertson2025lmpf}
+    \item Demonstrate that entropy-optimal MPF with the LR constraint recovers
+          27\% more information than the best noisy sample on a uniform-noise lattice
+    \item Identify an information-starved regime (heavy-hex, heterogeneous noise)
+          where the causal constraint is already binding, pointing to the next
+          required experiment: calibrated uniform synthetic noise on the same topology
+\end{enumerate}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Setup}
