@@ -102,10 +102,10 @@ faster rather than slower — a qualitatively distinct signature.
 \includegraphics[width=\columnwidth]{fig_lightcone_heatmap.png}
 \caption{Non-identity Pauli weight $n(v,t)$ per site per cycle for noiseless (NL)
 and three noise levels ($\gamma=1,2,3$) on the heavy-hex $3\times3$ lattice
-(left) and rect $7\times7$ (right), both initialized at the center site.
+(top) and rect $7\times7$ (bottom), both initialized at the center site.
 Color encodes $\log_{10} n(v,t)$; white = below threshold.
 The wavefront advances diagonally in the (space, time) plane at velocity $v_{\rm hop}$.
-Noise suppresses amplitudes, pushing the threshold-crossing later — a uniform
+Noise suppresses amplitudes, pushing the threshold-crossing later, a uniform
 shift of the wavefront, not a change of its spatial pattern.}
 \label{fig:heatmap}
 \end{figure}
@@ -139,7 +139,7 @@ non-trivially at site $v$:
     \label{eq:nvt}
 \end{equation}
 By normalization, $n(v,t) \in [0,1]$ is the probability that a Pauli
-string sampled from the operator distribution acts non-trivially at site $v$.~\cite{TODO}
+string sampled from the operator distribution acts non-trivially at site $v$~\cite{nahum2018operator,Tan2025Operator}.
 It is a probability distribution over the lattice, evolving in time as the
 operator spreads. At the wavefront it is computed exactly at any $\chi$:
 frontier sites carry only nascent correlations and $\chi\approx1$ by
@@ -169,6 +169,27 @@ a spatial portrait of noise effects across the lattice, and the
 space-time trajectory of the frontier $\mathcal{F}(t)$ connects the
 per-site observables to the global propagation dynamics.
 
+Several lines of prior work inform this paper.
+Operator spreading in random unitary circuits~\cite{nahum2018operator,Tan2025Operator}
+established the butterfly velocity and domain-wall width as natural observables
+for wavefront characterization; our work applies analogous ideas to structured
+Hamiltonian evolution with noise amplification.
+Real-time operator evolution in two and three dimensions via sparse Pauli
+dynamics~\cite{Begusic2025RealTime} and Pauli propagation under arbitrary local
+noise~\cite{rudolph2025simulating} provide the simulation framework on which
+CppSim is based.
+Noise characterization from circuit measurements using sparse Pauli-Lindblad
+models~\cite{Hu2025Demonstration} and self-consistent Pauli noise
+learning~\cite{Chen2026Efficient} are complementary approaches that infer noise
+rates by fitting a model; our approach uses the spatial wavefront pattern to
+characterize noise without model assumptions.
+The multi-product formula for error mitigation has been applied to autocorrelation
+functions in tensor network simulations of the heavy-hex
+lattice~\cite{robertson2025lmpf,dalberto2026cppsim}.
+Our work extends these in two directions: replacing the scalar autocorrelation
+with the full space-time Pauli weight field $n(v,t)$, and replacing squared
+error with cross-entropy loss as the MPF objective.
+
 We show via PTM eigenvalue analysis that the noise models studied here are
 pure amplitude damping, leaving the spatial propagation pattern determined
 by the gate.
@@ -196,12 +217,30 @@ We simulate the kicked isotropic Heisenberg model in the Heisenberg picture:
 \end{equation}
 with per-bond coupling $J_{\langle ij\rangle}$ from device characterization
 and Trotter step $\varepsilon = 0.10$.
+Each Trotter cycle applies the bond gates across all color classes in sequence,
+followed by a single kick gate $R_x(2\phi)$ at every site.
 We use CppSim~\cite{dalberto2026cppsim}, a GPU-accelerated belief propagation
 tensor network simulator in which operators are evolved via $16\times16$ real
 Pauli transfer matrices (PTMs), with bond dimension $\chi$ controlled by
 Householder QR truncation at cutoff $\delta$.
 All results use $\varepsilon=0.10$, $\delta=10^{-3}$, output precision $10^{-7}$,
 and threshold $\varepsilon_{\rm th}=10^{-4}$.
+
+Two implementation choices are worth stating explicitly.
+First, the sub-gates within each bond ($G_1\ldots G_4$ and interleaved noise
+channels) are pre-composed into a single $16\times16$ PTM per bond before
+simulation; belief propagation and truncation are applied once per full Trotter
+cycle, after all color classes have been applied.
+This differs from implementations that truncate after each color class or
+sub-gate~\cite{dalberto2026cppsim}, producing slightly faster $\chi$ growth
+per cycle, but the composed and sequential forms are physically equivalent.
+Second, $n(v,t)$ is recorded once per full Trotter cycle, after the kick gate
+fires — it is a snapshot of the operator state at the end of each complete cycle.
+The wavefront and all wavemap observables are defined in terms of these
+end-of-cycle snapshots.
+A hardware experiment or a simulation that measures mid-cycle would observe
+a different wavefront trajectory; our observables are specific to the
+post-kick measurement point.
 
 We study two topologies under two noise models.
 For the IBM heavy-hex $3\times3$ lattice (68 sites, 76 bonds), per-bond
@@ -248,7 +287,10 @@ Off-diagonal fraction = off-diagonal power / total power (averaged over bonds).
 The fraction is constant across $\gamma$ ($\Delta < 0.002$) in both topologies,
 confirming that Pauli mixing is entirely from the gate.
 The 2 negative eigenvalues at $\gamma=2,3$ in heavy-hex are at $\mathrm{Re}=-10^{-5}$,
-numerical precision rather than a structural change.}
+numerical precision rather than a structural change; they are nonetheless
+relevant for the symmetric gauge, where $\sqrt{\lambda}$ must be computed to
+absorb BP messages into site tensors: a negative eigenvalue makes this square
+root imaginary and requires explicit sign handling in float32 arithmetic~\cite{dalberto2026cppsim}.}
 \label{tab:eig}
 \end{table}
 
@@ -256,10 +298,10 @@ numerical precision rather than a structural change.}
 \centering
 \includegraphics[width=0.65\columnwidth]{fig_ptm_eigenvalues.png}
 \caption{Eigenvalue spectra of the composed noisy PTMs for one representative
-heavy-hex bond (left) and one rect $7\times7$ bond (right), across $\gamma=1,2,3$.
+heavy-hex bond (top) and one rect $7\times7$ bond (bottom), across $\gamma=1,2,3$.
 Eigenvalue positions are nearly unchanged across $\gamma$: noise rescales magnitudes
 slightly without rotating eigenvectors.
-The off-diagonal power fraction (36\%) is constant — Pauli mixing is a gate
+The off-diagonal power fraction (36\%) is constant; Pauli mixing is a gate
 property, not a noise property.}
 \label{fig:eig}
 \end{figure}
@@ -290,10 +332,11 @@ For the noise models studied here (pure amplitude damping, Section~\ref{sec:setu
 $n_\gamma(v,t) \leq n_{\rm nl}(v,t)$ at every site and cycle, so $l_\gamma(v) \geq 0$ always.%
 \footnote{Rotation-type noise, with off-diagonal PTM terms injecting weight at
 unvisited sites, can make the noisy wave arrive \emph{before} the noiseless at
-isolated sites, giving $l_\gamma(v) < 0$. In that regime the noiseless frontier
-is no longer the causal ceiling and the wavemap requires a signed delay.
-The Lieb-Robinson bound still holds globally, but site-by-site the ordering
-can be inverted.}
+isolated sites, giving $l_\gamma(v) < 0$. The Lieb-Robinson bound still holds
+for the noiseless evolution, bounding its propagation speed; what can be inverted
+is the site-by-site ordering between noisy and noiseless, since rotation noise
+injects weight independently of the causal structure of the Hamiltonian.
+In that regime the wavemap requires a signed delay.}
 
 The ratio $r_\gamma(v) = n_\gamma(v, t_\gamma(v)) / n_{\rm nl}(v, t_\gamma(v))$
 compares both waves at the moment of noisy arrival.
@@ -323,13 +366,18 @@ distributions coincide, positive when noise suppresses the probability,
 and with window width set by the delay itself so no free parameter is introduced.
 
 The delay field $l_\gamma(v)$, the ratio $r_\gamma(v)$, the entropy loss
-(Figures~\ref{fig:wavemap_delay} and \ref{fig:wavemap_ratio}),
+(Figure~\ref{fig:wavemap}),
 $\mathcal{L}_\gamma(v)$, and the space-time frontier $\mathcal{F}(t)$
 together form the \emph{wavemap}: a spatial portrait of how noise deforms
 the Pauli lightcone, site by site.
 All wavemap observables are exact at any bond dimension $\chi$, since frontier
 sites have $\chi\approx 1$ by construction, and all are causally bounded
 by the Lieb-Robinson structure.
+In the following section we show how these observables can be refined through
+the multi-product formula: fitting the wavemap across noise levels $\gamma$
+and extrapolating toward the noiseless reference, with the Lieb-Robinson bound
+as a causal constraint, yields a spatially-resolved error correction of the
+operator lightcone.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{figure}[p]
@@ -341,14 +389,26 @@ by the Lieb-Robinson structure.
 black = noiseless arrived but noisy did not).
 \textbf{Bottom}: amplitude ratio $r_\gamma(v) = n_\gamma(v,t_\gamma)/n_{\rm nl}(v,t_\gamma)$;
 all values $\leq 1$ confirm the Lieb-Robinson bound.}
-\label{fig:wavemap_delay}
-\label{fig:wavemap_ratio}
+\label{fig:wavemap}
 \end{figure}
 
 
 \newpage
 \section{Results}
 \label{sec:results}
+
+We present results in three stages, each building on the previous.
+First, we characterize the global wavefront: the frontier velocity $v_{\rm hop}$
+and per-site delay distribution $l_\gamma(v)$ establish how noise slows the
+wave and which sites it fails to reach.
+Second, we introduce the cross-entropy loss $\mathcal{L}_\gamma(v)$ as a
+per-site information measure and show how its spatial and per-shell distributions
+reveal the structure of noise across the lattice.
+Third, we apply the multi-product formula to the wavemap in two forms:
+a frontier-position MPF that recovers the noiseless wavefront trajectory,
+and an entropy-optimal MPF that directly minimizes information loss subject
+to the Lieb-Robinson causal constraint, demonstrating measurable information
+recovery on the uniform-noise topology.
 
 \subsection{Frontier velocity}
 \label{sec:vhop}
@@ -394,6 +454,8 @@ PTM eigenvalue spectra at $\gamma=2,3$.}
 
 \subsection{Per-site delay distribution}
 \label{sec:delay_results}
+
+Table~\ref{tab:delay} shows the per-site delay statistics for both topologies.
 
 \begin{table}[h]
 \centering
@@ -476,7 +538,7 @@ across frontier sites on the 4-color lattice — sites at the same BFS distance
 may have been touched by 1, 2, or 3 gate layers depending on their position.
 
 \textbf{Heavy-hex}: $\mu_r \approx 0.72$--$0.83$ with $\sigma_r/\mu_r \approx 0.40$.
-The smaller cv reflects more uniform propagation paths on the degree-2/3 graph.
+The smaller coefficient of variation reflects more uniform propagation paths on the degree-2/3 graph.
 The non-monotone $\gamma$ dependence ($\mu_r$ larger at $\gamma=3$ than $\gamma=2$)
 mirrors the non-monotone delay ($\mu_l$ smaller at $\gamma=3$): fewer sites
 with shorter paths survive in the $\gamma=3$ sample, giving a higher ratio.
@@ -529,10 +591,13 @@ We propose instead minimizing the \emph{cross-entropy loss}:
     \qquad n_{\rm MPF}(v,t) = \sum_i c_i\, n_{\gamma_i}(v,t)
     \label{eq:entropy_mpf}
 \end{equation}
-subject to the Lieb-Robinson constraint $0 \leq n_{\rm MPF}(v,t) \leq n_{\rm nl}(v,t)$
-and normalization $\sum_i c_i = 1$.
-The gradient is $\partial\mathcal{L}/\partial c_k = -\sum_{v,t} n_{\gamma_k}(v,t)/n_{\rm MPF}(v,t)$,
-making this a smooth nonlinear program solved via SLSQP.
+subject to the Lieb-Robinson constraint $0 \leq n_{\rm MPF}(v,t) \leq
+n_{\rm nl}(v,t)$ and normalization $\sum_i c_i = 1$.
+The gradient is $\partial\mathcal{L}/\partial c_k = -\sum_{v,t}
+n_{\gamma_k}(v,t)/n_{\rm MPF}(v,t)$, making this a smooth nonlinear
+program solved via SLSQP.
+Table~\ref{tab:entropy_mpf} summarizes the results; the two topologies
+fall into qualitatively different regimes.
 
 \begin{table}[h]
 \centering
@@ -557,56 +622,30 @@ entropy-optimal solution collapses to the frontier MPF.}
 \label{tab:entropy_mpf}
 \end{table}
 
-The two topologies reveal two distinct information regimes:
-
-\paragraph{Information-rich regime (rect $7\times7$, 49/49 sites reached).}
-The noisy waves cover the full noiseless lightcone.
+In the \emph{information-rich regime} (rect $7\times7$, 49/49 sites reached),
+the noisy waves cover the full noiseless lightcone.
 Entropy-optimal MPF finds coefficients $c \approx [1.32, 0.04, -0.36]$
 that genuinely extrapolate beyond the convex hull of the noisy samples,
 reducing mean entropy loss by 27\% below the best noisy state while
 satisfying $n_{\rm MPF}(v,t) \leq n_{\rm nl}(v,t)$ everywhere.
-This demonstrates that optimizing the correct cost function (cross-entropy loss)
-with the correct physical constraint (Lieb-Robinson bound) produces
-measurable information recovery.
+The per-shell entropy loss (Figure~\ref{fig:mpf_entropy}, Row 3) traces this
+recovery spatially: $\gamma=3$ peaks at shell 3, $\gamma=2$ at shell 4,
+and the entropy-optimal MPF at shell 5, one shell short of the noiseless
+frontier at shell 6, a 17\% residual error.
+The shell variance is large at the frontier shell (heterogeneous propagation
+paths) and collapses in the interior where the wave has saturated.
+Without the LR constraint, the unconstrained optimizer achieves
+$\mu_\mathcal{L} = -0.69$, negative entropy loss meaning $n_{\rm MPF} > n_{\rm nl}$
+at some sites, a causality violation.
+The gap between unconstrained ($-0.69$) and LR-constrained ($+2.68$) entropy loss
+is the information cost of causal consistency.
 
-\paragraph{Information-starved regime (heavy-hex, 21/68 sites reached).}
-Only 31\% of sites are inside the noiseless lightcone at 10 cycles
+In the \emph{information-starved regime} (heavy-hex, 21/68 sites reached),
+only 31\% of sites are inside the noiseless lightcone at 10 cycles
 (Figure~\ref{fig:wavemap_heavyhex}).
 The LR constraint is already saturated by the frontier MPF coefficients $[-1,1,1]$;
 the entropy optimizer finds no room to improve and returns the identical solution.
 The constraint surface is the frontier MPF itself.
-
-\paragraph{The per-shell entropy loss as a wavefront portrait.}
-Figure~\ref{fig:mpf_entropy} (Row 3) reveals a striking pattern:
-the mean entropy loss $\mu_\mathcal{L}(d)$ per BFS shell peaks at the
-\emph{effective frontier distance} of each noise level.
-At shell $d$, the noiseless wave has arrived and grown, while the noisy wave
-has either not yet crossed threshold or just arrived — maximum information gap.
-For the rect $7\times7$ lattice:
-$\gamma=3$ peaks at shell 3, $\gamma=2$ peaks at shell 4, and the
-entropy-optimal MPF peaks at shell 5 — one shell short of the noiseless
-frontier at shell 6, a 17\% residual error in frontier recovery.
-
-The shell variance $\sigma_\mathcal{L}(d)$ (shaded bands) is large at the
-frontier shell — sites at the same BFS distance have heterogeneous propagation
-paths, some more damped than others — and collapses in the interior where
-the wave has fully saturated and all paths have equilibrated.
-
-The per-shell entropy loss plot therefore encodes three quantities simultaneously:
-(i) the effective frontier distance per noise level (peak position),
-(ii) the total information loss at the frontier (peak height),
-and (iii) the MPF recovery quality (how far the MPF peak is displaced toward
-the noiseless peak).
-This is the most information-dense single plot in the wavemap.
-
-\paragraph{The information cost of causality.}
-Without the LR constraint, the unconstrained entropy optimizer achieves
-$\mu_\mathcal{L} = -0.69$ (rect $7\times7$) — negative entropy loss, meaning
-$n_{\rm MPF} > n_{\rm nl}$ at some sites, a violation of the causal bound.
-The gap between unconstrained ($-0.69$) and LR-constrained ($+2.68$) entropy loss
-measures the \emph{information cost of causal consistency}: the price paid
-in entropy recovery for keeping the corrected operator distribution
-physically realizable.
 
 \begin{figure}[p]
 \centering
@@ -684,12 +723,13 @@ A joint $(l_\gamma, r_\gamma)$ distribution is therefore richer than either alon
 
 \paragraph{Survivorship bias and per-shell statistics.}
 The mean delay averaged over all reached sites is biased by which sites the
-noisy wave fails to reach.
-A more informative statistic is the per-frontier-shell delay:
-for each BFS shell at distance $d$, compute $\mu_l(d)$ and $\sigma_l(d)$
-among sites in that shell.
-This removes the survivorship bias and directly traces how delay accumulates
-with propagation distance.
+noisy wave fails to reach — a smaller mean does not imply a faster wave if
+the slow distant sites simply dropped out of the sample.
+The per-shell entropy loss $\mu_\mathcal{L}(d)$ reported in
+Figure~\ref{fig:mpf_entropy} addresses this directly: by grouping sites
+by BFS shell distance $d$ from the center, it removes the survivorship bias
+and traces how information loss accumulates with propagation distance,
+independently of which sites the noisy wave manages to reach.
 
 \paragraph{Noise amplification $\gamma$ as an effective Trotter rescaling.}
 The eigenvalue analysis (Table~\ref{tab:eig}) shows that the noise channel
@@ -703,24 +743,22 @@ $\delta\Lambda(\gamma)$ is a small diagonal correction scaling with $\gamma$.
 This is structurally identical to reducing the Trotter step:
 the ideal gate eigenvalues also scale with $\varepsilon$ as
 $\lambda_i(\varepsilon) \approx \lambda_i(0)\cdot g(\varepsilon)$.
-Increasing $\gamma$ (more noise) is therefore equivalent to decreasing
-$\varepsilon_{\rm eff}$ (slower effective Trotter step):
+Noise acts as a slower effective Trotter step: increasing $\gamma$ reduces
+$\varepsilon_{\rm eff}$, so the wave propagates more slowly.
+Conversely, noise amplification ($\gamma > 1$) corresponds to an even smaller
+$\varepsilon_{\rm eff}$, making the wave slower still — the opposite direction
+from varying $\varepsilon$ directly in $\varepsilon$-MPF, where a larger
+Trotter step makes the wave faster.
 \begin{equation}
     \mathrm{PTM}_{\rm noisy}(\gamma) \approx \mathrm{PTM}_{\rm ideal}(\varepsilon_{\rm eff}(\gamma)),
     \qquad \varepsilon_{\rm eff}(\gamma) < \varepsilon
 \end{equation}
-and extrapolating $\gamma \to 0$ recovers $\varepsilon_{\rm eff} \to \varepsilon$ —
-the ideal gate.
-
-This equivalence unifies $\gamma$-MPF and $\varepsilon$-MPF (ergodic amplification).
-Both extrapolate back to the ideal gate by varying the effective gate strength —
-$\varepsilon$-MPF directly (varying the Trotter step) and $\gamma$-MPF indirectly
-(varying the noise scaling).
-The L-MPF paper~\cite{robertson2025lmpf} observed that $\varepsilon$-MPF gives
-smoother, better-conditioned coefficients than $\gamma$-MPF; our analysis
-provides the reason: $\varepsilon$ enters the PTM eigenvalues directly and
-monotonically, while $\gamma$ enters through the composed noise-gate product,
-introducing bond-dependent corrections that break the uniformity.
+Extrapolating $\gamma \to 0$ recovers $\varepsilon_{\rm eff} \to \varepsilon$,
+the ideal gate. Both $\gamma$-MPF and $\varepsilon$-MPF extrapolate back toward
+the ideal gate, but from opposite directions: $\varepsilon$-MPF varies the gate
+strength directly and monotonically, while $\gamma$-MPF varies it indirectly
+through the composed noise-gate product, introducing bond-dependent corrections
+that reduce conditioning.
 
 The wavemap delay $l_\gamma(v)$ is a spatial, site-resolved measurement of
 this effective rescaling: it records how many extra cycles the noisy wave needs
@@ -753,56 +791,27 @@ the spatial delay and ratio fields encode noise effects on top of a
 fixed gate-determined propagation template.
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Conclusion}
-\label{sec:conclusion}
 
-We have introduced the \emph{wavemap} — a site-centric spatial portrait of
-operator wavefront propagation under noise, assigning each lattice site a
-per-noise-level arrival delay $l_\gamma(v)$ and natural amplitude ratio
-$r_\gamma(v)$.
+\section*{Future Work}
 
-Eigenvalue analysis of the composed gate-plus-noise Pauli transfer matrices
-establishes that both IBM hardware noise and synthetic depolarizing noise are
-pure damping channels at the PTM level: off-diagonal power is $< 0.1\%$ of
-the noise contribution and constant across $\gamma$, with all Pauli mixing
-coming from the gate.
-This validates the wavemap interpretation: delays reflect threshold-crossing
-timing under amplitude suppression, and ratios encode cumulative path-dependent
-damping.
-
-The wavemap is:
-(1) exact at any bond dimension (frontier sites have $\chi\approx1$);
-(2) parameter-free (each site defines its own comparison point);
-(3) causally bounded ($l_\gamma \geq 0$, $r_\gamma \leq 1$ guaranteed);
-(4) simultaneously a noise diagnostic, MPF input, memory allocation schedule,
-    and BP trust boundary indicator.
-
-The cheapest part of the simulation — the frontier — carries the richest
-information about what the expensive part needs to do.
-
-% ─────────────────────────────────────────────────────────────────────────────
-\section*{Acknowledgments}
-\TODO{Acknowledgments}
-
-% ─────────────────────────────────────────────────────────────────────────────
-
-\section*{Open Questions}
-
-\begin{enumerate}
-    \item \textbf{Per-shell delay statistics}: compute $\mu_l(d)$, $\sigma_l(d)$
-          per BFS shell to remove survivorship bias and trace delay accumulation.
-    \item \textbf{Path-length inversion}: can per-bond damping rates be
-          recovered from $\{r_\gamma(v)\}$ across multiple center sites?
-    \item \textbf{Longer cycles}: does the wavemap change after the wave
-          reflects from the boundary? Does $r_\gamma(v)$ saturate?
-    \item \textbf{Chi independence}: verify that $l_\gamma(v)$ and $r_\gamma(v)$
-          are chi-independent (they should be, since frontier has $\chi=1$ exactly).
-    \item \textbf{3D topologies}: lightcone-aware allocation saves $>10\times$
-          in 3D; the wavemap provides the allocation schedule.
-    \item \textbf{Hardware measurement}: $n(v,t)$ is measurable on a QPU
-          via randomized benchmarking. The wavemap would then characterize
-          hardware noise directly from Hamiltonian dynamics.
-\end{enumerate}
+Several directions remain open.
+The wavemap observables $l_\gamma(v)$ and $\mathcal{L}_\gamma(v)$ depend on
+the choice of center site; a systematic study across multiple centers would
+establish whether the per-shell distributions are universal properties of the
+topology and noise model, or depend on the initialization point.
+The missing experiment is calibrated uniform synthetic noise on the heavy-hex
+topology, which would isolate whether the information-starved regime is caused
+by the sparse lightcone coverage or by the heterogeneous per-bond hardware noise.
+Longer simulations (20+ cycles) would reveal how the wavemap evolves after the
+wavefront reflects from the lattice boundary.
+On the simulation side, the arrival time $t_{\rm nl}(v)$ provides a per-site
+lightcone-aware memory allocation schedule that could reduce tensor network
+memory by $3$--$13\times$; and the frontier velocity $v_{\rm hop}$ predicts
+the onset of belief propagation approximation error via $t_{\rm loop} = g/(2v_{\rm hop})$,
+without requiring an expensive chi sweep.
+Finally, $n(v,t)$ is measurable on a quantum processor via randomized
+benchmarking or Pauli noise tomography, which would allow the wavemap to
+characterize hardware noise directly from Hamiltonian dynamics.
 
 \bibliographystyle{unsrt}
 \bibliography{frontier_mpf}
