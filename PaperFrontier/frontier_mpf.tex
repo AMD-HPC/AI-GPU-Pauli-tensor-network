@@ -75,7 +75,7 @@ making the frontier appear faster at affected sites.
 
 Introducing cross-entropy loss as the MPF objective, subject to the
 Lieb-Robinson causal constraint $n_{\rm MPF} \leq n_{\rm nl}$, we
-recover 27\% more information than the best individual noisy sample on
+recover $\sim$25\% more information than the best individual noisy sample on
 a uniform-noise rectangular lattice.  On an IBM heavy-hex lattice with
 heterogeneous hardware noise, the method identifies an
 information-starved regime where the causal constraint is already
@@ -198,7 +198,7 @@ cannot propagate faster than a finite velocity in any local lattice Hamiltonian,
 implying $n_\gamma(v,t) \leq n_{\rm nl}(v,t)$ for pure damping noise —
 the noiseless evolution is the causal ceiling.
 Entropy-optimal MPF with this constraint $n_{\rm MPF} \leq n_{\rm nl}$
-recovers 27\% more information than the best noisy sample on a uniform-noise
+recovers $\sim$25\% more information than the best noisy sample on a uniform-noise
 rectangular lattice.
 On the IBM heavy-hex lattice with heterogeneous hardware noise, the method
 identifies an information-starved regime where the causal constraint is
@@ -607,7 +607,7 @@ fall into qualitatively different regimes.
 Topology & Noise & Sites (NL/total) & Best noisy $\mu_\mathcal{L}$
          & Frontier MPF & Entropy MPF & Improvement \\
 \midrule
-Rect $7\times7$      & Uniform dep.  & 49/49 & 3.678 & 3.911 (worse) & 2.677 & $-27\%$ \\
+Rect $7\times7$      & Uniform dep.  & 49/49 & 3.680 & 3.911 (worse) & 2.783 & $-24\%$ \\
 Heavy-hex $3\times3$ & Hardware PTMs & 21/68 & 7.962 & 9.532 (worse) & 9.532 & $0\%$ \\
 Heavy-hex $3\times3$ & Uniform dep.  & 21/68 & 1.058 & 1.058         & 0.538 & $-49\%$ \\
 \bottomrule
@@ -626,7 +626,7 @@ The two topologies under two noise conditions reveal the cause of the two regime
 In the \emph{information-rich regime}, the noise is uniform and the noisy waves
 cover sufficient sites for the entropy optimizer to find room to extrapolate.
 Rect $7\times7$ with uniform depolarizing noise (49/49 sites, $\mu_\mathcal{L}=3.678$):
-entropy MPF finds $c \approx [1.32, 0.04, -0.36]$, reducing entropy loss by 27\%.
+entropy MPF finds $c \approx [1.22, 0.23, -0.45]$, reducing entropy loss by 24\%.
 Heavy-hex $3\times3$ with the same uniform depolarizing noise (21/68 sites,
 $\mu_\mathcal{L}=1.058$): entropy MPF finds $c \approx [1.31, 0.24, -0.55]$,
 reducing entropy loss by 49\% (Figure~\ref{fig:mpf_entropy_dep}).
