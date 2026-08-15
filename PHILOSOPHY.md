@@ -199,6 +199,23 @@ randomized benchmarking, which would allow the wavemap to characterize
 hardware noise directly from Hamiltonian dynamics — closing the loop between
 classical simulation and quantum experiment.
 
+**V2: The reflected lightcone.**
+When the wavefront reaches the lattice boundary and reflects, a second frontier
+forms moving inward. Two fronts coexist: the original outgoing wave and the
+reflected inward wave, with noise acting on both independently.
+This has not been investigated. The reflected wave will require:
+- Larger chi: the inward wave interferes with the bulk interior where chi has
+  already saturated, requiring higher bond dimension to represent the superposition
+- More BP sweeps: the loop corrections become more important as the reflected wave
+  re-traverses the same bonds from the opposite direction
+- A new wavemap definition: the frontier is no longer simply the maximum-distance
+  newly-reached sites; there are now two fronts at different distances
+
+The information loss observable becomes richer: does the bulk entropy loss grow
+linearly in time after reflection, or does the returning wave partially cancel
+the noise-induced decoherence in the interior?
+This is the natural V2 of the lightcone paper — same tools, new physics.
+
 **Noise classification via machine learning — the next paper.**
 CppSim can generate a labeled training dataset at scale:
 sweep over a library of noise models (pure damping, rotation, heterogeneous
