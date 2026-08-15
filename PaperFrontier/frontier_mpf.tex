@@ -816,9 +816,6 @@ The wavemap observables $l_\gamma(v)$ and $\mathcal{L}_\gamma(v)$ depend on
 the choice of center site; a systematic study across multiple centers would
 establish whether the per-shell distributions are universal properties of the
 topology and noise model, or depend on the initialization point.
-The missing experiment is calibrated uniform synthetic noise on the heavy-hex
-topology, which would isolate whether the information-starved regime is caused
-by the sparse lightcone coverage or by the heterogeneous per-bond hardware noise.
 Longer simulations (20+ cycles) would reveal how the wavemap evolves after the
 wavefront reflects from the lattice boundary.
 On the simulation side, the arrival time $t_{\rm nl}(v)$ provides a per-site
@@ -826,9 +823,28 @@ lightcone-aware memory allocation schedule that could reduce tensor network
 memory by $3$--$13\times$; and the frontier velocity $v_{\rm hop}$ predicts
 the onset of belief propagation approximation error via $t_{\rm loop} = g/(2v_{\rm hop})$,
 without requiring an expensive chi sweep.
+
+The most promising longer-term direction is noise classification via machine
+learning.
+CppSim can generate a labeled training dataset at scale: sweep over a library
+of noise models (pure damping, rotation, heterogeneous per-bond, correlated
+errors), compute the wavemap for each, and label each simulation with the
+noise type and per-bond parameters.
+A classifier trained on this dataset learns the map from wavemap signatures
+to noise types; a graph neural network operating on the lattice graph is the
+natural architecture, as the wavemap is itself a spatial field over the graph.
+Deployed on a quantum processor: measure $n(v,t)$ via randomized benchmarking,
+compute the wavemap, run the classifier — noise type and severity identified
+without further simulation or analytical inversion.
+CppSim in this role is a noise characterization laboratory, generating the
+ground truth that no experiment alone can provide.
+The wavemap observables defined here are the features; the frontier paper is
+the foundation.
+
 Finally, $n(v,t)$ is measurable on a quantum processor via randomized
-benchmarking or Pauli noise tomography, which would allow the wavemap to
-characterize hardware noise directly from Hamiltonian dynamics.
+benchmarking or Pauli noise tomography, which would allow direct experimental
+validation of the wavemap on hardware and close the loop between classical
+simulation and quantum experiment.
 
 \bibliographystyle{unsrt}
 \bibliography{frontier_mpf}

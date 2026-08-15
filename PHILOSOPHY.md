@@ -182,9 +182,11 @@ generations without modification. This is a direct consequence of the
 
 ## 8. What comes next
 
-The missing experiment: calibrated uniform synthetic noise on the heavy-hex
-topology, to isolate whether the information-starved regime is caused by
-sparse lightcone coverage or by heterogeneous per-bond hardware noise.
+The control experiment (calibrated uniform synthetic noise on the heavy-hex
+topology) has confirmed that the information-starved regime is caused by
+per-bond PTM heterogeneity, not sparse lightcone coverage.
+Under uniform noise, the same topology becomes information-rich and entropy
+MPF recovers 49% more information than the best noisy sample.
 
 Longer simulations (20+ cycles) to observe the wavemap after boundary
 reflection.
@@ -192,7 +194,26 @@ reflection.
 3D topologies: the lightcone-aware allocation saves >10× in 3D, making
 previously infeasible simulations accessible.
 
-Hardware measurement: $n(v,t)$ is measurable on a quantum processor via
+Hardware measurement: n(v,t) is measurable on a quantum processor via
 randomized benchmarking, which would allow the wavemap to characterize
 hardware noise directly from Hamiltonian dynamics — closing the loop between
 classical simulation and quantum experiment.
+
+**Noise classification via machine learning — the next paper.**
+CppSim can generate a labeled training dataset at scale:
+sweep over a library of noise models (pure damping, rotation, heterogeneous
+per-bond, correlated errors, mixed), compute the wavemap (l_gamma(v),
+L_gamma(v)) for each, and label each simulation with the noise type and
+per-bond parameters.
+A classifier trained on this dataset — a graph neural network operating
+on the lattice graph is the natural architecture — learns the map from
+wavemap signatures to noise types.
+Deployed on hardware: measure n(v,t) via randomized benchmarking, compute
+the wavemap, run the classifier.
+Noise type identified without any further simulation or analytical inversion.
+
+CppSim becomes a noise characterization laboratory — generating ground truth
+that no experiment alone can provide.
+This is the path from simulation to tool to instrument to diagnostic:
+the wavemap observables defined in the frontier paper are the features;
+the classifier is the model; the QPU measurement is the deployment.
