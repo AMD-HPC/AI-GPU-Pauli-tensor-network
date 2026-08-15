@@ -602,63 +602,80 @@ fall into qualitatively different regimes.
 \begin{table}[h]
 \centering
 \small
-\begin{tabular}{l r rr rr}
+\begin{tabular}{l l r rr rr}
 \toprule
-Topology & Sites (NL/total) & Best noisy $\mu_\mathcal{L}$
+Topology & Noise & Sites (NL/total) & Best noisy $\mu_\mathcal{L}$
          & Frontier MPF & Entropy MPF & Improvement \\
 \midrule
-Rect $7\times7$      & 49/49 & 3.678 & 3.911 (worse) & 2.677 & $-27\%$ \\
-Heavy-hex $3\times3$ & 21/68 & 7.962 & 9.532 (worse) & 9.532 & $0\%$ \\
+Rect $7\times7$      & Uniform dep.  & 49/49 & 3.678 & 3.911 (worse) & 2.677 & $-27\%$ \\
+Heavy-hex $3\times3$ & Hardware PTMs & 21/68 & 7.962 & 9.532 (worse) & 9.532 & $0\%$ \\
+Heavy-hex $3\times3$ & Uniform dep.  & 21/68 & 1.058 & 1.058         & 0.538 & $-49\%$ \\
 \bottomrule
 \end{tabular}
-\caption{Mean per-site entropy loss $\mu_\mathcal{L}$ for noisy states, frontier MPF,
-and LR-constrained entropy-optimal MPF.
-Frontier MPF (optimizing squared frontier distance) is worse than the best noisy
-state on both topologies.
-Entropy MPF beats the best noisy state by 27\% on rect $7\times7$ under the full
-Lieb-Robinson constraint.
-Heavy-hex shows no improvement — the LR constraint is already binding and the
-entropy-optimal solution collapses to the frontier MPF.}
+\caption{Mean per-site entropy loss $\mu_\mathcal{L}$.
+The third row — heavy-hex with uniform synthetic depolarizing noise — is the
+control experiment that isolates the cause of the information-starved regime.
+Under uniform noise the heavy-hex topology becomes information-rich (49\%
+improvement), proving that the information-starved result with hardware noise
+is caused by per-bond PTM heterogeneity, not by sparse lightcone coverage.}
 \label{tab:entropy_mpf}
 \end{table}
 
-In the \emph{information-rich regime} (rect $7\times7$, 49/49 sites reached),
-the noisy waves cover the full noiseless lightcone.
-Entropy-optimal MPF finds coefficients $c \approx [1.32, 0.04, -0.36]$
-that genuinely extrapolate beyond the convex hull of the noisy samples,
-reducing mean entropy loss by 27\% below the best noisy state while
-satisfying $n_{\rm MPF}(v,t) \leq n_{\rm nl}(v,t)$ everywhere.
-The per-shell entropy loss (Figure~\ref{fig:mpf_entropy}, Row 3) traces this
-recovery spatially: $\gamma=3$ peaks at shell 3, $\gamma=2$ at shell 4,
-and the entropy-optimal MPF at shell 5, one shell short of the noiseless
-frontier at shell 6, a 17\% residual error.
-The shell variance is large at the frontier shell (heterogeneous propagation
-paths) and collapses in the interior where the wave has saturated.
+The two topologies under two noise conditions reveal the cause of the two regimes.
+
+In the \emph{information-rich regime}, the noise is uniform and the noisy waves
+cover sufficient sites for the entropy optimizer to find room to extrapolate.
+Rect $7\times7$ with uniform depolarizing noise (49/49 sites, $\mu_\mathcal{L}=3.678$):
+entropy MPF finds $c \approx [1.32, 0.04, -0.36]$, reducing entropy loss by 27\%.
+Heavy-hex $3\times3$ with the same uniform depolarizing noise (21/68 sites,
+$\mu_\mathcal{L}=1.058$): entropy MPF finds $c \approx [1.31, 0.24, -0.55]$,
+reducing entropy loss by 49\% (Figure~\ref{fig:mpf_entropy_dep}).
+The per-shell entropy loss shows cleanly separated $\gamma=1,2,3$ curves with
+monotone ordering — the same qualitative pattern as rect $7\times7$.
+This confirms that the heavy-hex topology is not inherently information-starved:
+21/68 sites is enough when the noise is uniform.
+
+In the \emph{information-starved regime} (heavy-hex with hardware PTMs,
+21/68 sites, $\mu_\mathcal{L}=7.962$), the LR constraint is already saturated
+by the frontier MPF coefficients $[-1,1,1]$; the entropy optimizer finds no room
+to improve.
+The hardware PTMs are heterogeneous per bond — different rotation angles and
+damping rates on each of the 76 bonds — creating site-to-site entropy loss
+variation that the three noisy samples cannot span.
+The control experiment (uniform noise, same topology) resolves the ambiguity:
+\emph{the information-starved regime is caused by hardware noise heterogeneity,
+not by sparse lightcone coverage.}
+
 Without the LR constraint, the unconstrained optimizer achieves
-$\mu_\mathcal{L} = -0.69$, negative entropy loss meaning $n_{\rm MPF} > n_{\rm nl}$
-at some sites, a causality violation.
+$\mu_\mathcal{L} = -0.69$ (rect $7\times7$), a causality violation.
 The gap between unconstrained ($-0.69$) and LR-constrained ($+2.68$) entropy loss
 is the information cost of causal consistency.
-
-In the \emph{information-starved regime} (heavy-hex, 21/68 sites reached),
-only 31\% of sites are inside the noiseless lightcone at 10 cycles
-(Figure~\ref{fig:wavemap_heavyhex}).
-The LR constraint is already saturated by the frontier MPF coefficients $[-1,1,1]$;
-the entropy optimizer finds no room to improve and returns the identical solution.
-The constraint surface is the frontier MPF itself.
 
 \begin{figure}[p]
 \centering
 \includegraphics[width=\textwidth]{fig_mpf_entropy_rect7x7.png}
-\caption{Entropy loss wavemap for rect $7\times7$.
+\caption{Entropy loss wavemap — rect $7\times7$, uniform depolarizing noise.
 Row 1: spatial map of $\mathcal{L}(v)$ per site for $\gamma=1,2,3$, frontier MPF,
-and entropy-optimal MPF (purple) — the entropy MPF map is visibly darker
-(lower loss) than any individual noisy state.
-Row 2: global cross-entropy loss $L(t)$ per cycle — entropy MPF (purple) sits
-below all noisy curves throughout.
-Row 3: mean $\pm\sigma$ of $\mathcal{L}(v)$ per BFS shell — entropy MPF
-achieves lower loss at every shell distance.}
+and entropy-optimal MPF (purple).
+Row 2: global cross-entropy loss $L(t)$ per cycle.
+Row 3: mean $\pm\sigma$ of $\mathcal{L}(v)$ per BFS shell — cleanly separated
+$\gamma$ curves with monotone ordering; entropy MPF sits below all noisy curves.}
 \label{fig:mpf_entropy}
+\end{figure}
+
+\begin{figure}[p]
+\centering
+\includegraphics[width=\textwidth]{fig_mpf_entropy_heavyhex_dep.png}
+\caption{Entropy loss wavemap — heavy-hex $3\times3$, uniform depolarizing noise
+(control experiment).
+Same layout as the rect $7\times7$ figure.
+Despite only 21/68 sites inside the noiseless lightcone, the uniform noise
+produces cleanly separated per-shell entropy loss curves (monotone ordering)
+and 49\% entropy recovery under the LR constraint ($\mu_\mathcal{L}: 1.058 \to 0.538$).
+Comparing with the hardware noise result (Figure~\ref{fig:wavemap_heavyhex})
+isolates the cause: per-bond PTM heterogeneity, not sparse lightcone coverage,
+is responsible for the information-starved regime.}
+\label{fig:mpf_entropy_dep}
 \end{figure}
 
 \begin{figure}[p]

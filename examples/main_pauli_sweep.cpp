@@ -34,7 +34,20 @@
 #include "trotter.hpp"
 
 // ── Graph + PTM selection ─────────────────────────────────────────────────────
-#ifdef GRAPH_rect_7x7
+#ifdef GRAPH_heavyhex_dep
+  // Heavy-hex with UNIFORM synthetic depolarizing noise (p=0.01 per bond)
+  // Isolates topology effect from hardware noise heterogeneity
+  #include "heavyhex_ideal_kick_eps010_data.hpp"
+  #include "heavyhex_dep_eps010_data.hpp"
+  #define GRID_TAG   "heavy_hex_3x3_dep"
+  #define GRID_CLASS FlatHeavyHexGrid
+  #define N_COLORS   3
+  static PtmFn s_ptm_nl = [](int b)->const float*{ return HEAVY_HEX_3x3_IDEAL_KICK_EPS010[b]; };
+  static PtmFn s_ptm_n1 = [](int b)->const float*{ return HEAVY_HEX_3x3_DEP_IDEAL_KICK_EPS010_GAMMA1_0[b]; };
+  static PtmFn s_ptm_n2 = [](int b)->const float*{ return HEAVY_HEX_3x3_DEP_IDEAL_KICK_EPS010_GAMMA2_0[b]; };
+  static PtmFn s_ptm_n3 = [](int b)->const float*{ return HEAVY_HEX_3x3_DEP_IDEAL_KICK_EPS010_GAMMA3_0[b]; };
+  static const float* s_site_ptm = HEAVY_HEX_3x3_DEP_IDEAL_KICK_EPS010_SITE_PTM;
+#elif defined(GRAPH_rect_7x7)
   #include "rect_7x7.hpp"
   #include "rect_7x7_ideal_kick_eps010_data.hpp"
   #include "rect_7x7_noisy_eps010_gamma1_data.hpp"
@@ -49,6 +62,7 @@
   static PtmFn s_ptm_n3 = [](int b)->const float*{ return RECT_7x7_IDEAL_KICK_EPS010_GAMMA3_GAMMA3_0[b]; };
   static const float* s_site_ptm = RECT_7x7_IDEAL_KICK_EPS010_SITE_PTM;
 #else
+  // Default: heavy-hex with hardware noise PTMs
   #include "heavyhex_ideal_kick_eps010_data.hpp"
   #include "heavyhex_noisy_eps010_gamma1_data.hpp"
   #include "heavyhex_noisy_eps010_gamma2_data.hpp"
