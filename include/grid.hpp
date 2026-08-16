@@ -278,6 +278,102 @@ public:
         return (size_t)n_bonds * 2 * chi_max * chi_max * sizeof(Scalar);
     }
 
+    /* ── Lightcone allocation ───────────────────────────────────────────
+     *
+     * Binary white/black allocation:
+     *   inside  lightcone → chi_max  (full allocation)
+     *   outside lightcone → 1        (identity, exact)
+     *
+     * The lightcone boundary is defined by the Lieb-Robinson (or measured)
+     * frontier speed v_hop: site v is inside if d(v, center) <= v_hop * n_steps.
+     *
+     * Usage:
+     *   auto dist = grid.bfs(center);
+     *   grid.apply_lightcone(dist, n_steps, v_hop);   // modifies bond.chi_max
+     *   printf("Memory: %.1f MB\n", grid.lightcone_memory_mb(dist, n_steps, v_hop));
+     * ─────────────────────────────────────────────────────────────────── */
+
+    // BFS distances from center site (-1 = center not in graph)
+    std::vector<int> bfs(int center) const {
+        std::vector<int> dist(n_sites, -1);
+        if (center < 0 || center >= n_sites) return dist;
+        dist[center] = 0;
+        std::vector<int> queue;
+        queue.reserve(n_sites);
+        queue.push_back(center);
+        for (int qi = 0; qi < (int)queue.size(); qi++) {
+            int v = queue[qi];
+            for (auto& b : bonds) {
+                int u = -1;
+                if (b.site_a == v) u = b.site_b;
+                else if (b.site_b == v) u = b.site_a;
+                if (u >= 0 && dist[u] < 0) {
+                    dist[u] = dist[v] + 1;
+                    queue.push_back(u);
+                }
+            }
+        }
+        return dist;
+    }
+
+    // Is site v inside the lightcone at cycle n_steps with speed v_hop?
+    static bool in_lightcone(int dist_v, int n_steps, float v_hop) {
+        if (dist_v < 0) return false;   // unreachable
+        return dist_v <= (int)(v_hop * n_steps);
+    }
+
+    // Apply lightcone allocation: set bond.chi_max per bond.
+    // A bond is "inside" if BOTH endpoints are inside the lightcone.
+    // Call this after grid construction, before building the state tensors.
+    // center=-1 or v_hop<=0: no-op (all bonds keep chi_max).
+    void apply_lightcone(int center, int n_steps, float v_hop) {
+        if (center < 0 || v_hop <= 0.0f) return;
+        auto dist = bfs(center);
+        for (auto& b : bonds) {
+            bool a_in = in_lightcone(dist[b.site_a], n_steps, v_hop);
+            bool b_in = in_lightcone(dist[b.site_b], n_steps, v_hop);
+            // Bond chi_max: full only if both endpoints inside lightcone
+            b.chi = (a_in && b_in) ? chi_max : 1;
+        }
+        // Report
+        int n_full = 0;
+        for (auto& b : bonds) if (b.chi == chi_max) n_full++;
+        printf("[Lightcone] center=%d n_steps=%d v_hop=%.4f: "
+               "%d/%d bonds at chi_max=%d, %d at chi=1\n",
+               center, n_steps, v_hop,
+               n_full, n_bonds, chi_max, n_bonds - n_full);
+    }
+
+    // Memory estimate with lightcone allocation (MB)
+    // Uses BFS distances already computed, or recomputes from center.
+    float lightcone_memory_mb(int center, int n_steps, float v_hop) const {
+        size_t bytes = 0;
+        if (center < 0 || v_hop <= 0.0f) {
+            // Full allocation
+            bytes = total_tensor_bytes() + total_message_bytes();
+        } else {
+            auto dist = bfs(center);
+            // Site tensors: chi_max inside, 1 outside
+            for (auto& s : sites) {
+                bool inside = in_lightcone(dist[s.id], n_steps, v_hop);
+                int chi = inside ? chi_max : 1;
+                // tensor size = chi^degree * D
+                size_t sz = D;
+                for (int d=0; d<MAX_DEGREE; d++)
+                    if (s.bond_id[d] >= 0) sz *= chi;
+                bytes += sz * sizeof(Scalar);
+            }
+            // Bond messages: chi_max^2 inside, 1 outside
+            for (auto& b : bonds) {
+                bool a_in = in_lightcone(dist[b.site_a], n_steps, v_hop);
+                bool b_in = in_lightcone(dist[b.site_b], n_steps, v_hop);
+                int chi = (a_in && b_in) ? chi_max : 1;
+                bytes += 2 * (size_t)chi * chi * sizeof(Scalar);
+            }
+        }
+        return (float)bytes / 1e6f;
+    }
+
     /* ── Print utilities ─────────────────────────────────────────────── */
     void print() const {
         printf("Grid %dx%d: %d sites, %d bonds, chi_max=%d\n",
