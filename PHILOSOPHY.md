@@ -1,6 +1,7 @@
-# CppSim: Physics to Compute
+# AI-GPU-Pauli-tensor-network (agp-tns): Physics to Compute
 
 *A design philosophy and scientific context document.*
+*Formerly known as CppSim.*
 
 ---
 

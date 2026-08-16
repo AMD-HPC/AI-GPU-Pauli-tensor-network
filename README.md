@@ -1,8 +1,11 @@
-# CppSim — GPU Tensor Network Simulator for Quantum Dynamics
+# AI-GPU-Pauli-tensor-network (agp-tns)
 
-High-performance C++/HIP tensor network simulator for real-time quantum dynamics
-on AMD GPUs. Implements operator evolution in the Heisenberg picture using Pauli
-transfer matrices (PTMs) and belief propagation (BP) on the Bethe lattice.
+AI-assisted, GPU-direct tensor network simulator for real-time quantum dynamics
+on AMD GPUs, using the Pauli transfer matrix (PTM) basis throughout.
+Implements operator evolution in the Heisenberg picture with belief propagation (BP)
+on the Bethe lattice, designed on the philosophy of Physics to Compute.
+
+*Formerly known as CppSim.*
 
 ## Papers
 
