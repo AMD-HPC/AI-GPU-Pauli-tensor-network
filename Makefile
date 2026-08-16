@@ -198,7 +198,8 @@ test_rect7x7: test/test_rect7x7.cpp $(HEADERS) \
 	@echo "Built test/$@"
 
 test_lightcone_alloc: test/test_lightcone_alloc.cpp $(HEADERS) \
-	include/heavyhex.hpp include/rect_7x7.hpp
+	include/heavyhex.hpp include/heavyhex_physics.hpp \
+	include/heavyhex_ideal_kick_eps010_data.hpp include/rect_7x7.hpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DPHYS_DIM=4 -o test/$@ test/$@.cpp $(LIBS)
 	@echo "Built test/$@"
 

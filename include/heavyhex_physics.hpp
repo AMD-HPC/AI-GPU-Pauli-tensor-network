@@ -115,13 +115,15 @@ struct HeavyHexState {
         psi.resize(n_sites, nullptr);
         messages.resize(2*n_bonds, nullptr);
 
+        // Use per-bond chi (set by apply_lightcone, or chi_max if no lightcone).
+        // Sites outside the lightcone have all bonds at chi=1 -> tensor_size=D (exact).
         for (auto& site : g.sites) {
-            size_t sz = (size_t)site.tensor_size_max(chi_max)*sizeof(Scalar);
+            size_t sz = (size_t)site.tensor_size(g.bonds)*sizeof(Scalar);
             HIP_CHECK(hipMalloc(&psi[site.id], sz));
             HIP_CHECK(hipMemset(psi[site.id], 0, sz));
         }
         for (auto& bond : g.bonds) {
-            size_t sz = (size_t)chi_max*chi_max*sizeof(Scalar);
+            size_t sz = (size_t)bond.chi*bond.chi*sizeof(Scalar);
             HIP_CHECK(hipMalloc(&messages[bond.msg_from_a()], sz));
             HIP_CHECK(hipMemset(messages[bond.msg_from_a()], 0, sz));
             HIP_CHECK(hipMalloc(&messages[bond.msg_from_b()], sz));

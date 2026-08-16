@@ -18,7 +18,9 @@
 
 #include "grid.hpp"
 #include "heavyhex.hpp"
+#include "heavyhex_physics.hpp"
 #include "rect_7x7.hpp"
+#include "heavyhex_ideal_kick_eps010_data.hpp"
 #include <cstdio>
 #include <vector>
 #include <algorithm>
@@ -172,6 +174,50 @@ void test_no_center() {
     printf("  apply_lightcone(center=-1): no-op confirmed\n");
 }
 
+// ── GPU state allocation test ─────────────────────────────────────────────────
+
+void test_state_allocation() {
+    printf("\n=== HeavyHexState: GPU allocation respects lightcone ===\n");
+    int chi_max = 70, center = 13, n_steps = 10;
+    float v_hop = 0.376f;
+
+    // Full allocation — uses tensor_size_max(chi_max) since no lightcone applied
+    // bond.chi starts at 1 (runtime value); full allocation always uses chi_max
+    FlatHeavyHexGrid g_full(chi_max);
+    HeavyHexState s_full(g_full);
+    size_t bytes_full = 0;
+    for (auto& site : g_full.sites)
+        bytes_full += (size_t)site.tensor_size_max(chi_max) * sizeof(Scalar);
+    for (int i = 0; i < g_full.n_bonds; i++)
+        bytes_full += 2 * (size_t)chi_max * chi_max * sizeof(Scalar);
+    printf("  Full allocation (GPU actual):  %.2f MB\n", bytes_full / 1e6f);
+
+    // Lightcone allocation
+    FlatHeavyHexGrid g_lc(chi_max);
+    g_lc.apply_lightcone(center, n_steps, v_hop);
+    HeavyHexState s_lc(g_lc);
+    size_t bytes_lc = 0;
+    for (auto& site : g_lc.sites)
+        bytes_lc += (size_t)site.tensor_size(g_lc.bonds) * sizeof(Scalar);
+    for (auto& bond : g_lc.bonds)
+        bytes_lc += 2 * (size_t)bond.chi * bond.chi * sizeof(Scalar);
+    printf("  Lightcone allocation (GPU):    %.2f MB  (%.0f%% of full)\n",
+           bytes_lc / 1e6f, 100.0f * bytes_lc / bytes_full);
+
+    CHECK(bytes_lc < bytes_full, "lightcone GPU allocation < full");
+    float saving = 1.0f - (float)bytes_lc / bytes_full;
+    CHECK(saving > 0.5f, "saving > 50% for heavy-hex 10 cycles");
+    printf("  Saving: %.0f%%\n", 100.0f * saving);
+
+    // Verify estimate matches actual
+    float estimate = g_lc.lightcone_memory_mb(center, n_steps, v_hop);
+    float actual   = bytes_lc / 1e6f;
+    float err      = fabsf(estimate - actual) / actual;
+    printf("  Estimate vs actual: %.2f vs %.2f MB  (err=%.1f%%)\n",
+           estimate, actual, 100.0f * err);
+    CHECK(err < 0.05f, "memory estimate matches actual allocation within 5%");
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main() {
@@ -185,6 +231,7 @@ int main() {
     test_rect7x7_bfs();
     test_rect7x7_memory();
     test_no_center();
+    test_state_allocation();
 
     printf("\n══════════════════════════════════════════════\n");
     printf("  Results: %d PASS  %d FAIL\n", n_pass, n_fail);
