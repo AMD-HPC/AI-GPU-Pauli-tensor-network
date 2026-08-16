@@ -87,7 +87,7 @@ struct FlatRect7x7Grid : public Grid {
 private:
     void _add_bond(int bid, int u, int v, int color) {
         Bond b;
-        b.id = bid; b.chi = 1;
+        b.id = bid; b.chi = 1; b.chi_alloc = chi_max;
         b.site_a = u; b.site_b = v;
 
         // Assign to site u

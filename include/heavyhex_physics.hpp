@@ -115,15 +115,20 @@ struct HeavyHexState {
         psi.resize(n_sites, nullptr);
         messages.resize(2*n_bonds, nullptr);
 
-        // Use per-bond chi (set by apply_lightcone, or chi_max if no lightcone).
-        // Sites outside the lightcone have all bonds at chi=1 -> tensor_size=D (exact).
+        // Allocate using chi_alloc (set by apply_lightcone, or chi_max by default).
+        // chi_alloc is fixed at construction; chi (runtime) grows during simulation.
+        // Sites outside the lightcone have chi_alloc=1 on all bonds -> tiny allocation.
         for (auto& site : g.sites) {
-            size_t sz = (size_t)site.tensor_size(g.bonds)*sizeof(Scalar);
-            HIP_CHECK(hipMalloc(&psi[site.id], sz));
-            HIP_CHECK(hipMemset(psi[site.id], 0, sz));
+            // Tensor size uses chi_alloc per bond
+            size_t sz = D;
+            for (int d = 0; d < MAX_DEGREE; d++)
+                if (site.bond_id[d] >= 0)
+                    sz *= (size_t)g.bonds[site.bond_id[d]].chi_alloc;
+            HIP_CHECK(hipMalloc(&psi[site.id], sz * sizeof(Scalar)));
+            HIP_CHECK(hipMemset(psi[site.id], 0, sz * sizeof(Scalar)));
         }
         for (auto& bond : g.bonds) {
-            size_t sz = (size_t)bond.chi*bond.chi*sizeof(Scalar);
+            size_t sz = (size_t)bond.chi_alloc * bond.chi_alloc * sizeof(Scalar);
             HIP_CHECK(hipMalloc(&messages[bond.msg_from_a()], sz));
             HIP_CHECK(hipMemset(messages[bond.msg_from_a()], 0, sz));
             HIP_CHECK(hipMalloc(&messages[bond.msg_from_b()], sz));

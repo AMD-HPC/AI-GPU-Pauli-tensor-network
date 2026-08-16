@@ -111,12 +111,15 @@
  * Bond — one virtual index connecting two adjacent sites
  * ========================================================= */
 struct Bond {
-    int site_a;   // first site id (always the one with lower id)
-    int site_b;   // second site id (always higher than site_a)
-    int dir_a;    // direction from site_a to site_b (e.g. RIGHT)
-    int dir_b;    // direction from site_b to site_a (e.g. LEFT)
-    int chi;      // current bond dimension (grows from 1 to chi_max)
-    int id;       // global bond index (used to index messages[])
+    int site_a;     // first site id (always the one with lower id)
+    int site_b;     // second site id (always higher than site_a)
+    int dir_a;      // direction from site_a to site_b (e.g. RIGHT)
+    int dir_b;      // direction from site_b to site_a (e.g. LEFT)
+    int chi;        // runtime current dimension (starts 1, grows during simulation)
+    int chi_alloc;  // GPU buffer size (set at construction, never changes)
+                    // = chi_max for bonds inside lightcone, 1 for outside
+                    // apply_lightcone() sets chi_alloc; simulation uses chi
+    int id;         // global bond index (used to index messages[])
 
     // Directed message indices:
     // messages[msg_from_a()] = μ_{site_a → site_b}
@@ -326,22 +329,32 @@ public:
     // A bond is "inside" if BOTH endpoints are inside the lightcone.
     // Call this after grid construction, before building the state tensors.
     // center=-1 or v_hop<=0: no-op (all bonds keep chi_max).
-    void apply_lightcone(int center, int n_steps, float v_hop) {
+    void apply_lightcone(int center, int n_steps, float v_hop, bool verbose=false) {
         if (center < 0 || v_hop <= 0.0f) return;
         auto dist = bfs(center);
+        // First pass: mark bonds where BOTH endpoints are outside lightcone
+        // as chi=1. All other bonds stay at chi_max.
+        // Rule: a bond gets chi=1 only if neither endpoint will ever be
+        // reached — i.e., both are strictly outside the lightcone for all cycles.
+        // A site with ANY bond at chi_max must keep ALL its bonds at chi_max
+        // (mixed chi per site would produce malformed tensor shapes in gate.hpp).
         for (auto& b : bonds) {
             bool a_in = in_lightcone(dist[b.site_a], n_steps, v_hop);
             bool b_in = in_lightcone(dist[b.site_b], n_steps, v_hop);
-            // Bond chi_max: full only if both endpoints inside lightcone
-            b.chi = (a_in && b_in) ? chi_max : 1;
+            // OR rule: chi_alloc=chi_max if either endpoint is inside lightcone.
+            // Ensures no site has mixed chi_alloc bonds (consistent tensor shapes).
+            // chi_alloc=1 only when BOTH endpoints are outside (bond never active).
+            b.chi_alloc = (a_in || b_in) ? chi_max : 1;
+            // chi (runtime) stays at 1 — it grows during simulation as usual.
         }
-        // Report
-        int n_full = 0;
-        for (auto& b : bonds) if (b.chi == chi_max) n_full++;
-        printf("[Lightcone] center=%d n_steps=%d v_hop=%.4f: "
-               "%d/%d bonds at chi_max=%d, %d at chi=1\n",
-               center, n_steps, v_hop,
-               n_full, n_bonds, chi_max, n_bonds - n_full);
+        if (verbose) {
+            int n_full = 0;
+            for (auto& b : bonds) if (b.chi_alloc == chi_max) n_full++;
+            printf("[Lightcone] center=%d n_steps=%d v_hop=%.4f: "
+                   "%d/%d bonds allocated chi_max=%d, %d at chi_alloc=1\n",
+                   center, n_steps, v_hop,
+                   n_full, n_bonds, chi_max, n_bonds - n_full);
+        }
     }
 
     // Memory estimate with lightcone allocation (MB)
@@ -363,11 +376,11 @@ public:
                     if (s.bond_id[d] >= 0) sz *= chi;
                 bytes += sz * sizeof(Scalar);
             }
-            // Bond messages: chi_max^2 inside, 1 outside
+            // Bond messages: chi_max if either endpoint inside (OR rule), 1 if both outside
             for (auto& b : bonds) {
                 bool a_in = in_lightcone(dist[b.site_a], n_steps, v_hop);
                 bool b_in = in_lightcone(dist[b.site_b], n_steps, v_hop);
-                int chi = (a_in && b_in) ? chi_max : 1;
+                int chi = (a_in || b_in) ? chi_max : 1;
                 bytes += 2 * (size_t)chi * chi * sizeof(Scalar);
             }
         }
@@ -452,7 +465,7 @@ private:
                 int sb = site_id(r, c+1);
                 Bond b;
                 b.id=bid; b.site_a=sa; b.site_b=sb;
-                b.dir_a=RIGHT; b.dir_b=LEFT; b.chi=1;
+                b.dir_a=RIGHT; b.dir_b=LEFT; b.chi=1; b.chi_alloc=chi_max;
                 bonds.push_back(b);
                 sites[sa].bond_id[RIGHT] = bid;
                 sites[sb].bond_id[LEFT]  = bid;
@@ -468,7 +481,7 @@ private:
                 int sb = site_id(r+1, c);
                 Bond b;
                 b.id=bid; b.site_a=sa; b.site_b=sb;
-                b.dir_a=DOWN; b.dir_b=UP; b.chi=1;
+                b.dir_a=DOWN; b.dir_b=UP; b.chi=1; b.chi_alloc=chi_max;
                 bonds.push_back(b);
                 sites[sa].bond_id[DOWN] = bid;
                 sites[sb].bond_id[UP]   = bid;

@@ -169,7 +169,7 @@ private:
             // dir_a/dir_b are stored per original orientation
             b.dir_a = (sa < sb) ? dir_a : dir_b;
             b.dir_b = (sa < sb) ? dir_b : dir_a;
-            b.chi = 1;
+            b.chi = 1; b.chi_alloc = chi_max;
             bonds.push_back(b);
             couplings.push_back(coupling);
 
@@ -401,7 +401,7 @@ private:
             Bond b;
             b.id = i;
             b.site_a = u; b.site_b = v;
-            b.chi = 1;
+            b.chi = 1; b.chi_alloc = chi_max;
             couplings.push_back(c);
 
             // Assign direction slots greedily: UP, DOWN, LEFT (max degree 3)

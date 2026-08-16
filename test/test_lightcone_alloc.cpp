@@ -85,19 +85,19 @@ void test_heavyhex_memory() {
 void test_heavyhex_apply() {
     printf("\n=== Heavy-hex 3x3: apply_lightcone (v=0.376, 10 cycles) ===\n");
     FlatHeavyHexGrid g(70);
-    g.apply_lightcone(13, 10, 0.376f);
+    g.apply_lightcone(13, 10, 0.376f, true);
 
     // Count bonds at chi_max vs chi=1
     int n_full = 0, n_unit = 0;
     for (auto& b : g.bonds) {
-        if (b.chi == g.chi_max) n_full++;
-        else if (b.chi == 1)    n_unit++;
+        if (b.chi_alloc == g.chi_max) n_full++;
+        else if (b.chi_alloc == 1)    n_unit++;
         else {
-            printf("  UNEXPECTED bond chi=%d (not chi_max or 1)\n", b.chi);
+            printf("  UNEXPECTED bond chi_alloc=%d (not chi_max or 1)\n", b.chi_alloc);
             n_fail++;
         }
     }
-    printf("  %d/%d bonds at chi_max=%d, %d at chi=1\n",
+    printf("  %d/%d bonds at chi_alloc=chi_max=%d, %d at chi_alloc=1\n",
            n_full, g.n_bonds, g.chi_max, n_unit);
 
     CHECK(n_full + n_unit == g.n_bonds, "every bond is chi_max or 1");
@@ -197,10 +197,15 @@ void test_state_allocation() {
     g_lc.apply_lightcone(center, n_steps, v_hop);
     HeavyHexState s_lc(g_lc);
     size_t bytes_lc = 0;
-    for (auto& site : g_lc.sites)
-        bytes_lc += (size_t)site.tensor_size(g_lc.bonds) * sizeof(Scalar);
+    for (auto& site : g_lc.sites) {
+        size_t sz = D;
+        for (int d = 0; d < MAX_DEGREE; d++)
+            if (site.bond_id[d] >= 0)
+                sz *= (size_t)g_lc.bonds[site.bond_id[d]].chi_alloc;
+        bytes_lc += sz * sizeof(Scalar);
+    }
     for (auto& bond : g_lc.bonds)
-        bytes_lc += 2 * (size_t)bond.chi * bond.chi * sizeof(Scalar);
+        bytes_lc += 2 * (size_t)bond.chi_alloc * bond.chi_alloc * sizeof(Scalar);
     printf("  Lightcone allocation (GPU):    %.2f MB  (%.0f%% of full)\n",
            bytes_lc / 1e6f, 100.0f * bytes_lc / bytes_full);
 

@@ -13,7 +13,14 @@
  *   make PHYS_DIM=4 DFLAGS=-DGRAPH_rect_7x7 main_pauli_sweep_rect7x7
  *
  * Run:
- *   ./main_pauli_sweep [chi_max] [n_steps] [cutoff] [--center=N]
+ *   ./main_pauli_sweep [chi_max] [n_steps] [cutoff] [--center=N] [--v_hop=F]
+ *
+ *   --v_hop=F       : shared lightcone (all states same frontier, required for inner products)
+ *   --v_hops=a,b,c,d: per-state frontiers NL,N1,N2,N3 (wavemap-only, max savings)
+ *
+ * Use scripts/measure_vhop.py to extract the correct v_hop values from a
+ * cheap pre-flight run (small chi). Always use threshold-consistent values:
+ * measure and allocate at the same epsilon_th.
  *
  * Output per cycle:
  *   STEP N  C_nl <val>  C_n1 <val>  C_n2 <val>  C_n3 <val>  chi <chi>  t <s>
@@ -96,15 +103,33 @@ int main(int argc, char** argv) {
     int   chi_max = (argc>1)?atoi(argv[1]):70;
     int   n_steps = (argc>2)?atoi(argv[2]):20;
     float cutoff  = (argc>3)?atof(argv[3]):1e-3f;
-    int   center  = -1;  // auto
+    int   center  = -1;     // auto
+    float v_hop   = -1.0f;  // shared frontier (for inner products, or single state)
+    float v_hops[4] = {-1.f,-1.f,-1.f,-1.f};  // per-state: NL,N1,N2,N3
+    bool  per_state = false;
 
     for (int i=1; i<argc; i++) {
         std::string a(argv[i]);
-        if (a.substr(0,9)=="--center=") center=atoi(argv[i]+9);
+        if (a.substr(0,9) =="--center=") center = atoi(argv[i]+9);
+        if (a.substr(0,8) =="--v_hop=") v_hop  = atof(argv[i]+8);
+        if (a.substr(0,9)=="--v_hops=") {
+            // Parse comma-separated list: NL,N1,N2,N3
+            std::string vals = a.substr(9);
+            int idx = 0;
+            size_t pos = 0;
+            while (idx < 4 && pos != std::string::npos) {
+                size_t next = vals.find(',', pos);
+                v_hops[idx++] = std::stof(vals.substr(pos, next-pos));
+                pos = (next == std::string::npos) ? next : next+1;
+            }
+            per_state = true;
+        }
     }
+    // If single --v_hop given, broadcast to all states
+    if (v_hop > 0.0f && !per_state)
+        for (int g=0; g<4; g++) v_hops[g] = v_hop;
 
     // Each state needs its own grid — bond.chi is mutable and updated by Trotter.
-    // Sharing one grid would corrupt chi across states (same issue as 2gpu binary).
     GRID_CLASS* grids[4];
     for (int g=0; g<4; g++) grids[g] = new GRID_CLASS(chi_max);
     GRID_CLASS& grid = *grids[0];  // reference for metadata
@@ -115,6 +140,26 @@ int main(int argc, char** argv) {
         for (auto& s:grid.sites){
             int d=0; for(int k=0;k<MAX_DEGREE;k++) if(s.bond_id[k]>=0) d++;
             if(d>max_deg){max_deg=d;center=s.id;}
+        }
+    }
+
+    // Lightcone allocation: apply per-state v_hops before state construction.
+    // --v_hop=F:         shared frontier (same for all states, required for inner products)
+    // --v_hops=a,b,c,d: per-state frontiers NL,N1,N2,N3 (wavemap-only, max savings)
+    // No flag:           full chi_max everywhere (default, backward compatible)
+    static const char* state_names[4] = {"NL","N1","N2","N3"};
+    bool any_lc = false;
+    for (int g=0; g<4; g++) if (v_hops[g] > 0.0f) { any_lc = true; break; }
+    if (any_lc) {
+        float full_mb = grids[0]->lightcone_memory_mb(-1, n_steps, -1.0f);
+        printf("# Lightcone allocation (full=%.1f MB):\n", full_mb);
+        for (int g=0; g<4; g++) {
+            if (v_hops[g] <= 0.0f) continue;
+            float lc_mb = grids[g]->lightcone_memory_mb(center, n_steps, v_hops[g]);
+            printf("#   %s: v_hop=%.4f  %.1f MB  (%.0f%% saving)\n",
+                   state_names[g], v_hops[g], lc_mb,
+                   100.0f*(1.0f - lc_mb/full_mb));
+            grids[g]->apply_lightcone(center, n_steps, v_hops[g]);
         }
     }
 

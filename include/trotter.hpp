@@ -99,9 +99,11 @@ inline void do_trotter(
             }
         }
 
-        // Apply bond gates for this color class
+        // Apply bond gates for this color class.
+        // Skip bonds where chi_alloc=1: both endpoints outside lightcone,
+        // tensors are identity and need no update. Saves gate operations.
         for (auto& gate : grid.colors[c]) {
-            // PTM: prefer function pointer, fall back to buffer
+            if (grid.bonds[gate.bond_id].chi_alloc == 1) continue;
             const float* G = bond_ptm ? bond_ptm(gate.bond_id)
                                        : nl_ptm + gate.bond_id * 256;
             gate_ops.apply_binary_gate(
@@ -111,10 +113,11 @@ inline void do_trotter(
                 G, ws, chi_max, cutoff);
         }
 
-        // Commit updated messages for this color
+        // Commit updated messages — skip outside-lightcone bonds
         for (auto& gate : grid.colors[c]) {
             const Bond& bond = grid.bonds[gate.bond_id];
             int chi = bond.chi;
+            if (bond.chi_alloc == 1) continue;
             size_t sz = (size_t)chi * chi * sizeof(Scalar);
             for (int d = 0; d < 2; d++) {
                 int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
