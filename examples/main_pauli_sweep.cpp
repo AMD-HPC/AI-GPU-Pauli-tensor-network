@@ -211,6 +211,16 @@ int main(int argc, char** argv) {
     PtmFn ptms[4] = {s_ptm_nl, s_ptm_n1, s_ptm_n2, s_ptm_n3};
     const char* labels[4] = {"NL","N1","N2","N3"};
 
+    // Pre-allocate Trotter message buffers — eliminates dynamic hipMalloc/hipFree
+    // every step that spikes VRAM exactly when chi first saturates at chi_max.
+    for (int g=0; g<4; g++)
+        if (active[g]) wss[g]->alloc_trotter_buffers(grids[g]->n_bonds);
+
+    // Pre-allocate Measures objects — avoid hipMalloc/hipFree every step.
+    Measures* meas[4] = {nullptr,nullptr,nullptr,nullptr};
+    for (int g=0; g<4; g++)
+        if (active[g]) meas[g] = new Measures(handle, *wss[g]);
+
     for (int step=1; step<=n_steps; step++) {
         double t0 = now_ms();
 
@@ -223,8 +233,7 @@ int main(int argc, char** argv) {
                        static_cast<Grid&>(*grids[g]),
                        ptms[g], nullptr, s_site_ptm,
                        *wss[g], gate_ops, chi_max, cutoff);
-            Measures meas_g(handle, *wss[g]);
-            C[g] = meas_g.autocorrelation_with_bp(
+            C[g] = meas[g]->autocorrelation_with_bp(
                 static_cast<Grid&>(*grids[g]), states[g]->psi,
                 states[g]->messages, center, BP_SWEEPS);
         }
@@ -233,16 +242,14 @@ int main(int argc, char** argv) {
         for (auto& b:grids[ref_g]->bonds) chi_actual=std::max(chi_actual,b.chi);
 
         double t=(now_ms()-t0)/1000.0;
-        // Print STEP line with active C(t) values (0 for inactive states)
         printf("STEP %d  C_nl %+.6f  C_n1 %+.6f  C_n2 %+.6f  C_n3 %+.6f  chi %d  t %.2f\n",
                step, C[0], C[1], C[2], C[3], chi_actual, t);
 
         // Pauli weights — active states only
         for (int g=0; g<4; g++) {
             if (!active[g]) continue;
-            Measures meas_g(handle, *wss[g]);
-            meas_g.compute_pauli_profile(static_cast<Grid&>(*grids[g]),
-                                         states[g]->psi, nid.data());
+            meas[g]->compute_pauli_profile(static_cast<Grid&>(*grids[g]),
+                                            states[g]->psi, nid.data());
             printf("PAULI_%s %d", labels[g], step);
             for (int v=0; v<grid.n_sites; v++) printf(" %.7f", nid[v]);
             printf("\n");
@@ -251,7 +258,7 @@ int main(int argc, char** argv) {
     }
 
     for (int g=0; g<4; g++) {
-        delete states[g]; delete grids[g]; delete ws_storage[g];
+        delete meas[g]; delete states[g]; delete grids[g]; delete ws_storage[g];
     }
     rocblas_destroy_handle(handle);
     return 0;

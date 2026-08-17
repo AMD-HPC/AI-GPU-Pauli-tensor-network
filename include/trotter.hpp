@@ -71,15 +71,29 @@ inline void do_trotter(
     const int n_bonds  = grid.n_bonds;
     const int nm       = 2 * n_bonds;
 
-    // Allocate frozen/new message buffers
-    size_t alloc = (size_t)chi_max * chi_max * sizeof(Scalar);
-    std::vector<Scalar*> frozen_msg(nm, nullptr), new_msg(nm, nullptr);
-    std::vector<int>     frozen_chi(n_bonds);
+    // Use pre-allocated Trotter buffers if available — eliminates the
+    // hipMalloc/hipFree that previously fired every step and caused VRAM
+    // spikes exactly when chi first saturated at chi_max, corrupting results.
+    // Call ws.alloc_trotter_buffers(n_bonds) once at startup to activate.
+    // Falls back to dynamic allocation if not pre-allocated.
+    bool using_preallocated = (!ws.trotter_frozen_msg.empty() &&
+                               (int)ws.trotter_frozen_msg.size() == nm);
+    std::vector<Scalar*> frozen_msg_dyn, new_msg_dyn;
+    std::vector<Scalar*>& frozen_msg = using_preallocated
+                                       ? ws.trotter_frozen_msg : frozen_msg_dyn;
+    std::vector<Scalar*>& new_msg    = using_preallocated
+                                       ? ws.trotter_new_msg    : new_msg_dyn;
+    std::vector<int> frozen_chi(n_bonds);
 
-    for (auto& bond : grid.bonds) for (int d = 0; d < 2; d++) {
-        int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
-        HIP_CHECK(hipMalloc(&frozen_msg[idx], alloc));
-        HIP_CHECK(hipMalloc(&new_msg[idx],    alloc));
+    if (!using_preallocated) {
+        size_t alloc = (size_t)chi_max * chi_max * sizeof(Scalar);
+        frozen_msg_dyn.assign(nm, nullptr);
+        new_msg_dyn.assign(nm, nullptr);
+        for (auto& bond : grid.bonds) for (int d = 0; d < 2; d++) {
+            int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+            HIP_CHECK(hipMalloc(&frozen_msg_dyn[idx], alloc));
+            HIP_CHECK(hipMalloc(&new_msg_dyn[idx],    alloc));
+        }
     }
 
     // ── Color loop ────────────────────────────────────────────────────────────
@@ -127,8 +141,11 @@ inline void do_trotter(
         }
     }
 
-    for (auto p : frozen_msg) if (p) HIP_CHECK(hipFree(p));
-    for (auto p : new_msg)    if (p) HIP_CHECK(hipFree(p));
+    // Only free if we dynamically allocated
+    if (!using_preallocated) {
+        for (auto p : frozen_msg_dyn) if (p) HIP_CHECK(hipFree(p));
+        for (auto p : new_msg_dyn)    if (p) HIP_CHECK(hipFree(p));
+    }
 
     // ── Site kick ─────────────────────────────────────────────────────────────
     if (site_ptm) {

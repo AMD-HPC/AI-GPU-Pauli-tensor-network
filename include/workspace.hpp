@@ -286,6 +286,34 @@ struct Workspace {
     Workspace(const Workspace&) = delete;
     Workspace& operator=(const Workspace&) = delete;
 
+    /* ── Pre-allocated Trotter message buffers ───────────────────────────
+     * Eliminates dynamic hipMalloc/hipFree in do_trotter every step.
+     * The dynamic allocation spiked VRAM exactly when chi first hit chi_max,
+     * corrupting results silently. Call alloc_trotter_buffers(n_bonds) once
+     * after Workspace construction. do_trotter detects these and uses them. */
+    std::vector<Scalar*> trotter_frozen_msg;
+    std::vector<Scalar*> trotter_new_msg;
+
+    void alloc_trotter_buffers(int n_bonds) {
+        int nm = 2 * n_bonds;
+        trotter_frozen_msg.assign(nm, nullptr);
+        trotter_new_msg.assign(nm, nullptr);
+        size_t alloc = (size_t)chi_max * chi_max * sizeof(Scalar);
+        for (int i = 0; i < nm; i++) {
+            _alloc(trotter_frozen_msg[i], alloc);
+            _alloc(trotter_new_msg[i],    alloc);
+        }
+        printf("[Workspace] Trotter buffers: %.1f MB (n_bonds=%d chi_max=%d)\n",
+               2.0 * nm * alloc / 1e6, n_bonds, chi_max);
+    }
+
+    void free_trotter_buffers() {
+        for (auto p : trotter_frozen_msg) _free(p);
+        for (auto p : trotter_new_msg)    _free(p);
+        trotter_frozen_msg.clear();
+        trotter_new_msg.clear();
+    }
+
     /* ── Zero large buffers between layers ───────────────────────────── */
     void zero_large() {
         size_t large = (size_t)m_max * n_max * sizeof(Scalar);
