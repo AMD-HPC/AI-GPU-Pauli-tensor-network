@@ -582,6 +582,7 @@ static Scalar bp_partitionfunction(
     double log_den  = 0.0;
     double sign_den = 1.0;
     for (auto& bond : grid.bonds) {
+        if (bond.chi_alloc == 1) continue;  // outside lightcone: trivial message, contributes 0 to log Z
         int chi  = bond.chi;
         int chi2 = chi * chi;
         // Bethe edge scalar: Ze = <μ_a, μ_b>_F = Σ_{i,j} μ_a[i,j]*μ_b[i,j].
@@ -906,6 +907,7 @@ struct Measures {
         double log_den  = 0.0;
         double sign_den = 1.0;
         for (auto& bond : grid.bonds) {
+            if (bond.chi_alloc == 1) continue;  // outside lightcone: trivial, log Z contribution = 0
             int chi  = bond.chi;
             int chi2 = chi * chi;
             std::vector<Scalar> ma(chi2), mb(chi2);
@@ -961,6 +963,9 @@ struct Measures {
         HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(Scalar), rbstream));
 
         for(auto& bond : grid.bonds){
+            // Skip outside-lightcone bonds (chi_alloc=1): trivial identity messages,
+            // no information to propagate, convergence immediate.
+            if (bond.chi_alloc == 1) continue;
             int chi = bond.chi;
             for(int dir=0; dir<2; dir++){
                 int src_id  = (dir==0) ? bond.site_a : bond.site_b;
@@ -1077,6 +1082,7 @@ struct Measures {
         HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(Scalar), rbstream));
 
         for (auto& bond : grid.bonds) {
+            if (bond.chi_alloc == 1) continue;  // skip outside-lightcone bonds
             int chi = bond.chi;
             for (int dir = 0; dir < 2; dir++) {
                 int src_id  = (dir==0) ? bond.site_a : bond.site_b;
@@ -1199,6 +1205,7 @@ struct Measures {
         HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(Scalar), rbstream));
 
         for (auto& bond : grid.bonds) {
+            if (bond.chi_alloc == 1) continue;  // skip outside-lightcone bonds
             int chi = bond.chi;
             for (int dir = 0; dir < 2; dir++) {
                 int src_id  = (dir==0) ? bond.site_a : bond.site_b;
