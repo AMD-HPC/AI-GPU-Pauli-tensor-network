@@ -181,7 +181,64 @@ generations without modification. This is a direct consequence of the
 
 ---
 
-## 8. What comes next
+## 8. Lightcone-aware chi maximization
+
+The lightcone allocator enables a new approach to chi convergence that reframes
+accuracy not as "use the largest chi you can afford" but as "concentrate chi
+budget where it matters."
+
+**The standard approach** (chi convergence study):
+Run C(t) at increasing chi_max until it converges. The largest affordable chi
+is the production chi. Outside-lightcone sites consume the same chi budget as
+inside sites.
+
+**The lightcone approach** (chi maximization via frontier calibration):
+
+Step 1 — Reference run (expensive, once):
+Run the largest chi_max you can afford at the target n_steps and cutoff.
+This gives C(t) and frontier references. Both are as accurate as hardware allows.
+
+Step 2 — Frontier calibration (cheap, iterative):
+Decrease chi until the frontier measurement (max shell, v_hop_eff) matches
+the reference. The minimum chi where the frontier is chi-independent is the
+pre-flight chi. This is the chi convergence study for the frontier observable,
+not for C(t). The frontier converges at much smaller chi than C(t) because
+frontier sites have chi≈1 by construction.
+
+Step 3 — Production run (optimized):
+Use the converged frontier + lightcone allocation to run at chi_new >> chi_ref
+within the same memory budget. Example: if reference chi=200 uses 35% VRAM and
+lightcone saves 50%, then chi=280 with lightcone also uses 35% VRAM — a 40%
+increase in chi for free.
+
+**The key claim**: for fixed memory budget, lightcone-allocated chi_large produces
+better C(t) than full-allocated chi_small, because the chi budget is concentrated
+in the interior where truncation error matters. Outside sites contribute only
+numerical pollution to C(t) — not accuracy.
+
+**How to verify**: compare C(t) at chi=200 full vs chi=280 lightcone vs the
+chi→∞ extrapolation. If chi=280 lightcone agrees better with the extrapolation,
+the claim is proven.
+
+**The circular dependency and its resolution**:
+Small chi damps the frontier (truncated entanglement → wave cannot propagate →
+v_hop underestimated → allocation too tight → results biased). The resolution:
+the pre-flight chi must be large enough that v_hop is chi-independent — typically
+chi=50-70 for heavy-hex, much smaller than the production chi. Two separate chi
+values for two separate purposes: one for frontier calibration, one for production.
+
+**Connection to C(t) and MPF**:
+If the frontier is accurately measured and the lightcone correctly identified,
+the production run achieves both:
+- Accurate frontier (chi≈1 at frontier, exact regardless of production chi)
+- Better interior accuracy (larger chi inside, less truncation error)
+- Cleaner C(t) (no outside-lightcone numerical leakage)
+- Better MPF coefficients (inner products computed on exact causal structure)
+
+This is a new result: frontier calibration improves C(t) accuracy indirectly
+by enabling larger chi inside the lightcone within the same memory budget.
+
+## 9. What comes next
 
 The control experiment (calibrated uniform synthetic noise on the heavy-hex
 topology) has confirmed that the information-starved regime is caused by
