@@ -15,6 +15,8 @@
  * Run:
  *   ./main_pauli_sweep [chi_max] [n_steps] [cutoff] [--center=N] [--v_hop=F]
  *
+ *   --state=X       : run only state X (NL, N1, N2, N3, or comma-separated subset)
+ *                     Default: all 4 states. Combine logs with cat for MPF scripts.
  *   --v_hop=F       : shared lightcone (all states same frontier, required for inner products)
  *   --v_hops=a,b,c,d: per-state frontiers NL,N1,N2,N3 (wavemap-only, max savings)
  *
@@ -107,11 +109,21 @@ int main(int argc, char** argv) {
     float v_hop   = -1.0f;  // shared frontier (for inner products, or single state)
     float v_hops[4] = {-1.f,-1.f,-1.f,-1.f};  // per-state: NL,N1,N2,N3
     bool  per_state = false;
+    bool  active[4] = {true,true,true,true};  // which states to run
 
     for (int i=1; i<argc; i++) {
         std::string a(argv[i]);
         if (a.substr(0,9) =="--center=") center = atoi(argv[i]+9);
         if (a.substr(0,8) =="--v_hop=") v_hop  = atof(argv[i]+8);
+        if (a.substr(0,8) =="--state=") {
+            // --state=NL or --state=N1 or --state=NL,N1,N2 etc.
+            // Sets which states to run; all others are skipped.
+            std::string sel = a.substr(8);
+            for (int g=0; g<4; g++) active[g] = false;
+            static const char* snames[4] = {"NL","N1","N2","N3"};
+            for (int g=0; g<4; g++)
+                if (sel.find(snames[g]) != std::string::npos) active[g] = true;
+        }
         if (a.substr(0,9)=="--v_hops=") {
             // Parse comma-separated list: NL,N1,N2,N3
             std::string vals = a.substr(9);
@@ -129,10 +141,13 @@ int main(int argc, char** argv) {
     if (v_hop > 0.0f && !per_state)
         for (int g=0; g<4; g++) v_hops[g] = v_hop;
 
-    // Each state needs its own grid — bond.chi is mutable and updated by Trotter.
-    GRID_CLASS* grids[4];
-    for (int g=0; g<4; g++) grids[g] = new GRID_CLASS(chi_max);
-    GRID_CLASS& grid = *grids[0];  // reference for metadata
+    // Each active state needs its own grid — bond.chi is mutable and updated by Trotter.
+    GRID_CLASS* grids[4] = {nullptr,nullptr,nullptr,nullptr};
+    for (int g=0; g<4; g++)
+        if (active[g]) grids[g] = new GRID_CLASS(chi_max);
+    // Reference grid for metadata (use first active)
+    int ref_g = 0; while (ref_g < 4 && !active[ref_g]) ref_g++;
+    GRID_CLASS& grid = *grids[ref_g];
 
     // Auto center: highest-degree site
     if (center < 0) {
@@ -154,7 +169,7 @@ int main(int argc, char** argv) {
         float full_mb = grids[0]->lightcone_memory_mb(-1, n_steps, -1.0f);
         printf("# Lightcone allocation (full=%.1f MB):\n", full_mb);
         for (int g=0; g<4; g++) {
-            if (v_hops[g] <= 0.0f) continue;
+            if (!active[g] || v_hops[g] <= 0.0f) continue;
             float lc_mb = grids[g]->lightcone_memory_mb(center, n_steps, v_hops[g]);
             printf("#   %s: v_hop=%.4f  %.1f MB  (%.0f%% saving)\n",
                    state_names[g], v_hops[g], lc_mb,
@@ -178,18 +193,17 @@ int main(int argc, char** argv) {
     fflush(stdout);
 
     rocblas_handle handle; rocblas_create_handle(&handle);
-    // Each state needs its own Workspace — shared workspace gets corrupted
-    // after Trotter+BP of one state bleeds into the next.
-    Workspace ws0(chi_max, max_deg);
-    Workspace ws1(chi_max, max_deg);
-    Workspace ws2(chi_max, max_deg);
-    Workspace ws3(chi_max, max_deg);
-    Workspace* wss[4] = {&ws0, &ws1, &ws2, &ws3};
+    // Each active state needs its own Workspace.
+    Workspace* ws_storage[4] = {nullptr,nullptr,nullptr,nullptr};
+    Workspace* wss[4] = {nullptr,nullptr,nullptr,nullptr};
+    for (int g=0; g<4; g++)
+        if (active[g]) { ws_storage[g] = new Workspace(chi_max, max_deg); wss[g] = ws_storage[g]; }
     GateOps gate_ops(handle);
 
-    // 4 independent states — each with its own grid
-    HeavyHexState* states[4];
+    // Active states only — each with its own grid
+    HeavyHexState* states[4] = {nullptr,nullptr,nullptr,nullptr};
     for (int g=0; g<4; g++) {
+        if (!active[g]) continue;
         states[g] = new HeavyHexState(static_cast<Grid&>(*grids[g]));
         states[g]->init_heisenberg(static_cast<Grid&>(*grids[g]), center);
     }
@@ -200,10 +214,11 @@ int main(int argc, char** argv) {
     for (int step=1; step<=n_steps; step++) {
         double t0 = now_ms();
 
-        // Per state: Trotter → autocorrelation → PAULI (avoid workspace interference)
-        float C[4];
+        // Per active state: Trotter → autocorrelation → PAULI
+        float C[4] = {0.f,0.f,0.f,0.f};
         std::vector<float> nid(grid.n_sites);
         for (int g=0; g<4; g++) {
+            if (!active[g]) continue;
             do_trotter(states[g]->psi, states[g]->messages,
                        static_cast<Grid&>(*grids[g]),
                        ptms[g], nullptr, s_site_ptm,
@@ -215,14 +230,16 @@ int main(int argc, char** argv) {
         }
 
         int chi_actual=1;
-        for (auto& b:grids[0]->bonds) chi_actual=std::max(chi_actual,b.chi);
+        for (auto& b:grids[ref_g]->bonds) chi_actual=std::max(chi_actual,b.chi);
 
         double t=(now_ms()-t0)/1000.0;
+        // Print STEP line with active C(t) values (0 for inactive states)
         printf("STEP %d  C_nl %+.6f  C_n1 %+.6f  C_n2 %+.6f  C_n3 %+.6f  chi %d  t %.2f\n",
                step, C[0], C[1], C[2], C[3], chi_actual, t);
 
-        // Pauli weights all 4 states
+        // Pauli weights — active states only
         for (int g=0; g<4; g++) {
+            if (!active[g]) continue;
             Measures meas_g(handle, *wss[g]);
             meas_g.compute_pauli_profile(static_cast<Grid&>(*grids[g]),
                                          states[g]->psi, nid.data());
@@ -233,7 +250,9 @@ int main(int argc, char** argv) {
         fflush(stdout);
     }
 
-    for (int g=0; g<4; g++) { delete states[g]; delete grids[g]; }
+    for (int g=0; g<4; g++) {
+        delete states[g]; delete grids[g]; delete ws_storage[g];
+    }
     rocblas_destroy_handle(handle);
     return 0;
 }
