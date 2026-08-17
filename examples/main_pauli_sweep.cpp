@@ -149,10 +149,10 @@ int main(int argc, char** argv) {
     int ref_g = 0; while (ref_g < 4 && !active[ref_g]) ref_g++;
     GRID_CLASS& grid = *grids[ref_g];
 
-    // Auto center: highest-degree site
+    // Auto center: highest-degree site (use first active grid)
     if (center < 0) {
         int max_deg=0;
-        for (auto& s:grid.sites){
+        for (auto& s:grids[ref_g]->sites){
             int d=0; for(int k=0;k<MAX_DEGREE;k++) if(s.bond_id[k]>=0) d++;
             if(d>max_deg){max_deg=d;center=s.id;}
         }
@@ -166,7 +166,7 @@ int main(int argc, char** argv) {
     bool any_lc = false;
     for (int g=0; g<4; g++) if (v_hops[g] > 0.0f) { any_lc = true; break; }
     if (any_lc) {
-        float full_mb = grids[0]->lightcone_memory_mb(-1, n_steps, -1.0f);
+        float full_mb = grids[ref_g]->lightcone_memory_mb(-1, n_steps, -1.0f);
         printf("# Lightcone allocation (full=%.1f MB):\n", full_mb);
         for (int g=0; g<4; g++) {
             if (!active[g] || v_hops[g] <= 0.0f) continue;
@@ -178,9 +178,9 @@ int main(int argc, char** argv) {
         }
     }
 
-    // Max degree for workspace
+    // Max degree for workspace (use first active grid)
     int max_deg=0;
-    for (auto& s:grid.sites){
+    for (auto& s:grids[ref_g]->sites){
         int d=0; for(int k=0;k<MAX_DEGREE;k++) if(s.bond_id[k]>=0) d++;
         max_deg=std::max(max_deg,d);
     }
