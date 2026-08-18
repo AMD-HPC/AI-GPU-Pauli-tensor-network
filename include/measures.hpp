@@ -195,6 +195,53 @@ struct Operators {
 };
 
 /* =========================================================
+ * mode_n_scale
+ *
+ * Scales one index of a tensor by a chi-vector (diagonal message).
+ * Equivalent to mode_n_contract with a diagonal matrix, but O(chi×volume)
+ * instead of O(chi²×volume) — exact for diagonal messages, no SGEMM.
+ *
+ * Given tensor `in` with shape [s0,...,s_{mode}=chi,...,s_{n-1}]
+ * and vector `scale` of length chi:
+ *   out[i0,...,k,...,i_{n-1}] = in[i0,...,k,...,i_{n-1}] × scale[k]
+ *
+ * in-place: out may alias in.
+ * ========================================================= */
+__global__ void mode_n_scale_kernel(
+    const Scalar* __restrict__ in,
+    const Scalar* __restrict__ scale,  // chi-vector
+    Scalar*                    out,
+    int L,    // product of dims before mode
+    int chi,  // size of scaled mode
+    int R)    // product of dims after mode
+{
+    // Memory layout matches rocBLAS col-major strided-batched:
+    // R batches of [L × chi] col-major matrices.
+    // Element at batch r, row l, col k: index = r*(L*chi) + k*L + l
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = L * chi * R;
+    if (idx >= total) return;
+    int l =  idx % L;
+    int k = (idx / L) % chi;
+    int r =  idx / (L * chi);
+    int pos = r * (L * chi) + k * L + l;
+    out[pos] = in[pos] * scale[k];
+}
+
+static void mode_n_scale(
+    const Scalar* in, const int* shape, int ndim,
+    const Scalar* scale, int chi, int mode,
+    Scalar* out)
+{
+    int L=1, R=1;
+    for (int i=0;      i<mode;  i++) L *= shape[i];
+    for (int i=mode+1; i<ndim;  i++) R *= shape[i];
+    int total = L * chi * R;
+    int blocks = (total + 255) / 256;
+    mode_n_scale_kernel<<<blocks, 256>>>(in, scale, out, L, chi, R);
+}
+
+/* =========================================================
  * mode_n_contract
  *
  * Contracts one index of a tensor with a matrix E.
@@ -1012,15 +1059,25 @@ struct Measures {
                     total*sizeof(Scalar),hipMemcpyDeviceToDevice));
                 Scalar* cur=ws.cv1, *nxt=ws.cv2;
 
-                // Contract all non-cut neighbor bonds on GPU
+                // Contract all non-cut neighbor bonds on GPU.
+                // Use mode_n_scale (chi-vector) when messages_v available — O(chi×vol)
+                // instead of mode_n_contract chi×chi SGEMM O(chi²×vol). Exact for
+                // diagonal messages; no precision loss from chi×chi matrix multiply.
                 for(int d=0;d<MAX_DEGREE;d++){
                     if(src.bond_id[d]<0 || d==src_dir) continue;
                     int li=src.bond_local[d];
                     const Bond& eb=grid.bonds[src.bond_id[d]];
                     int bchi=eb.chi;
-                    mode_n_contract(handle,cur,shape.data(),ndim,
-                                   messages[eb.msg_incoming(src_id)],
-                                   bchi,bchi,li,nxt);
+                    int msg_idx = eb.msg_incoming(src_id);
+                    if(messages_v && (*messages_v)[msg_idx]) {
+                        // Fast diagonal path: scale mode li by chi-vector
+                        mode_n_scale(cur, shape.data(), ndim,
+                                     (*messages_v)[msg_idx], bchi, li, nxt);
+                    } else {
+                        // Fallback: full chi×chi contraction
+                        mode_n_contract(handle,cur,shape.data(),ndim,
+                                       messages[msg_idx],bchi,bchi,li,nxt);
+                    }
                     std::swap(cur,nxt);
                 }
 
@@ -1215,22 +1272,28 @@ struct Measures {
                          std::vector<Scalar*>* messages_v=nullptr)
     {
         float last_delta = 1e30f;
-        for(int i=0;i<n_sweeps;i++){
-            // Only pass messages_v on the final sweep — avoids overhead every sweep
-            bool is_last = false;
-            last_delta = bp_update(grid,psi,messages,center_site,alpha,
-                                   is_last ? messages_v : nullptr);
-            if(last_delta < tol){
-                // Final sweep: populate messages_v
-                if(messages_v)
-                    bp_update(grid,psi,messages,center_site,alpha,messages_v);
-                return {i+1, last_delta};
+        int i = 0;
+        for(; i<n_sweeps; i++){
+            last_delta = bp_update(grid,psi,messages,center_site,alpha);
+            if(last_delta < tol) { i++; break; }
+        }
+        // Populate messages_v by extracting diagonals from converged messages.
+        // Do NOT do an extra bp_update — that would shift the fixed point.
+        if(messages_v) {
+            for(auto& bond : grid.bonds) {
+                if(bond.chi_alloc == 1) continue;
+                int chi = bond.chi;
+                for(int d=0; d<2; d++) {
+                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+                    if((*messages_v)[idx]) {
+                        int blocks = (chi+255)/256;
+                        extract_diagonal<<<blocks,256>>>(
+                            messages[idx], (*messages_v)[idx], chi);
+                    }
+                }
             }
         }
-        // Max sweeps reached: populate messages_v on last sweep
-        if(messages_v)
-            bp_update(grid,psi,messages,center_site,alpha,messages_v);
-        return {n_sweeps, last_delta};
+        return {i, last_delta};
     }
 
     /* ── bp_update_norm ─────────────────────────────────────────────────
