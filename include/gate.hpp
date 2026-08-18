@@ -641,7 +641,7 @@ struct GateOps {
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
         }
         absorb_env(psi_v1,sv1,grid,ws,cd1,frozen_chi,ws.cv1,ws.Q1);
 
@@ -650,7 +650,7 @@ struct GateOps {
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
         }
         absorb_env(psi_v2,sv2,grid,ws,cd2,frozen_chi,ws.cv2,ws.Q2);
 
@@ -802,7 +802,7 @@ struct GateOps {
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
         }
         deabsorb_env(ws.cv1,sv1,grid,ws,cd1,new_chi,frozen_chi,ws.Q1);
 
@@ -811,7 +811,7 @@ struct GateOps {
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
         }
         deabsorb_env(ws.cv2,sv2,grid,ws,cd2,new_chi,frozen_chi,ws.Q2);
 

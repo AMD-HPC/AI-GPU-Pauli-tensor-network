@@ -209,7 +209,7 @@ struct Operators {
  * ========================================================= */
 __global__ void mode_n_scale_kernel(
     const Scalar* __restrict__ in,
-    const Scalar* __restrict__ scale,  // chi-vector
+    const Scalar* __restrict__ scale,  // chi-vector (float32)
     Scalar*                    out,
     int L,    // product of dims before mode
     int chi,  // size of scaled mode
@@ -226,6 +226,23 @@ __global__ void mode_n_scale_kernel(
     int r =  idx / (L * chi);
     int pos = r * (L * chi) + k * L + l;
     out[pos] = in[pos] * scale[k];
+}
+
+// Float64 version: scale float64 tensor mode by float32 chi-vector
+__global__ void mode_n_scale_d_kernel(
+    const double* __restrict__ in,
+    const float*  __restrict__ scale,  // chi-vector (float32, upcast to double)
+    double*                    out,
+    int L, int chi, int R)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = L * chi * R;
+    if (idx >= total) return;
+    int l =  idx % L;
+    int k = (idx / L) % chi;
+    int r =  idx / (L * chi);
+    int pos = r * (L * chi) + k * L + l;
+    out[pos] = in[pos] * (double)scale[k];
 }
 
 static void mode_n_scale(
@@ -561,17 +578,99 @@ static double vertex_scalar_d(
 }
 
 /* =========================================================
+ * vertex_scalar_diag
+ *
+ * Vertex scalar using chi-vector (diagonal) messages.
+ * Replaces mode_n_contract(chi×chi) with mode_n_scale(chi-vector):
+ *   - No SGEMM: O(chi×volume) per bond instead of O(chi²×volume)
+ *   - No float32 precision loss from chi×chi matrix multiply
+ *   - Upcasts psi to float64, scales with float32 chi-vectors,
+ *     accumulates sum in float64
+ *
+ * messages_v: chi-vector per bond direction (diagonal of Vidal message)
+ * ========================================================= */
+static double vertex_scalar_diag(
+    rocblas_handle handle,
+    const Site& site,
+    const float* psi,
+    const Grid& grid,
+    const std::vector<float*>& messages_v,  // chi-vectors (float32)
+    const double* O_gpu_d,                  // D×D operator in float64
+    double* dbl_a,                           // float64 scratch (>= total doubles)
+    double* dbl_b)                           // float64 scratch (>= total doubles)
+{
+    std::vector<int> shape;
+    for (int d=0; d<MAX_DEGREE; d++)
+        if (site.bond_id[d] >= 0)
+            shape.push_back(grid.bonds[site.bond_id[d]].chi);
+    shape.push_back(D);
+    int ndim = (int)shape.size();
+    int total = D;
+    for (int d=0; d<MAX_DEGREE; d++)
+        if (site.bond_id[d] >= 0)
+            total *= grid.bonds[site.bond_id[d]].chi;
+
+    hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
+
+    // Upcast psi (float32 → float64) into dbl_a
+    { int blocks=(total+255)/256;
+      upcast_f2d<<<blocks,256,0,rbstream>>>(psi, dbl_a, total); }
+
+    double* cur  = dbl_a;
+    double* next = dbl_b;
+    std::vector<int> cur_shape = shape;
+
+    // Scale each bond mode by its chi-vector using GPU kernel mode_n_scale_d_kernel.
+    // Skip bonds outside lightcone (chi_alloc=1) — their messages_v are nullptr.
+    for (int d=0; d<MAX_DEGREE; d++) {
+        if (site.bond_id[d] < 0) continue;
+        int local_idx = site.bond_local[d];
+        const Bond& b = grid.bonds[site.bond_id[d]];
+        if (b.chi_alloc == 1) continue;  // outside lightcone: identity message, skip
+        int chi       = b.chi;
+        int msg_idx   = b.msg_incoming(site.id);
+        if (!messages_v[msg_idx]) continue;  // safety check
+
+        int L=1, R=1;
+        for(int i=0;      i<local_idx; i++) L *= cur_shape[i];
+        for(int i=local_idx+1; i<ndim; i++) R *= cur_shape[i];
+        int kern_total = L * chi * R;
+        int blocks = (kern_total + 255) / 256;
+        mode_n_scale_d_kernel<<<blocks, 256, 0, rbstream>>>(
+            cur, messages_v[msg_idx], next, L, chi, R);
+        std::swap(cur, next);
+    }
+
+    // Contract physical mode (last) with O using float64 DGEMM
+    // cur shape: [... × D] → result shape: [... × D]
+    // Use mode_n_contract_d with O_gpu_d
+    {
+        int last_mode = ndim - 1;
+        mode_n_contract_d(handle, cur, cur_shape.data(), ndim,
+                          O_gpu_d, D, D, last_mode, next);
+        std::swap(cur, next);
+    }
+
+    // Sum all remaining elements in float64
+    int remaining = 1; for(auto s:cur_shape) remaining *= s;
+    std::vector<double> h(remaining);
+    HIP_CHECK(hipMemcpy(h.data(), cur, remaining*sizeof(double), hipMemcpyDeviceToHost));
+    double sd = 0.0;
+    for(auto x : h) sd += x;
+    return sd;
+}
+
+/* =========================================================
  * bp_partitionfunction
  *
- * Computes the Bethe approximation to Tr(O · ψ):
- *
- *   Z = (∏_v vertex_scalar(v)) / (∏_e edge_scalar(e))
+ * Computes the Bethe approximation to Tr(O . psi):
+ *   Z = (product_v vertex_scalar(v)) / (product_e edge_scalar(e))
  *
  * Arguments:
- *   grid        — lattice structure (sites, bonds)
- *   psi         — site tensors on GPU (indexed by site_id)
- *   messages    — BP messages on GPU (indexed by bond_id)
- *   O_local     — operator applied at center_site (host vector [D×D])
+ *   grid        - lattice structure (sites, bonds)
+ *   psi         - site tensors on GPU (indexed by site_id)
+ *   messages    - BP messages on GPU (indexed by bond_id)
+ *   O_local     - operator applied at center_site (host vector [D x D])
  *   center_site — site where O_local is applied; -1 means I everywhere
  *   scratch_a/b — pre-allocated GPU scratch buffers (from workspace)
  *
@@ -596,7 +695,8 @@ static Scalar bp_partitionfunction(
     bool full_bp = false,
     double* dbl_a  = nullptr,   // float64 scratch (≥ m_max*n_max doubles)
     double* dbl_b  = nullptr,   // float64 scratch
-    double* dbl_msg= nullptr)   // float64 scratch (≥ chi_max² doubles)
+    double* dbl_msg= nullptr,   // float64 scratch (≥ chi_max² doubles)
+    const std::vector<Scalar*>* messages_v_pf = nullptr)  // chi-vectors for vertex_scalar_diag
 {
     // Upload identity and measurement operator to GPU in float64.
     // vertex_scalar_d requires double operators to avoid float32 overflow
@@ -622,13 +722,19 @@ static Scalar bp_partitionfunction(
     }
 
     // Numerator: log-sum of vertex scalars.
-    // Use vertex_scalar_d (float64) when scratch buffers available — prevents
-    // float32 overflow/underflow at large chi (vertex values can be O(1e±10)).
+    // Priority: vertex_scalar_diag (chi-vector, no SGEMM, exact for diagonal messages)
+    // Fallback: vertex_scalar_d (float64 SGEMM), then vertex_scalar (float32)
     double log_num = 0.0;
     double sign_num = 1.0;
+    bool use_diag = (messages_v_pf != nullptr && !full_bp);
     for (auto& site : grid.sites) {
         double vs_d;
-        if (use_f64) {
+        if (use_diag) {
+            const double* op_d = (site.id == center_site) ? d_O_d : d_I_d;
+            vs_d = vertex_scalar_diag(handle, site, psi[site.id],
+                                      grid, *messages_v_pf,
+                                      op_d, dbl_a, dbl_b);
+        } else if (use_f64) {
             const double* op_d = (site.id == center_site) ? d_O_d : d_I_d;
             vs_d = vertex_scalar_d(handle, site, psi[site.id],
                                    grid, messages, op_d,
@@ -1509,7 +1615,7 @@ struct Measures {
 
         Scalar C = bp_partitionfunction(handle, grid, psi, bp_msg,
             Operators::Z(), center_site, ws.cv1, ws.cv2, full_bp,
-            dbl_a, dbl_b, dbl_msg);
+            dbl_a, dbl_b, dbl_msg, &bp_msg_v);
         auto t2 = clk::now();
         if (t_pf_ms) *t_pf_ms = ms(t2 - t1).count();
 
@@ -1518,7 +1624,7 @@ struct Measures {
             for (int s = 0; s < (int)grid.n_sites; s++)
                 spatial_out[s] = bp_partitionfunction(handle, grid, psi, bp_msg,
                     Operators::Z(), s, ws.cv1, ws.cv2, full_bp,
-                    dbl_a, dbl_b, dbl_msg);
+                    dbl_a, dbl_b, dbl_msg, &bp_msg_v);
         }
 
         for (auto p : bp_msg)   if (p) HIP_CHECK(hipFree(p));
