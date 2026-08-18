@@ -981,7 +981,8 @@ struct Measures {
                     const std::vector<Scalar*>& psi,
                     std::vector<Scalar*>& messages,
                     int center_site,
-                    float alpha = 1.0f)
+                    float alpha = 1.0f,
+                    std::vector<Scalar*>* messages_v = nullptr)  // chi-vector output
     {
         float one=1.f, zero=0.f;
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
@@ -1054,6 +1055,12 @@ struct Measures {
                     RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
                     normalize_and_delta<<<blocks, 256, 0, rbstream>>>(
                         d_mu, messages[msg_idx], messages[msg_idx], d_s, d_delta, chi, alpha);
+                    // Also extract diagonal to chi-vector if provided
+                    if (messages_v && (*messages_v)[msg_idx]) {
+                        int vblocks = (chi + 255) / 256;
+                        extract_diagonal<<<vblocks, 256, 0, rbstream>>>(
+                            messages[msg_idx], (*messages_v)[msg_idx], chi);
+                    }
                 } else {
                     // ── Full chi×chi bilinear-form path ───────────────────────────────
                     // Select the correct physical component first (same d_sel as
@@ -1204,13 +1211,25 @@ struct Measures {
                          std::vector<Scalar*>& messages,
                          int n_sweeps, int center_site,
                          float tol=1e-5f,
-                         float alpha=1.0f)
+                         float alpha=1.0f,
+                         std::vector<Scalar*>* messages_v=nullptr)
     {
         float last_delta = 1e30f;
         for(int i=0;i<n_sweeps;i++){
-            last_delta = bp_update(grid,psi,messages,center_site,alpha);
-            if(last_delta < tol) return {i+1, last_delta};
+            // Only pass messages_v on the final sweep — avoids overhead every sweep
+            bool is_last = false;
+            last_delta = bp_update(grid,psi,messages,center_site,alpha,
+                                   is_last ? messages_v : nullptr);
+            if(last_delta < tol){
+                // Final sweep: populate messages_v
+                if(messages_v)
+                    bp_update(grid,psi,messages,center_site,alpha,messages_v);
+                return {i+1, last_delta};
+            }
         }
+        // Max sweeps reached: populate messages_v on last sweep
+        if(messages_v)
+            bp_update(grid,psi,messages,center_site,alpha,messages_v);
         return {n_sweeps, last_delta};
     }
 
@@ -1389,16 +1408,16 @@ struct Measures {
         int center_site, int n_sweeps=100,
         double* t_bp_ms=nullptr, double* t_pf_ms=nullptr,
         int* n_sweeps_out=nullptr, float* delta_out=nullptr,
-        float* spatial_out=nullptr)   // optional: C(r,t) at every site, length grid.n_sites
+        float* spatial_out=nullptr,
+        const std::vector<Scalar*>* messages_v_in=nullptr)  // chi-vector gate messages
     {
         using clk = std::chrono::high_resolution_clock;
         using ms  = std::chrono::duration<double, std::milli>;
 
         // Allocate temporary BP messages — warm start from gate messages.
-        // The gate outputs correct Vidal-gauge messages (diagonal singular values).
-        // BP refines these toward the loopy-BP fixed point for the 2D lattice.
         int nm = 2 * grid.n_bonds;
         std::vector<Scalar*> bp_msg(nm, nullptr);
+        std::vector<Scalar*> bp_msg_v(nm, nullptr);  // chi-vector companion
         for (auto& bond : grid.bonds) {
             for (int d=0; d<2; d++) {
                 int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
@@ -1406,12 +1425,20 @@ struct Measures {
                 HIP_CHECK(hipMalloc(&bp_msg[idx], (size_t)chi*chi*sizeof(Scalar)));
                 HIP_CHECK(hipMemcpy(bp_msg[idx], messages[idx],
                     (size_t)chi*chi*sizeof(Scalar), hipMemcpyDeviceToDevice));
+                // Chi-vector: warm start from gate messages_v if available
+                HIP_CHECK(hipMalloc(&bp_msg_v[idx], (size_t)chi*sizeof(Scalar)));
+                if (messages_v_in && (*messages_v_in)[idx])
+                    HIP_CHECK(hipMemcpy(bp_msg_v[idx], (*messages_v_in)[idx],
+                        (size_t)chi*sizeof(Scalar), hipMemcpyDeviceToDevice));
+                else
+                    HIP_CHECK(hipMemset(bp_msg_v[idx], 0, (size_t)chi*sizeof(Scalar)));
             }
         }
 
         float alpha = (damped_bp) ? bp_alpha : 1.0f;
         auto t0 = clk::now();
-        BpResult bpr = bp_converge(grid, psi, bp_msg, n_sweeps, center_site, 1e-5f, alpha);
+        BpResult bpr = bp_converge(grid, psi, bp_msg, n_sweeps, center_site, 1e-5f, alpha,
+                                   &bp_msg_v);
         auto t1 = clk::now();
         if (t_bp_ms)    *t_bp_ms    = ms(t1 - t0).count();
         if (n_sweeps_out) *n_sweeps_out = bpr.sweeps;
@@ -1431,7 +1458,8 @@ struct Measures {
                     dbl_a, dbl_b, dbl_msg);
         }
 
-        for (auto p : bp_msg) if (p) HIP_CHECK(hipFree(p));
+        for (auto p : bp_msg)   if (p) HIP_CHECK(hipFree(p));
+        for (auto p : bp_msg_v) if (p) HIP_CHECK(hipFree(p));
         return C;
     }
 

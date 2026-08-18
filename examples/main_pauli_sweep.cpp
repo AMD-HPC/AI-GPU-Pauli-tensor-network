@@ -248,7 +248,8 @@ int main(int argc, char** argv) {
             C[g] = meas[g]->autocorrelation_with_bp(
                 static_cast<Grid&>(*grids[g]), states[g]->psi,
                 states[g]->messages, center, BP_SWEEPS,
-                nullptr, nullptr, &bp_sweeps[g], &bp_delta[g]);
+                nullptr, nullptr, &bp_sweeps[g], &bp_delta[g],
+                nullptr, &states[g]->messages_v);
         }
 
         int chi_actual=1;
