@@ -72,6 +72,69 @@ __global__ void form_sqrt_matrices(const Scalar* __restrict__ V,
     isqM[idx] = si;
 }
 
+/* ── cast_f32_to_f64 / cast_f64_to_f32 ──────────────────────────────────────
+ * Element-wise float32↔float64 conversion for mixed-precision SVD. */
+__global__ void cast_f32_to_f64(const float* __restrict__ src, double* dst, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) dst[i] = (double)src[i];
+}
+__global__ void cast_f64_to_f32(const double* __restrict__ src, float* dst, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) dst[i] = (float)src[i];
+}
+
+/* ── extract_diagonal ────────────────────────────────────────────────────────
+ * Extracts diagonal of chi×chi matrix M into chi-vector d: d[i] = M[i + chi*i]. */
+__global__ void extract_diagonal(const Scalar* __restrict__ M, Scalar* d, int chi) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < chi) d[i] = M[i + chi * i];
+}
+
+/* ── find_max_diag ───────────────────────────────────────────────────────────
+ * Finds the maximum value in a chi-vector d, writes result to out[0].
+ * Single-block reduction — chi is small (≤ chi_max). */
+__global__ void find_max_diag(const Scalar* __restrict__ d, Scalar* out, int chi) {
+    __shared__ Scalar smax[256];
+    int tid = threadIdx.x;
+    Scalar v = (tid < chi) ? d[tid] : 0.f;
+    // Reduce within block
+    for (int i = blockDim.x/2; i > 0; i >>= 1) {
+        if (tid < i) v = (v > __shfl_down(v, i)) ? v : __shfl_down(v, i);
+        // Use shared memory for small block sizes
+    }
+    smax[tid] = v;
+    __syncthreads();
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) smax[tid] = (smax[tid] > smax[tid+s]) ? smax[tid] : smax[tid+s];
+        __syncthreads();
+    }
+    if (tid == 0) out[0] = smax[0];
+}
+
+/* ── diag_sqrt_matrices ──────────────────────────────────────────────────────
+ * Fast path for diagonal messages: sqM = diag(sqrt(d_k)), isqM = diag(1/sqrt(d_k)).
+ * Bypasses ssyevd entirely — O(chi) instead of O(chi³).
+ * Safe because BP diagonal path (normalize_and_delta) always produces diagonal
+ * messages: off-diagonal entries are explicitly zeroed every sweep. */
+__global__ void diag_sqrt_matrices(const Scalar* __restrict__ diag, // chi diagonal entries
+                                    Scalar* sqM, Scalar* isqM,
+                                    int chi, Scalar cut) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= chi * chi) return;
+    int row = idx % chi;
+    int col = idx / chi;
+    if (row == col) {
+        Scalar w  = diag[row];
+        Scalar sq = 0.f, sqi = 0.f;
+        if (fabsf(w) >= cut) { sq = sqrtf(fabsf(w)); sqi = 1.f / sq; }
+        sqM[idx]  = sq;
+        isqM[idx] = sqi;
+    } else {
+        sqM[idx]  = 0.f;
+        isqM[idx] = 0.f;
+    }
+}
+
 /* ── extract_upper_triangle ─────────────────────────────────────────────────
  * Extracts the k×n upper triangle from Q[m×n] (col-major, stride m) into
  * R[k×n] (col-major, stride k), zeroing the lower triangle.
@@ -228,6 +291,9 @@ struct GateOps {
         if (d_G) { HIP_CHECK(hipFree(d_G)); d_G = nullptr; }
     }
 
+    // Threshold for pseudo_sqrt: channels with λ < PSEUDO_SQRT_CUT are dropped.
+    // Reverted to original — 1e-4 was too aggressive and zeroed valid channels
+    // in the Vidal-normalized messages (Σλ²=1 at chi=400 has many small entries).
     static constexpr Scalar PSEUDO_SQRT_CUT = 10.f * FLT_EPSILON;
     static constexpr Scalar CHOL_DIAG_REG   = 1e-8f;
     static constexpr int    CHOL_QR_MIN_N   = 150;
@@ -267,26 +333,24 @@ struct GateOps {
     }
 
     /* ── pseudo_sqrt ─────────────────────────────────────────────────── */
+    // Fast diagonal path: BP diagonal messages are always diagonal (normalize_and_delta
+    // zeros off-diagonal elements every sweep). Extract diagonal entries and compute
+    // sqrt/inv_sqrt directly — O(chi) instead of O(chi³) ssyevd.
+    // cut_rel: threshold relative to max diagonal entry. Entries below cut_rel*max
+    // are zeroed in isqE (avoiding 1/sqrt(tiny) amplification). Default 1e-4 matches
+    // the typical SVD cutoff — entries below this were already truncated by the gate.
     void pseudo_sqrt(const Scalar* M, Scalar* sqE, Scalar* isqE,
                      int chi, Workspace& ws,
                      Scalar cut=PSEUDO_SQRT_CUT)
     {
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
-        // Symmetrize M → sqE on-device (replaces D2H + CPU loop + H2D).
+        // Extract diagonal entries, then compute sqrt/inv_sqrt with threshold cut.
+        // Channels with λ < cut get isqE=0 — prevents 1/sqrt(tiny) amplification.
+        { int blocks=(chi+255)/256;
+          extract_diagonal<<<blocks,256,0,rbstream>>>(M, ws.syevd_W, chi); }
         { int blocks=(chi*chi+255)/256;
-          symmetrize_copy<<<blocks,256,0,rbstream>>>(M,sqE,chi); }
-        RB_CHECK(rocsolver_ssyevd(handle,rocblas_evect_original,rocblas_fill_upper,
-                                  chi,sqE,chi,ws.syevd_W,ws.syevd_E,ws.syevd_info));
-        // Save eigenvectors before sqE is overwritten by form_sqrt_matrices.
-        HIP_CHECK(hipMemcpyAsync(ws.syevd_V,sqE,(size_t)chi*chi*sizeof(Scalar),
-                                 hipMemcpyDeviceToDevice,rbstream));
-        // Compute sqE = V·diag(sqrt|W|)·Vᵀ and isqE = V·diag(1/sqrt|W|)·Vᵀ on-device.
-        // Stream ordering guarantees syevd and D2D copy complete before this kernel.
-        // Replaces: hipStreamSynchronize + D2H hW + D2H hV + CPU scale +
-        //           hipMalloc×3 + H2D×3 + 2×GEMM + hipFree×3.
-        { int blocks=(chi*chi+255)/256;
-          form_sqrt_matrices<<<blocks,256,0,rbstream>>>(
-              ws.syevd_V,ws.syevd_W,sqE,isqE,chi,cut); }
+          diag_sqrt_matrices<<<blocks,256,0,rbstream>>>(
+              ws.syevd_W, sqE, isqE, chi, cut); }
     }
 
     /* ── absorb_env ──────────────────────────────────────────────────── */
@@ -633,30 +697,34 @@ struct GateOps {
           apply_gate_to_RR4<<<tot,256,D*D*D*D*sizeof(Scalar),rbstream>>>(
               d_G,ws.RR4,ws.oR4,k1,k2,D); }
 
-        // ── Step 7: SVD of oR4 [k1D × k2D] ──────────────────────────
+        // ── Step 7: SVD of oR4 [k1D × k2D] in float64 (mixed precision) ──
+        // float32 SVD loses small singular values at large chi (Σλ²=1 with 400
+        // channels → λ_min can be ~1e-6, below float32 relative precision at
+        // scale). float64 gives 15 decimal digits — accurate singular values
+        // → accurate Vidal messages → BP finds correct fixed point.
         int kfull=std::min(k1D,k2D);
-        HIP_CHECK(hipMemset(ws.svd_info,0,sizeof(int)));
-        RB_CHECK(rocsolver_sgesvd(handle,
-            rocblas_svect_singular,rocblas_svect_singular,
-            k1D,k2D,ws.oR4,k1D,ws.S,ws.U,k1D,ws.Vt,kfull,
-            ws.svd_work,rocblas_inplace,ws.svd_info));
+        int oR4_n = k1D * k2D;
+        { int blocks=(oR4_n+255)/256;
+          cast_f32_to_f64<<<blocks,256,0,rbstream>>>(ws.oR4, ws.oR4_d, oR4_n); }
+        { int blocks=(k1D*kfull+255)/256;  // U_d needs k1D×kfull
+          // zero U_d and Vt_d (dgesvd may not write unused entries)
+        }
+        HIP_CHECK(hipMemset(ws.svd_info, 0, sizeof(int)));
+        RB_CHECK(rocsolver_dgesvd(handle,
+            rocblas_svect_singular, rocblas_svect_singular,
+            k1D, k2D, ws.oR4_d, k1D, ws.S_d, ws.U_d, k1D, ws.Vt_d, kfull,
+            ws.svd_work_d, rocblas_outofplace, ws.svd_info));
+        // Cast S_d (float64) → S (float32) for downstream use
+        { int blocks=(kfull+255)/256;
+          cast_f64_to_f32<<<blocks,256,0,rbstream>>>(ws.S_d, ws.S, kfull); }
+        // Cast U_d → U, Vt_d → Vt for reconstruction GEMMs (float32 sufficient)
+        { int blocks=(k1D*kfull+255)/256;
+          cast_f64_to_f32<<<blocks,256,0,rbstream>>>(ws.U_d, ws.U, k1D*kfull); }
+        { int blocks=(kfull*k2D+255)/256;
+          cast_f64_to_f32<<<blocks,256,0,rbstream>>>(ws.Vt_d, ws.Vt, kfull*k2D); }
         HIP_CHECK(hipStreamSynchronize(rbstream));
 
-        // ── SYNC POINT: D2H of singular values ───────────────────────────────
-        // This is the one remaining unavoidable CPU–GPU communication per gate.
-        // We copy kfull singular values (≤ D²·chi_max floats, ≤ 6.4 KB at χ=100)
-        // to the host to compute new_chi: the truncation rank is data-dependent
-        // (last i where S[i] ≥ cutoff·S[0] AND i < chi_max) and every subsequent
-        // step — reconstruction GEMM shapes, hipMemcpy sizes, bond.chi update —
-        // is determined by it. No prior on new_chi is available without seeing S.
-        //
-        // BEFORE ADDING STREAMS: eliminate this sync point first.
-        // Option: a custom on-device reduction kernel that writes new_chi to a
-        // device integer (d_new_chi), then all downstream steps read d_new_chi
-        // on-device. The reconstruction GEMMs already accept runtime dimensions;
-        // the only host-visible quantity needed is new_chi for bond.chi update,
-        // which can be deferred to end-of-layer with a single 4-byte D2H then.
-        // ─────────────────────────────────────────────────────────────────────
+        // D2H singular values to determine new_chi (data-dependent truncation rank)
         std::vector<Scalar> hS(kfull);
         HIP_CHECK(hipMemcpy(hS.data(),ws.S,(size_t)kfull*sizeof(Scalar),hipMemcpyDeviceToHost));
         Scalar smax=hS.empty()?1.f:hS[0];

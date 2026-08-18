@@ -1367,7 +1367,9 @@ struct Measures {
         using clk = std::chrono::high_resolution_clock;
         using ms  = std::chrono::duration<double, std::milli>;
 
-        // Allocate temporary message copy (never modify state.messages)
+        // Allocate temporary BP messages — warm start from gate messages.
+        // The gate outputs correct Vidal-gauge messages (diagonal singular values).
+        // BP refines these toward the loopy-BP fixed point for the 2D lattice.
         int nm = 2 * grid.n_bonds;
         std::vector<Scalar*> bp_msg(nm, nullptr);
         for (auto& bond : grid.bonds) {

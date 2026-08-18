@@ -226,24 +226,32 @@ int main(int argc, char** argv) {
 
         // Per active state: Trotter → autocorrelation → PAULI
         float C[4] = {0.f,0.f,0.f,0.f};
+        int   bp_sweeps[4] = {0,0,0,0};
+        float bp_delta[4]  = {0.f,0.f,0.f,0.f};
+        LayerMetrics lm_arr[4];
         std::vector<float> nid(grid.n_sites);
         for (int g=0; g<4; g++) {
             if (!active[g]) continue;
+            lm_arr[g] = LayerMetrics{};
             do_trotter(states[g]->psi, states[g]->messages,
                        static_cast<Grid&>(*grids[g]),
                        ptms[g], nullptr, s_site_ptm,
-                       *wss[g], gate_ops, chi_max, cutoff);
+                       *wss[g], gate_ops, chi_max, cutoff, &lm_arr[g]);
             C[g] = meas[g]->autocorrelation_with_bp(
                 static_cast<Grid&>(*grids[g]), states[g]->psi,
-                states[g]->messages, center, BP_SWEEPS);
+                states[g]->messages, center, BP_SWEEPS,
+                nullptr, nullptr, &bp_sweeps[g], &bp_delta[g]);
         }
 
         int chi_actual=1;
         for (auto& b:grids[ref_g]->bonds) chi_actual=std::max(chi_actual,b.chi);
 
         double t=(now_ms()-t0)/1000.0;
-        printf("STEP %d  C_nl %+.6f  C_n1 %+.6f  C_n2 %+.6f  C_n3 %+.6f  chi %d  t %.2f\n",
-               step, C[0], C[1], C[2], C[3], chi_actual, t);
+        printf("STEP %d  C_nl %+.6f  C_n1 %+.6f  C_n2 %+.6f  C_n3 %+.6f"
+               "  chi %d  bp %d/%.2e  gate_err %.2e  t %.2f\n",
+               step, C[0], C[1], C[2], C[3], chi_actual,
+               bp_sweeps[ref_g], (double)bp_delta[ref_g],
+               (double)lm_arr[ref_g].gate_err, t);
 
         // Pauli weights — active states only
         for (int g=0; g<4; g++) {

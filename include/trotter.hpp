@@ -65,7 +65,8 @@ inline void do_trotter(
     Workspace&                  ws,
     GateOps&                    gate_ops,
     int                         chi_max,
-    float                       cutoff)
+    float                       cutoff,
+    LayerMetrics*               lm=nullptr)  // optional: gate truncation metrics
 {
     const int n_colors = (int)grid.colors.size();
     const int n_bonds  = grid.n_bonds;
@@ -124,7 +125,7 @@ inline void do_trotter(
                 psi[gate.site_a], psi[gate.site_b],
                 gate, grid,
                 new_msg, frozen_msg, frozen_chi,
-                G, ws, chi_max, cutoff);
+                G, ws, chi_max, cutoff, lm);
         }
 
         // Commit updated messages — skip outside-lightcone bonds
