@@ -56,17 +56,18 @@ using PtmFn = const float*(*)(int);
 
 // ── do_trotter ────────────────────────────────────────────────────────────────
 inline void do_trotter(
-    std::vector<Scalar*>&       psi,       // site tensors [n_sites], on GPU
-    std::vector<Scalar*>&       messages,  // bond messages [2*n_bonds], on GPU
-    Grid&                       grid,      // topology (colors, bonds, sites)
-    PtmFn                       bond_ptm,  // f(bond_id)→PTM  (or nullptr)
-    const float*                nl_ptm,    // contiguous PTM buffer (or nullptr)
-    const float*                site_ptm,  // kick PTM [16] (or nullptr=no kick)
+    std::vector<Scalar*>&       psi,          // site tensors [n_sites], on GPU
+    std::vector<Scalar*>&       messages,     // bond messages chi×chi [2*n_bonds]
+    Grid&                       grid,         // topology (colors, bonds, sites)
+    PtmFn                       bond_ptm,     // f(bond_id)→PTM  (or nullptr)
+    const float*                nl_ptm,       // contiguous PTM buffer (or nullptr)
+    const float*                site_ptm,     // kick PTM [16] (or nullptr=no kick)
     Workspace&                  ws,
     GateOps&                    gate_ops,
     int                         chi_max,
     float                       cutoff,
-    LayerMetrics*               lm=nullptr)  // optional: gate truncation metrics
+    LayerMetrics*               lm=nullptr,
+    std::vector<Scalar*>*       messages_v=nullptr)  // chi-vector messages (optional)
 {
     const int n_colors = (int)grid.colors.size();
     const int n_bonds  = grid.n_bonds;
@@ -125,7 +126,7 @@ inline void do_trotter(
                 psi[gate.site_a], psi[gate.site_b],
                 gate, grid,
                 new_msg, frozen_msg, frozen_chi,
-                G, ws, chi_max, cutoff, lm);
+                G, ws, chi_max, cutoff, lm, messages_v);
         }
 
         // Commit updated messages — skip outside-lightcone bonds

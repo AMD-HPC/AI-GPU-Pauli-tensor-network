@@ -623,7 +623,8 @@ struct GateOps {
         const Scalar* G,
         Workspace& ws,
         int chi_max, Scalar cutoff=1e-10f,
-        LayerMetrics* lm=nullptr)
+        LayerMetrics* lm=nullptr,
+        std::vector<Scalar*>* out_messages_v=nullptr)  // chi-vector output (optional)
     {
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
         const Site& sv1=grid.sites[gate.site_a];
@@ -831,11 +832,23 @@ struct GateOps {
         // Store Vidal-normalized singular values (λ_i / snorm so Σ λ²=1).
         bond.chi=new_chi;
         std::vector<Scalar> msg((size_t)new_chi*new_chi,0.f);
-        for(int i=0;i<new_chi;i++) msg[i+i*new_chi]=std::max(hS[i]/snorm,0.f);
+        std::vector<Scalar> msg_v(new_chi);
+        for(int i=0;i<new_chi;i++){
+            Scalar lam = std::max(hS[i]/snorm,0.f);
+            msg[i+i*new_chi] = lam;
+            msg_v[i]         = lam;
+        }
         HIP_CHECK(hipMemcpy(out_messages[bond.msg_from_a()],msg.data(),
                             (size_t)new_chi*new_chi*sizeof(Scalar),hipMemcpyHostToDevice));
         HIP_CHECK(hipMemcpy(out_messages[bond.msg_from_b()],msg.data(),
                             (size_t)new_chi*new_chi*sizeof(Scalar),hipMemcpyHostToDevice));
+        // Also write chi-vector if provided
+        if(out_messages_v){
+            HIP_CHECK(hipMemcpy((*out_messages_v)[bond.msg_from_a()],msg_v.data(),
+                                (size_t)new_chi*sizeof(Scalar),hipMemcpyHostToDevice));
+            HIP_CHECK(hipMemcpy((*out_messages_v)[bond.msg_from_b()],msg_v.data(),
+                                (size_t)new_chi*sizeof(Scalar),hipMemcpyHostToDevice));
+        }
     }
 
     /* ── convenience overload ────────────────────────────────────────── */

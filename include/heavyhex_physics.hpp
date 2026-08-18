@@ -104,7 +104,8 @@ struct HeavyHexGates {
  * ========================================================= */
 struct HeavyHexState {
     std::vector<Scalar*> psi;
-    std::vector<Scalar*> messages;
+    std::vector<Scalar*> messages;    // chi×chi matrices (legacy, to be removed)
+    std::vector<Scalar*> messages_v;  // chi-vectors (diagonal entries only) — new
     int chi_max;
     int n_sites, n_bonds;
 
@@ -114,12 +115,10 @@ struct HeavyHexState {
     {
         psi.resize(n_sites, nullptr);
         messages.resize(2*n_bonds, nullptr);
+        messages_v.resize(2*n_bonds, nullptr);
 
         // Allocate using chi_alloc (set by apply_lightcone, or chi_max by default).
-        // chi_alloc is fixed at construction; chi (runtime) grows during simulation.
-        // Sites outside the lightcone have chi_alloc=1 on all bonds -> tiny allocation.
         for (auto& site : g.sites) {
-            // Tensor size uses chi_alloc per bond
             size_t sz = D;
             for (int d = 0; d < MAX_DEGREE; d++)
                 if (site.bond_id[d] >= 0)
@@ -128,11 +127,18 @@ struct HeavyHexState {
             HIP_CHECK(hipMemset(psi[site.id], 0, sz * sizeof(Scalar)));
         }
         for (auto& bond : g.bonds) {
-            size_t sz = (size_t)bond.chi_alloc * bond.chi_alloc * sizeof(Scalar);
-            HIP_CHECK(hipMalloc(&messages[bond.msg_from_a()], sz));
-            HIP_CHECK(hipMemset(messages[bond.msg_from_a()], 0, sz));
-            HIP_CHECK(hipMalloc(&messages[bond.msg_from_b()], sz));
-            HIP_CHECK(hipMemset(messages[bond.msg_from_b()], 0, sz));
+            // chi×chi messages (legacy)
+            size_t sz_sq = (size_t)bond.chi_alloc * bond.chi_alloc * sizeof(Scalar);
+            HIP_CHECK(hipMalloc(&messages[bond.msg_from_a()], sz_sq));
+            HIP_CHECK(hipMemset(messages[bond.msg_from_a()], 0, sz_sq));
+            HIP_CHECK(hipMalloc(&messages[bond.msg_from_b()], sz_sq));
+            HIP_CHECK(hipMemset(messages[bond.msg_from_b()], 0, sz_sq));
+            // chi-vector messages (new — diagonal entries only)
+            size_t sz_v = (size_t)bond.chi_alloc * sizeof(Scalar);
+            HIP_CHECK(hipMalloc(&messages_v[bond.msg_from_a()], sz_v));
+            HIP_CHECK(hipMemset(messages_v[bond.msg_from_a()], 0, sz_v));
+            HIP_CHECK(hipMalloc(&messages_v[bond.msg_from_b()], sz_v));
+            HIP_CHECK(hipMemset(messages_v[bond.msg_from_b()], 0, sz_v));
         }
     }
 
@@ -141,8 +147,9 @@ struct HeavyHexState {
         : HeavyHexState(static_cast<const Grid&>(g)) {}
 
     ~HeavyHexState() {
-        for (auto p : psi)      if (p) HIP_CHECK(hipFree(p));
-        for (auto p : messages) if (p) HIP_CHECK(hipFree(p));
+        for (auto p : psi)        if (p) HIP_CHECK(hipFree(p));
+        for (auto p : messages)   if (p) HIP_CHECK(hipFree(p));
+        for (auto p : messages_v) if (p) HIP_CHECK(hipFree(p));
     }
 
     HeavyHexState(const HeavyHexState&) = delete;

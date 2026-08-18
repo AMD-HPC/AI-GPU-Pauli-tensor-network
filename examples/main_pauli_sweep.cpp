@@ -243,7 +243,8 @@ int main(int argc, char** argv) {
             do_trotter(states[g]->psi, states[g]->messages,
                        static_cast<Grid&>(*grids[g]),
                        ptms[g], nullptr, s_site_ptm,
-                       *wss[g], gate_ops, chi_max, cutoff, &lm_arr[g]);
+                       *wss[g], gate_ops, chi_max, cutoff, &lm_arr[g],
+                       &states[g]->messages_v);
             C[g] = meas[g]->autocorrelation_with_bp(
                 static_cast<Grid&>(*grids[g]), states[g]->psi,
                 states[g]->messages, center, BP_SWEEPS,
