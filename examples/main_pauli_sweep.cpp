@@ -110,9 +110,16 @@ int main(int argc, char** argv) {
     float v_hops[4] = {-1.f,-1.f,-1.f,-1.f};  // per-state: NL,N1,N2,N3
     bool  per_state = false;
     bool  active[4] = {true,true,true,true};  // which states to run
+    int   diagnose_step = -1;  // --diagnose=N: print message diagnostics at step N
+    // Bonds to diagnose (site pairs, 0-based) — hardcoded for heavy-hex guilty bonds
+    // identified from n(v,t) analysis at step 9 chi=400 δ=1e-4
+    std::vector<std::pair<int,int>> diag_bonds = {
+        {5,36},{5,38},{7,40},{7,41},{19,47},{19,56},{19,58},{23,52},{23,62}
+    };
 
     for (int i=1; i<argc; i++) {
         std::string a(argv[i]);
+        if (a.substr(0,11)=="--diagnose=") diagnose_step = atoi(argv[i]+11);
         if (a.substr(0,9) =="--center=") center = atoi(argv[i]+9);
         if (a.substr(0,8) =="--v_hop=") v_hop  = atof(argv[i]+8);
         if (a.substr(0,8) =="--state=") {
@@ -262,6 +269,45 @@ int main(int argc, char** argv) {
             for (int v=0; v<grid.n_sites; v++) printf(" %.7f", nid[v]);
             printf("\n");
         }
+        // ── Message diagnostics ──────────────────────────────────────────
+        if (step == diagnose_step && active[ref_g]) {
+            printf("# DIAGNOSE step=%d state=NL\n", step);
+            printf("# Bond(a,b)  chi  diag_norm  offdiag_norm  diag_frac  min_diag  max_diag\n");
+            for (auto& [sa, sb] : diag_bonds) {
+                // Find bond id for this site pair
+                int bond_id = -1;
+                for (auto& b : grids[ref_g]->bonds)
+                    if ((b.site_a==sa&&b.site_b==sb)||(b.site_a==sb&&b.site_b==sa))
+                        { bond_id = b.id; break; }
+                if (bond_id < 0) continue;
+                auto& bond = grids[ref_g]->bonds[bond_id];
+                int chi = bond.chi;
+                if (chi == 0) continue;
+                size_t sz = (size_t)chi*chi;
+                std::vector<float> msg(sz);
+                // D2H message from_a (one direction)
+                int idx = bond.msg_from_a();
+                HIP_CHECK(hipMemcpy(msg.data(), states[ref_g]->messages[idx],
+                    sz*sizeof(float), hipMemcpyDeviceToHost));
+                // Compute diagonal vs off-diagonal norms
+                double diag_sq = 0, offdiag_sq = 0;
+                float mn = 1e30f, mx = 0.f;
+                for (int r=0; r<chi; r++)
+                    for (int c=0; c<chi; c++) {
+                        float v = msg[r + chi*c];
+                        if (r==c) { diag_sq += v*v; mn=std::min(mn,v); mx=std::max(mx,v); }
+                        else        offdiag_sq += v*v;
+                    }
+                double total = diag_sq + offdiag_sq;
+                double frac  = (total>0) ? diag_sq/total : 1.0;
+                printf("# (%2d,%2d)  chi=%3d  diag=%.3e  offdiag=%.3e  frac=%.6f"
+                       "  min=%.3e  max=%.3e\n",
+                       sa, sb, chi,
+                       std::sqrt(diag_sq), std::sqrt(offdiag_sq), frac, mn, mx);
+            }
+            fflush(stdout);
+        }
+
         fflush(stdout);
     }
 
