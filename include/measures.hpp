@@ -546,32 +546,60 @@ static Scalar bp_partitionfunction(
     int center_site,
     Scalar* scratch_a,
     Scalar* scratch_b,
-    bool full_bp = false)
+    bool full_bp = false,
+    double* dbl_a  = nullptr,   // float64 scratch (≥ m_max*n_max doubles)
+    double* dbl_b  = nullptr,   // float64 scratch
+    double* dbl_msg= nullptr)   // float64 scratch (≥ chi_max² doubles)
 {
-    // Upload identity and measurement operator to GPU
+    // Upload identity and measurement operator to GPU in float64.
+    // vertex_scalar_d requires double operators to avoid float32 overflow
+    // when contracting chi=400 tensors (vertex values can be O(1e±10)).
     std::vector<Scalar> I_op = Operators::I();
+    // Float32 operators (kept for full_bp path which still uses vertex_scalar)
     float *d_I, *d_O;
     HIP_CHECK(hipMalloc(&d_I, D*D*sizeof(Scalar)));
     HIP_CHECK(hipMalloc(&d_O, D*D*sizeof(Scalar)));
     HIP_CHECK(hipMemcpy(d_I, I_op.data(),    D*D*sizeof(Scalar), hipMemcpyHostToDevice));
     HIP_CHECK(hipMemcpy(d_O, O_local.data(), D*D*sizeof(Scalar), hipMemcpyHostToDevice));
 
-    // Numerator: log-sum of vertex scalars to avoid overflow/underflow.
-    // At layer 14+ the product of 16 vertex scalars over/underflows in float64.
+    // Float64 operators for vertex_scalar_d
+    double *d_I_d = nullptr, *d_O_d = nullptr;
+    bool use_f64 = (dbl_a && dbl_b && dbl_msg && !full_bp);
+    if (use_f64) {
+        HIP_CHECK(hipMalloc(&d_I_d, D*D*sizeof(double)));
+        HIP_CHECK(hipMalloc(&d_O_d, D*D*sizeof(double)));
+        std::vector<double> I_op_d(I_op.begin(), I_op.end());
+        std::vector<double> O_op_d(O_local.begin(), O_local.end());
+        HIP_CHECK(hipMemcpy(d_I_d, I_op_d.data(), D*D*sizeof(double), hipMemcpyHostToDevice));
+        HIP_CHECK(hipMemcpy(d_O_d, O_op_d.data(), D*D*sizeof(double), hipMemcpyHostToDevice));
+    }
+
+    // Numerator: log-sum of vertex scalars.
+    // Use vertex_scalar_d (float64) when scratch buffers available — prevents
+    // float32 overflow/underflow at large chi (vertex values can be O(1e±10)).
     double log_num = 0.0;
     double sign_num = 1.0;
     for (auto& site : grid.sites) {
-        const Scalar* op = (site.id == center_site) ? d_O : d_I;
-        Scalar vs = vertex_scalar(handle, site, psi[site.id],
-                                  grid, messages, op,
-                                  scratch_a, scratch_b, full_bp);
-        if (!std::isfinite(vs)) {
+        double vs_d;
+        if (use_f64) {
+            const double* op_d = (site.id == center_site) ? d_O_d : d_I_d;
+            vs_d = vertex_scalar_d(handle, site, psi[site.id],
+                                   grid, messages, op_d,
+                                   dbl_a, dbl_b, dbl_msg);
+        } else {
+            const Scalar* op = (site.id == center_site) ? d_O : d_I;
+            vs_d = (double)vertex_scalar(handle, site, psi[site.id],
+                                         grid, messages, op,
+                                         scratch_a, scratch_b, full_bp);
+        }
+        if (!std::isfinite(vs_d)) {
+            if (use_f64) { HIP_CHECK(hipFree(d_I_d)); HIP_CHECK(hipFree(d_O_d)); }
             HIP_CHECK(hipFree(d_I)); HIP_CHECK(hipFree(d_O));
             return std::numeric_limits<Scalar>::quiet_NaN();
         }
-        if (vs == 0.f) { sign_num = 0.0; break; }
-        sign_num *= (vs > 0.f ? 1.0 : -1.0);
-        log_num  += std::log(std::abs((double)vs));
+        if (vs_d == 0.0) { sign_num = 0.0; break; }
+        sign_num *= (vs_d > 0.0 ? 1.0 : -1.0);
+        log_num  += std::log(std::abs(vs_d));
     }
 
     // Bethe edge correction in log-space.
@@ -604,12 +632,11 @@ static Scalar bp_partitionfunction(
         }
     }
 
+    if (use_f64) { HIP_CHECK(hipFree(d_I_d)); HIP_CHECK(hipFree(d_O_d)); }
     HIP_CHECK(hipFree(d_I));
     HIP_CHECK(hipFree(d_O));
 
     if (sign_num == 0.0) return 0.f;
-    // C = (Π vs_v) / (Π Ze) = sign_num * sign_den * exp(log_num - log_den)
-    // sign_den = Π sign(Ze); dividing by sign_den = multiplying (since ±1).
     Scalar result = (Scalar)(sign_num * sign_den * std::exp(log_num - log_den));
     return result;
 }
@@ -1391,7 +1418,8 @@ struct Measures {
         if (delta_out)    *delta_out    = bpr.delta;
 
         Scalar C = bp_partitionfunction(handle, grid, psi, bp_msg,
-            Operators::Z(), center_site, ws.cv1, ws.cv2, full_bp);
+            Operators::Z(), center_site, ws.cv1, ws.cv2, full_bp,
+            dbl_a, dbl_b, dbl_msg);
         auto t2 = clk::now();
         if (t_pf_ms) *t_pf_ms = ms(t2 - t1).count();
 
@@ -1399,7 +1427,8 @@ struct Measures {
         if (spatial_out) {
             for (int s = 0; s < (int)grid.n_sites; s++)
                 spatial_out[s] = bp_partitionfunction(handle, grid, psi, bp_msg,
-                    Operators::Z(), s, ws.cv1, ws.cv2, full_bp);
+                    Operators::Z(), s, ws.cv1, ws.cv2, full_bp,
+                    dbl_a, dbl_b, dbl_msg);
         }
 
         for (auto p : bp_msg) if (p) HIP_CHECK(hipFree(p));
