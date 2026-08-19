@@ -1380,24 +1380,11 @@ struct Measures {
         float last_delta = 1e30f;
         int i = 0;
         for(; i<n_sweeps; i++){
-            last_delta = bp_update(grid,psi,messages,center_site,alpha);
+            // Forward messages_v so the sweep reads neighbors via mode_n_scale
+            // (diagonal / Vidal gauge). bp_update also keeps chi×chi messages
+            // in sync, so this is a validation hybrid: diagonal read, both written.
+            last_delta = bp_update(grid,psi,messages,center_site,alpha,messages_v);
             if(last_delta < tol) { i++; break; }
-        }
-        // Populate messages_v by extracting diagonals from converged messages.
-        // Do NOT do an extra bp_update — that would shift the fixed point.
-        if(messages_v) {
-            for(auto& bond : grid.bonds) {
-                if(bond.chi_alloc == 1) continue;
-                int chi = bond.chi;
-                for(int d=0; d<2; d++) {
-                    int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
-                    if((*messages_v)[idx]) {
-                        int blocks = (chi+255)/256;
-                        extract_diagonal<<<blocks,256>>>(
-                            messages[idx], (*messages_v)[idx], chi);
-                    }
-                }
-            }
         }
         return {i, last_delta};
     }
@@ -1594,13 +1581,19 @@ struct Measures {
                 HIP_CHECK(hipMalloc(&bp_msg[idx], (size_t)chi*chi*sizeof(Scalar)));
                 HIP_CHECK(hipMemcpy(bp_msg[idx], messages[idx],
                     (size_t)chi*chi*sizeof(Scalar), hipMemcpyDeviceToDevice));
-                // Chi-vector: warm start from gate messages_v if available
+                // Chi-vector: warm start from gate messages_v if available,
+                // else derive from diag(messages) — messages are diagonal
+                // (Vidal gauge), so this is the same values. This makes the
+                // mode_n_scale diagonal path correct for callers that do not
+                // pass messages_v_in (e.g. the 2-GPU overlap path).
                 HIP_CHECK(hipMalloc(&bp_msg_v[idx], (size_t)chi*sizeof(Scalar)));
                 if (messages_v_in && (*messages_v_in)[idx])
                     HIP_CHECK(hipMemcpy(bp_msg_v[idx], (*messages_v_in)[idx],
                         (size_t)chi*sizeof(Scalar), hipMemcpyDeviceToDevice));
-                else
-                    HIP_CHECK(hipMemset(bp_msg_v[idx], 0, (size_t)chi*sizeof(Scalar)));
+                else {
+                    int blocks = (chi+255)/256;
+                    extract_diagonal<<<blocks,256>>>(bp_msg[idx], bp_msg_v[idx], chi);
+                }
             }
         }
 
