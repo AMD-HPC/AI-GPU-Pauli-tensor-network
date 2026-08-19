@@ -197,8 +197,9 @@ struct Workspace {
     double* S_d        = nullptr;   // float64 singular values [n_max*D]
     double* svd_work_d = nullptr;   // rocsolver dgesvd E buffer [n_max*D]
 
-    /* ── Scalar scratch — single float for reductions ────────────────── */
-    Scalar* d_delta_scalar = nullptr;  // 1 float on GPU — max diagonal reduction
+    /* ── Scalar scratch — single float/double for reductions ────────────── */
+    Scalar*  d_delta_scalar  = nullptr;  // 1 float on GPU — max diagonal reduction
+    double*  d_max_d         = nullptr;  // 1 double on GPU — max abs reduction
 
     /* ── POTRF info — for Cholesky factorization ─────────────────────── */
     int*    potrf_info = nullptr;   // 0=success, k>0=not positive definite
@@ -285,6 +286,7 @@ struct Workspace {
 
         // Scalar scratch for reductions
         _alloc_scalar(d_delta_scalar, 1);
+        HIP_CHECK(hipMalloc(&d_max_d, sizeof(double))); total_bytes += sizeof(double);
 
         HIP_CHECK(hipDeviceSynchronize());
         printf("[Workspace] allocated %.1f MB (chi_max=%d m_max=%d n_max=%d)\n",
@@ -313,6 +315,7 @@ struct Workspace {
         if (svd_work_d) { HIP_CHECK(hipFree(svd_work_d)); svd_work_d=nullptr; }
         _free_int(potrf_info);
         _free(d_delta_scalar);
+        if (d_max_d) { HIP_CHECK(hipFree(d_max_d)); d_max_d = nullptr; }
     }
 
     Workspace(const Workspace&) = delete;
