@@ -228,32 +228,6 @@ __global__ void mode_n_scale_kernel(
     out[pos] = in[pos] * scale[k];
 }
 
-/* ── gpu_reduce_max_abs_d ────────────────────────────────────────────────────
- * Finds max |element| of a float64 array, writes result to out[0].
- * Single-block reduction for arrays up to 256*256 elements. */
-__global__ void gpu_reduce_max_abs_d(const double* __restrict__ in, double* out, int n) {
-    __shared__ double smax[256];
-    int tid = threadIdx.x;
-    double v = 0.0;
-    // Grid-stride loop to handle n > blockDim.x
-    for (int i = tid; i < n; i += blockDim.x)
-        v = (fabs(in[i]) > v) ? fabs(in[i]) : v;
-    smax[tid] = v;
-    __syncthreads();
-    for (int s = blockDim.x/2; s > 0; s >>= 1) {
-        if (tid < s) smax[tid] = (smax[tid] > smax[tid+s]) ? smax[tid] : smax[tid+s];
-        __syncthreads();
-    }
-    if (tid == 0) out[0] = smax[0];
-}
-
-/* ── gpu_scale_d ─────────────────────────────────────────────────────────────
- * Multiplies all elements of a float64 array by scalar factor. */
-__global__ void gpu_scale_d(double* inout, int n, double factor) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) inout[i] *= factor;
-}
-
 // Float64 version: scale float64 tensor mode by float32 chi-vector
 __global__ void mode_n_scale_d_kernel(
     const double* __restrict__ in,
@@ -615,10 +589,7 @@ static double vertex_scalar_d(
  *
  * messages_v: chi-vector per bond direction (diagonal of Vidal message)
  * ========================================================= */
-// Return type for vertex_scalar_diag: sign ∈ {-1,0,+1} and log|value|
-struct VsDiagResult { double sign; double log_abs; };
-
-static VsDiagResult vertex_scalar_diag(
+static double vertex_scalar_diag(
     rocblas_handle handle,
     const Site& site,
     const float* psi,
@@ -626,8 +597,7 @@ static VsDiagResult vertex_scalar_diag(
     const std::vector<float*>& messages_v,  // chi-vectors (float32)
     const double* O_gpu_d,                  // D×D operator in float64
     double* dbl_a,                           // float64 scratch (>= total doubles)
-    double* dbl_b,                           // float64 scratch (>= total doubles)
-    double* d_max_d)                         // 1 double on GPU for reduction
+    double* dbl_b)                           // float64 scratch (>= total doubles)
 {
     std::vector<int> shape;
     for (int d=0; d<MAX_DEGREE; d++)
@@ -651,19 +621,15 @@ static VsDiagResult vertex_scalar_diag(
     std::vector<int> cur_shape = shape;
 
     // Scale each bond mode by its chi-vector using GPU kernel mode_n_scale_d_kernel.
-    // After each scaling, normalize the tensor to prevent float64 underflow when
-    // λ_k values are small (e.g. (1e-4)^3 = 1e-12 underflows relative to dominant).
-    // Track log of normalization factors; add back at the end.
-    // Skip bonds outside lightcone (chi_alloc=1).
-    double log_scale = 0.0;  // accumulated log of normalization factors
+    // Skip bonds outside lightcone (chi_alloc=1) — their messages_v are nullptr.
     for (int d=0; d<MAX_DEGREE; d++) {
         if (site.bond_id[d] < 0) continue;
         int local_idx = site.bond_local[d];
         const Bond& b = grid.bonds[site.bond_id[d]];
-        if (b.chi_alloc == 1) continue;
+        if (b.chi_alloc == 1) continue;  // outside lightcone: identity message, skip
         int chi       = b.chi;
         int msg_idx   = b.msg_incoming(site.id);
-        if (!messages_v[msg_idx]) continue;
+        if (!messages_v[msg_idx]) continue;  // safety check
 
         int L=1, R=1;
         for(int i=0;      i<local_idx; i++) L *= cur_shape[i];
@@ -673,21 +639,11 @@ static VsDiagResult vertex_scalar_diag(
         mode_n_scale_d_kernel<<<blocks, 256, 0, rbstream>>>(
             cur, messages_v[msg_idx], next, L, chi, R);
         std::swap(cur, next);
-
-        // Normalize on GPU: find max |element|, scale in-place, track log.
-        // Pure GPU — no D2H/H2D of tensor, only 8 bytes for the max value.
-        int cur_total = 1; for(auto s:cur_shape) cur_total *= s;
-        gpu_reduce_max_abs_d<<<1, 256, 0, rbstream>>>(cur, d_max_d, cur_total);
-        double h_max = 0.0;
-        HIP_CHECK(hipMemcpy(&h_max, d_max_d, sizeof(double), hipMemcpyDeviceToHost));
-        if(h_max > 0.0) {
-            log_scale += std::log(h_max);
-            int sblocks = (cur_total + 255) / 256;
-            gpu_scale_d<<<sblocks, 256, 0, rbstream>>>(cur, cur_total, 1.0/h_max);
-        }
     }
 
     // Contract physical mode (last) with O using float64 DGEMM
+    // cur shape: [... × D] → result shape: [... × D]
+    // Use mode_n_contract_d with O_gpu_d
     {
         int last_mode = ndim - 1;
         mode_n_contract_d(handle, cur, cur_shape.data(), ndim,
@@ -701,12 +657,7 @@ static VsDiagResult vertex_scalar_diag(
     HIP_CHECK(hipMemcpy(h.data(), cur, remaining*sizeof(double), hipMemcpyDeviceToHost));
     double sd = 0.0;
     for(auto x : h) sd += x;
-    // Return sign and log|value| separately — never multiply sd × exp(log_scale)
-    // which loses sign for very small sd. The caller accumulates in log-space.
-    if(sd == 0.0) return {0.0, -std::numeric_limits<double>::infinity()};
-    double sign = (sd > 0.0) ? 1.0 : -1.0;
-    double log_abs = std::log(std::abs(sd)) + log_scale;  // add log-scale back in log domain
-    return {sign, log_abs};
+    return sd;
 }
 
 /* =========================================================
@@ -745,8 +696,7 @@ static Scalar bp_partitionfunction(
     double* dbl_a  = nullptr,   // float64 scratch (≥ m_max*n_max doubles)
     double* dbl_b  = nullptr,   // float64 scratch
     double* dbl_msg= nullptr,   // float64 scratch (≥ chi_max² doubles)
-    const std::vector<Scalar*>* messages_v_pf = nullptr,  // chi-vectors for vertex_scalar_diag
-    double* d_max_d = nullptr)                             // 1 double on GPU for max reduction
+    const std::vector<Scalar*>* messages_v_pf = nullptr)  // chi-vectors for vertex_scalar_diag
 {
     // Upload identity and measurement operator to GPU in float64.
     // vertex_scalar_d requires double operators to avoid float32 overflow
@@ -781,14 +731,9 @@ static Scalar bp_partitionfunction(
         double vs_d;
         if (use_diag) {
             const double* op_d = (site.id == center_site) ? d_O_d : d_I_d;
-            auto vsr = vertex_scalar_diag(handle, site, psi[site.id],
-                                          grid, *messages_v_pf,
-                                          op_d, dbl_a, dbl_b, d_max_d);
-            // Accumulate sign and log directly — no exp() that loses sign
-            if(vsr.sign == 0.0) { sign_num = 0.0; break; }
-            sign_num *= vsr.sign;
-            log_num  += vsr.log_abs;
-            continue;  // skip the common sign/log update below
+            vs_d = vertex_scalar_diag(handle, site, psi[site.id],
+                                      grid, *messages_v_pf,
+                                      op_d, dbl_a, dbl_b);
         } else if (use_f64) {
             const double* op_d = (site.id == center_site) ? d_O_d : d_I_d;
             vs_d = vertex_scalar_d(handle, site, psi[site.id],
@@ -1670,7 +1615,7 @@ struct Measures {
 
         Scalar C = bp_partitionfunction(handle, grid, psi, bp_msg,
             Operators::Z(), center_site, ws.cv1, ws.cv2, full_bp,
-            dbl_a, dbl_b, dbl_msg, &bp_msg_v, ws.d_max_d);
+            dbl_a, dbl_b, dbl_msg, &bp_msg_v);
         auto t2 = clk::now();
         if (t_pf_ms) *t_pf_ms = ms(t2 - t1).count();
 
@@ -1679,7 +1624,7 @@ struct Measures {
             for (int s = 0; s < (int)grid.n_sites; s++)
                 spatial_out[s] = bp_partitionfunction(handle, grid, psi, bp_msg,
                     Operators::Z(), s, ws.cv1, ws.cv2, full_bp,
-                    dbl_a, dbl_b, dbl_msg, &bp_msg_v, ws.d_max_d);
+                    dbl_a, dbl_b, dbl_msg, &bp_msg_v);
         }
 
         for (auto p : bp_msg)   if (p) HIP_CHECK(hipFree(p));
