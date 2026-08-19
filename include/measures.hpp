@@ -90,6 +90,7 @@
  */
 
 #include "types.hpp"
+#include "scalar_blas.hpp"
 #include "tensor.hpp"
 #include "grid.hpp"
 #include "workspace.hpp"
@@ -120,7 +121,7 @@ __global__ void write_diagonal_message(const Scalar* src, Scalar* dst,
 /* ── upcast_f2d ──────────────────────────────────────────────────────────────
  * Upcasts float→double element-wise on GPU. Used to feed f32 psi/messages
  * into the f64 BP path without changing any storage format. */
-__global__ void upcast_f2d(const float* __restrict__ src,
+__global__ void upcast_f2d(const Scalar* __restrict__ src,
                             double*      __restrict__ dst, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < n) dst[idx] = (double)src[idx];
@@ -231,7 +232,7 @@ __global__ void mode_n_scale_kernel(
 // Float64 version: scale float64 tensor mode by float32 chi-vector
 __global__ void mode_n_scale_d_kernel(
     const double* __restrict__ in,
-    const float*  __restrict__ scale,  // chi-vector (float32, upcast to double)
+    const Scalar* __restrict__ scale,  // chi-vector (Scalar, upcast to double)
     double*                    out,
     int L, int chi, int R)
 {
@@ -296,10 +297,10 @@ static void mode_n_contract(
     for (int i=0;      i<mode;  i++) L *= shape[i];
     for (int i=mode+1; i<ndim;  i++) R *= shape[i];
 
-    float alpha=1.f, beta=0.f;
+    Scalar alpha=1, beta=0;
     // Batched GEMM: R slices of [L×chi_in] × E^T, E shared (stride=0).
     // No explicit sync — default-stream ops are ordered; D2H copies below will wait.
-    RB_CHECK(rocblas_sgemm_strided_batched(handle,
+    RB_CHECK(sblas::gemm_strided_batched(handle,
         rocblas_operation_none,
         rocblas_operation_transpose,
         L, chi_out, chi_in,
@@ -506,9 +507,9 @@ static Scalar vertex_scalar(
 static double vertex_scalar_d(
     rocblas_handle handle,
     const Site& site,
-    const float* psi,
+    const Scalar* psi,
     const Grid& grid,
-    const std::vector<float*>& messages,
+    const std::vector<Scalar*>& messages,
     const double* O_gpu_d,
     double* dbl_a,
     double* dbl_b,
@@ -592,12 +593,12 @@ static double vertex_scalar_d(
 static double vertex_scalar_diag(
     rocblas_handle handle,
     const Site& site,
-    const float* psi,
+    const Scalar* psi,
     const Grid& grid,
-    const std::vector<float*>& messages_v,  // chi-vectors (float32)
-    const double* O_gpu_d,                  // D×D operator in float64
-    double* dbl_a,                           // float64 scratch (>= total doubles)
-    double* dbl_b)                           // float64 scratch (>= total doubles)
+    const std::vector<Scalar*>& messages_v,  // chi-vectors (Scalar)
+    const double* O_gpu_d,                    // D×D operator in float64
+    double* dbl_a,                            // float64 scratch (>= total doubles)
+    double* dbl_b)                            // float64 scratch (>= total doubles)
 {
     std::vector<int> shape;
     for (int d=0; d<MAX_DEGREE; d++)
@@ -702,8 +703,8 @@ static Scalar bp_partitionfunction(
     // vertex_scalar_d requires double operators to avoid float32 overflow
     // when contracting chi=400 tensors (vertex values can be O(1e±10)).
     std::vector<Scalar> I_op = Operators::I();
-    // Float32 operators (kept for full_bp path which still uses vertex_scalar)
-    float *d_I, *d_O;
+    // Scalar operators (float_bp / non-diag fallback path uses vertex_scalar)
+    Scalar *d_I, *d_O;
     HIP_CHECK(hipMalloc(&d_I, D*D*sizeof(Scalar)));
     HIP_CHECK(hipMalloc(&d_O, D*D*sizeof(Scalar)));
     HIP_CHECK(hipMemcpy(d_I, I_op.data(),    D*D*sizeof(Scalar), hipMemcpyHostToDevice));
@@ -809,8 +810,8 @@ __global__ void normalize_and_delta(
     const Scalar* __restrict__ d_mu,    // new unnormalized diagonal [chi]
     const Scalar* __restrict__ old_msg, // old message [chi×chi] col-major
     Scalar*                    new_msg, // output message [chi×chi] (may alias old_msg)
-    const Scalar* __restrict__ d_s,     // Σ d_mu — written by rocblas_sdot
-    Scalar*                    d_delta, // running max delta (atomicMax, int trick)
+    const Scalar* __restrict__ d_s,     // Σ d_mu — written by dot
+    float*                     d_delta, // running max delta (float, atomicMax int trick)
     int chi,
     float alpha)                         // damping factor ∈ (0,1]; 1.0 = no damping
 {
@@ -818,17 +819,17 @@ __global__ void normalize_and_delta(
     if (idx >= chi * chi) return;
     int row = idx % chi;
     int col = idx / chi;
-    Scalar inv_s = (fabsf(*d_s) > 1e-12f) ? 1.f / *d_s : 1.f;
+    Scalar inv_s = (fabs((double)*d_s) > 1e-12) ? (Scalar)1 / *d_s : (Scalar)1;
     if (row == col) {
         Scalar normalized = d_mu[row] * inv_s;
         Scalar old_val    = old_msg[idx];
         Scalar new_val    = (alpha >= 1.f) ? normalized
-                                           : ((1.f - alpha) * old_val + alpha * normalized);
-        Scalar diff       = fabsf(new_val - old_val);
+                                           : (((Scalar)1 - alpha) * old_val + (Scalar)alpha * normalized);
+        float  diff       = (float)fabs((double)(new_val - old_val));
         atomicMax(reinterpret_cast<int*>(d_delta), __float_as_int(diff));
         new_msg[idx] = new_val;
     } else {
-        new_msg[idx] = 0.f;
+        new_msg[idx] = (Scalar)0;
     }
 }
 
@@ -840,19 +841,19 @@ __global__ void normalize_and_delta_v(
     const Scalar* __restrict__ d_mu,    // new unnormalized diagonal [chi]
     const Scalar* __restrict__ old_v,   // old chi-vector [chi]
     Scalar*                    new_v,   // output chi-vector [chi] (may alias old_v)
-    const Scalar* __restrict__ d_s,     // Σ d_mu — written by rocblas_sdot
-    Scalar*                    d_delta, // running max delta (atomicMax int trick)
+    const Scalar* __restrict__ d_s,     // Σ d_mu — written by dot
+    float*                     d_delta, // running max delta (float, atomicMax int trick)
     int chi,
     float alpha)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= chi) return;
-    Scalar inv_s = (fabsf(*d_s) > 1e-12f) ? 1.f / *d_s : 1.f;
+    Scalar inv_s = (fabs((double)*d_s) > 1e-12) ? (Scalar)1 / *d_s : (Scalar)1;
     Scalar normalized = d_mu[i] * inv_s;
     Scalar old_val    = old_v[i];
     Scalar new_val    = (alpha >= 1.f) ? normalized
-                                       : ((1.f - alpha) * old_val + alpha * normalized);
-    Scalar diff       = fabsf(new_val - old_val);
+                                       : (((Scalar)1 - alpha) * old_val + (Scalar)alpha * normalized);
+    float  diff       = (float)fabs((double)(new_val - old_val));
     atomicMax(reinterpret_cast<int*>(d_delta), __float_as_int(diff));
     new_v[i] = new_val;
 }
@@ -892,15 +893,15 @@ __global__ void normalize_and_delta_full(
     const Scalar* __restrict__ d_M,     // new unnormalized message [chi×chi]
     const Scalar* __restrict__ old_msg, // old message [chi×chi] col-major
     Scalar*                    new_msg, // output message [chi×chi] (may alias old_msg)
-    const Scalar* __restrict__ d_s,     // trace(d_M) — written by rocblas_sdot
-    Scalar*                    d_delta, // running max delta (atomicMax, int trick)
+    const Scalar* __restrict__ d_s,     // trace(d_M) — written by dot
+    float*                     d_delta, // running max delta (float, atomicMax int trick)
     int chi)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx >= chi * chi) return;
-    Scalar inv_s = (fabsf(*d_s) > 1e-12f) ? 1.f / *d_s : 1.f;
+    Scalar inv_s = (fabs((double)*d_s) > 1e-12) ? (Scalar)1 / *d_s : (Scalar)1;
     Scalar new_val = d_M[idx] * inv_s;
-    Scalar diff    = fabsf(new_val - old_msg[idx]);
+    float  diff    = (float)fabs((double)(new_val - old_msg[idx]));
     atomicMax(reinterpret_cast<int*>(d_delta), __float_as_int(diff));
     new_msg[idx] = new_val;
 }
@@ -973,8 +974,8 @@ struct Measures {
     Scalar* d_sel_rho_m   = nullptr;  // [1×D] = [1,0,0,-1] for spin=-1 (|1>)
     Scalar* d_mu    = nullptr;  // GPU output buffer for reduced message (chi_max floats)
     Scalar* d_M     = nullptr;  // GPU scratch for full chi×chi message (chi_max² floats)
-    Scalar* d_s     = nullptr;  // 1 float on GPU — sdot result (Σ d_mu or trace(M))
-    Scalar* d_delta = nullptr;  // 1 float on GPU — running max delta per sweep
+    Scalar* d_s     = nullptr;  // 1 Scalar on GPU — dot result (Σ d_mu or trace(M))
+    float*  d_delta = nullptr;  // 1 float on GPU — running max delta per sweep (always float)
 
     // ── f64 diagonal BP buffers ───────────────────────────────────────────
     double* dbl_a    = nullptr; // double scratch A — size m_max*n_max doubles
@@ -1026,7 +1027,7 @@ struct Measures {
         HIP_CHECK(hipMalloc(&d_mu,    (size_t)ws.chi_max * sizeof(Scalar)));
         HIP_CHECK(hipMalloc(&d_M,     (size_t)ws.chi_max * ws.chi_max * sizeof(Scalar)));
         HIP_CHECK(hipMalloc(&d_s,     sizeof(Scalar)));
-        HIP_CHECK(hipMalloc(&d_delta, sizeof(Scalar)));
+        HIP_CHECK(hipMalloc(&d_delta, sizeof(float)));
 
         // ── f64 diagonal BP buffers ───────────────────────────────────────
         size_t dbl_large = (size_t)ws.m_max * ws.n_max * sizeof(double);
@@ -1168,11 +1169,11 @@ struct Measures {
                     float alpha = 1.0f,
                     std::vector<Scalar*>* messages_v = nullptr)  // chi-vector output
     {
-        float one=1.f, zero=0.f;
+        Scalar one=1, zero=0;
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
 
         // Reset per-sweep max delta to 0.0f (IEEE: all-zero bytes).
-        HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(Scalar), rbstream));
+        HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(float), rbstream));
 
         for(auto& bond : grid.bonds){
             // Skip outside-lightcone bonds (chi_alloc=1): trivial identity messages,
@@ -1233,19 +1234,19 @@ struct Measures {
                                     sel, D, 1, ndim-1, nxt);
                     // nxt[L, chi, R_other] — physical dim collapsed to 1.
                     if(L == 1){
-                        RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                        RB_CHECK(sblas::gemv(handle, rocblas_operation_none,
                             chi, R_other, &one, nxt, chi, d_ones, 1, &zero, d_mu, 1));
                     } else if(R_other == 1){
-                        RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                        RB_CHECK(sblas::gemv(handle, rocblas_operation_transpose,
                             L, chi, &one, nxt, L, d_ones, 1, &zero, d_mu, 1));
                     } else {
-                        RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                        RB_CHECK(sblas::gemv(handle, rocblas_operation_transpose,
                             L, chi*R_other, &one, nxt, L, d_ones, 1, &zero, cur, 1));
-                        RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                        RB_CHECK(sblas::gemv(handle, rocblas_operation_none,
                             chi, R_other, &one, cur, chi, d_ones, 1, &zero, d_mu, 1));
                     }
                     RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device));
-                    RB_CHECK(rocblas_sdot(handle, chi, d_mu, 1, d_ones, 1, d_s));
+                    RB_CHECK(sblas::dot(handle, chi, d_mu, 1, d_ones, 1, d_s));
                     RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
                     if (messages_v && (*messages_v)[msg_idx]) {
                         // Vidal gauge: write the chi-vector directly (O(chi)).
@@ -1275,14 +1276,14 @@ struct Measures {
                     int total_sel = L * chi * R_other;
                     int rblocks = (total_sel + 255) / 256;
                     reshape_for_bp<<<rblocks, 256, 0, rbstream>>>(nxt, A_buf, L, chi, R_other);
-                    RB_CHECK(rocblas_sgemm(handle,
+                    RB_CHECK(sblas::gemm(handle,
                         rocblas_operation_none, rocblas_operation_transpose,
                         chi, chi, LR_other,
                         &one,  A_buf, chi,
                                A_buf, chi,
                         &zero, d_M,   chi));
                     RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device));
-                    RB_CHECK(rocblas_sdot(handle, chi, d_M, chi+1, d_ones, 1, d_s));
+                    RB_CHECK(sblas::dot(handle, chi, d_M, chi+1, d_ones, 1, d_s));
                     RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
                     normalize_and_delta_full<<<blocks, 256, 0, rbstream>>>(
                         d_M, messages[msg_idx], messages[msg_idx], d_s, d_delta, chi);
@@ -1308,9 +1309,9 @@ struct Measures {
                              const int* rho_spins,
                              float alpha = 1.0f)
     {
-        float one=1.f, zero=0.f;
+        Scalar one=1, zero=0;
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
-        HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(Scalar), rbstream));
+        HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(float), rbstream));
 
         for (auto& bond : grid.bonds) {
             if (bond.chi_alloc == 1) continue;  // skip outside-lightcone bonds
@@ -1362,19 +1363,19 @@ struct Measures {
                 int blocks  = (chi*chi + 255) / 256;
 
                 if (L == 1) {
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_none,
                         chi, R_other, &one, nxt, chi, d_ones, 1, &zero, d_mu, 1));
                 } else if (R_other == 1) {
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_transpose,
                         L, chi, &one, nxt, L, d_ones, 1, &zero, d_mu, 1));
                 } else {
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_transpose,
                         L, chi*R_other, &one, nxt, L, d_ones, 1, &zero, cur, 1));
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_none,
                         chi, R_other, &one, cur, chi, d_ones, 1, &zero, d_mu, 1));
                 }
                 RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device));
-                RB_CHECK(rocblas_sdot(handle, chi, d_mu, 1, d_ones, 1, d_s));
+                RB_CHECK(sblas::dot(handle, chi, d_mu, 1, d_ones, 1, d_s));
                 RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
                 normalize_and_delta<<<blocks, 256, 0, rbstream>>>(
                     d_mu, messages[msg_idx], messages[msg_idx], d_s, d_delta, chi, alpha);
@@ -1382,8 +1383,8 @@ struct Measures {
         }
 
         HIP_CHECK(hipStreamSynchronize(rbstream));
-        Scalar delta_h = 0.f;
-        HIP_CHECK(hipMemcpy(&delta_h, d_delta, sizeof(Scalar), hipMemcpyDeviceToHost));
+        float delta_h = 0.f;
+        HIP_CHECK(hipMemcpy(&delta_h, d_delta, sizeof(float), hipMemcpyDeviceToHost));
         return delta_h;
     }
 
@@ -1436,9 +1437,9 @@ struct Measures {
                          const std::vector<Scalar*>& psi,
                          std::vector<Scalar*>& messages)
     {
-        float one=1.f, zero=0.f;
+        Scalar one=1, zero=0;
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
-        HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(Scalar), rbstream));
+        HIP_CHECK(hipMemsetAsync(d_delta, 0, sizeof(float), rbstream));
 
         for (auto& bond : grid.bonds) {
             if (bond.chi_alloc == 1) continue;  // skip outside-lightcone bonds
@@ -1486,20 +1487,20 @@ struct Measures {
                 int blocks  = (chi*chi + 255) / 256;
 
                 if (L == 1) {
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_none,
                         chi, R_other, &one, nxt, chi, d_ones, 1, &zero, d_mu, 1));
                 } else if (R_other == 1) {
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_transpose,
                         L, chi, &one, nxt, L, d_ones, 1, &zero, d_mu, 1));
                 } else {
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_transpose,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_transpose,
                         L, chi*R_other, &one, nxt, L, d_ones, 1, &zero, cur, 1));
-                    RB_CHECK(rocblas_sgemv(handle, rocblas_operation_none,
+                    RB_CHECK(sblas::gemv(handle, rocblas_operation_none,
                         chi, R_other, &one, cur, chi, d_ones, 1, &zero, d_mu, 1));
                 }
 
                 RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device));
-                RB_CHECK(rocblas_sdot(handle, chi, d_mu, 1, d_ones, 1, d_s));
+                RB_CHECK(sblas::dot(handle, chi, d_mu, 1, d_ones, 1, d_s));
                 RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
                 normalize_and_delta<<<blocks, 256, 0, rbstream>>>(
                     d_mu, messages[msg_idx], messages[msg_idx], d_s, d_delta, chi, 1.0f);
@@ -1714,7 +1715,7 @@ struct Measures {
         std::vector<Scalar> op_rho_m(D*D, 0.f); op_rho_m[0]   = 1.f; op_rho_m[3+D*3] = -1.f;
         std::vector<Scalar> op_Z(D*D, 0.f);     op_Z[3+D*3]   = 1.f;
 
-        float *d_op_rho_p, *d_op_rho_m, *d_op_Z;
+        Scalar *d_op_rho_p, *d_op_rho_m, *d_op_Z;
         HIP_CHECK(hipMalloc(&d_op_rho_p, D*D*sizeof(Scalar)));
         HIP_CHECK(hipMalloc(&d_op_rho_m, D*D*sizeof(Scalar)));
         HIP_CHECK(hipMalloc(&d_op_Z,     D*D*sizeof(Scalar)));
@@ -1727,8 +1728,8 @@ struct Measures {
         double sign_num = 1.0;
 
         for (auto& site : grid.sites) {
-            const float* op = (site.id == center_site)       ? d_op_Z :
-                              (rho_spins[site.id] >= 0)      ? d_op_rho_p : d_op_rho_m;
+            const Scalar* op = (site.id == center_site)       ? d_op_Z :
+                               (rho_spins[site.id] >= 0)      ? d_op_rho_p : d_op_rho_m;
             Scalar vs = vertex_scalar(handle, site, psi[site.id], grid, bp_msg,
                                       op, ws.cv1, ws.cv2, false);
             if (!std::isfinite(vs)) { sign_num = 0.0; break; }
@@ -1788,7 +1789,7 @@ struct Measures {
         // since our messages come from SVD and are already normalised.
         std::vector<Scalar> Id_full(D*D, 0.f);
         for (int d=0; d<D; d++) Id_full[d + D*d] = 1.f;
-        float *d_Id;
+        Scalar *d_Id;
         HIP_CHECK(hipMalloc(&d_Id, D*D*sizeof(Scalar)));
         HIP_CHECK(hipMemcpy(d_Id, Id_full.data(), D*D*sizeof(Scalar), hipMemcpyHostToDevice));
 
@@ -1864,7 +1865,7 @@ struct Measures {
         const std::vector<Scalar> op_data[D] = {
             Operators::I(), Operators::X(), Operators::Y(), Operators::Z()
         };
-        float* d_ops[D];
+        Scalar* d_ops[D];
         for (int d = 0; d < D; d++) {
             HIP_CHECK(hipMalloc(&d_ops[d], D*D*sizeof(Scalar)));
             HIP_CHECK(hipMemcpy(d_ops[d], op_data[d].data(),
@@ -1952,7 +1953,7 @@ struct Measures {
         // Upload Id_full operator once (sums all D components linearly on ψ²)
         std::vector<Scalar> Id_full(D*D, 0.f);
         for (int d = 0; d < D; d++) Id_full[d + D*d] = 1.f;
-        float* d_Id;
+        Scalar* d_Id;
         HIP_CHECK(hipMalloc(&d_Id, D*D*sizeof(Scalar)));
         HIP_CHECK(hipMemcpy(d_Id, Id_full.data(), D*D*sizeof(Scalar), hipMemcpyHostToDevice));
 

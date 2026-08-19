@@ -60,16 +60,16 @@ struct HeavyHexGates {
      *
      * Signs verified at theta=0.1: a=0.9605, b=0.0395, g=0.1947
      */
-    static std::vector<Scalar> XxYyZz(Scalar theta) {
+    static std::vector<float> XxYyZz(float theta) {
         float c2 = std::cos(2.f * theta);
         float s2 = std::sin(2.f * theta);
         float a  = c2 * c2;    // cos²(2θ)
         float b  = s2 * s2;    // sin²(2θ)
         float g  = s2 * c2;    // sin(4θ)/2
 
-        std::vector<Scalar> M(16*16, 0.f);
+        std::vector<float> M(16*16, 0.f);
         // M[row + 16*col]: col=input Pauli index, row=output Pauli index
-        auto set = [&](int row, int col, Scalar v) { M[row + 16*col] = v; };
+        auto set = [&](int row, int col, float v) { M[row + 16*col] = v; };
 
         // Invariant
         set( 0,  0, 1.f);

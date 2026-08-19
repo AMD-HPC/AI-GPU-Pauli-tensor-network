@@ -184,15 +184,6 @@ struct Workspace {
     Scalar* svd_work   = nullptr;   // rocsolver SVD E buffer [n_max*D]
     int*    svd_info   = nullptr;   // convergence flag
 
-    /* ── Mixed-precision SVD: float64 buffers for gate SVD ──────────── */
-    // SVD of oR4 [k1D×k2D] in float64 gives accurate singular values at large chi.
-    // k1D, k2D ≤ n_max*D = chi_max*D² — use medium buffer size.
-    double* oR4_d      = nullptr;   // float64 copy of oR4 for dgesvd [n_max*D × n_max*D]
-    double* U_d        = nullptr;   // float64 left singular vectors
-    double* Vt_d       = nullptr;   // float64 right singular vectors
-    double* S_d        = nullptr;   // float64 singular values [n_max*D]
-    double* svd_work_d = nullptr;   // rocsolver dgesvd E buffer [n_max*D]
-
     /* ── Scalar scratch — single float for reductions ────────────────── */
     Scalar* d_delta_scalar = nullptr;  // 1 float on GPU — max diagonal reduction
 
@@ -265,17 +256,6 @@ struct Workspace {
         _alloc_scalar(svd_work, n_max * D);
         _alloc_int(svd_info, 1);
 
-        // Mixed-precision SVD buffers (float64) — oR4 is at most n_max*D × n_max*D
-        {
-            size_t med_d = (size_t)(n_max * D) * (n_max * D) * sizeof(double);
-            size_t sng_d = (size_t)(n_max * D) * sizeof(double);
-            HIP_CHECK(hipMalloc(&oR4_d,      med_d)); total_bytes += med_d;
-            HIP_CHECK(hipMalloc(&U_d,        med_d)); total_bytes += med_d;
-            HIP_CHECK(hipMalloc(&Vt_d,       med_d)); total_bytes += med_d;
-            HIP_CHECK(hipMalloc(&S_d,        sng_d)); total_bytes += sng_d;
-            HIP_CHECK(hipMalloc(&svd_work_d, sng_d)); total_bytes += sng_d;
-        }
-
         // POTRF info
         _alloc_int(potrf_info, 1);
 
@@ -302,11 +282,6 @@ struct Workspace {
         _free(syevd_V);
         _free(svd_work);
         _free_int(svd_info);
-        if (oR4_d)      { HIP_CHECK(hipFree(oR4_d));      oR4_d=nullptr; }
-        if (U_d)        { HIP_CHECK(hipFree(U_d));        U_d=nullptr; }
-        if (Vt_d)       { HIP_CHECK(hipFree(Vt_d));       Vt_d=nullptr; }
-        if (S_d)        { HIP_CHECK(hipFree(S_d));        S_d=nullptr; }
-        if (svd_work_d) { HIP_CHECK(hipFree(svd_work_d)); svd_work_d=nullptr; }
         _free_int(potrf_info);
         _free(d_delta_scalar);
     }

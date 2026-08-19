@@ -45,15 +45,23 @@
 #include <rocsolver/rocsolver.h>
 
 /* =========================================================
- * Scalar type — float32 for all tensor elements
+ * Scalar type — element type for ALL tensors, messages, workspace.
  *
- * To switch to float64: change to double and rebuild.
- * float32 is sufficient because:
- *   - Truncation error in SVD is ~1e-6 to 1e-8
- *   - float32 precision is ~1e-7
- *   - Going to float64 doesn't improve physics, just wastes memory
+ * Compile-time switch (SAME TYPE throughout — storage AND compute):
+ *   default            → float   (fast production path)
+ *   -DSCALAR_DOUBLE    → double  (accurate path for large chi)
+ *
+ * float32 is sufficient for most runs (SVD truncation ~1e-6..1e-8,
+ * float32 precision ~1e-7). double is for large chi / small cutoff
+ * where the vertex_scalar/normalization chain loses accuracy in f32
+ * (e.g. chi≥400, δ=1e-4). One type flows end-to-end — no mixed
+ * precision, no cast boundaries. Memory doubles at double.
  * ========================================================= */
+#ifdef SCALAR_DOUBLE
+using Scalar = double;
+#else
 using Scalar = float;
+#endif
 
 /* =========================================================
  * Physical dimension D

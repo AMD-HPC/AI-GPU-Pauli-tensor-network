@@ -193,8 +193,9 @@ int main(int argc, char** argv) {
     }
 
     printf("# main_pauli_sweep — %s\n", GRID_TAG);
-    printf("# chi=%d  n_steps=%d  cutoff=%.0e  center=%d\n",
-           chi_max, n_steps, (double)cutoff, center);
+    printf("# chi=%d  n_steps=%d  cutoff=%.0e  center=%d  Scalar=%s (%zu bytes/elem)\n",
+           chi_max, n_steps, (double)cutoff, center,
+           (sizeof(Scalar)==8?"double":"float"), sizeof(Scalar));
     printf("# STEP C_nl C_n1 C_n2 C_n3  chi  t(s)\n");
     printf("# PAULI_NL/N1/N2/N3 <step> <w_0> ... <w_{n_sites-1}>\n");
     fflush(stdout);

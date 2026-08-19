@@ -24,6 +24,7 @@
  */
 
 #include "types.hpp"
+#include "scalar_blas.hpp"
 #include "tensor.hpp"
 #include "grid.hpp"
 #include "workspace.hpp"
@@ -36,17 +37,6 @@
 #include <cstdio>
 #include <cassert>
 #include <algorithm>
-
-/* ── cast_f32_to_f64 / cast_f64_to_f32 ──────────────────────────────────────
- * Element-wise float32↔float64 conversion for mixed-precision SVD. */
-__global__ void cast_f32_to_f64(const float* __restrict__ src, double* dst, int n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) dst[i] = (double)src[i];
-}
-__global__ void cast_f64_to_f32(const double* __restrict__ src, float* dst, int n) {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n) dst[i] = (float)src[i];
-}
 
 /* ── extract_diagonal ────────────────────────────────────────────────────────
  * Extracts diagonal of chi×chi matrix M into chi-vector d: d[i] = M[i + chi*i]. */
@@ -65,8 +55,8 @@ __global__ void diag_sqrt_vectors(const Scalar* __restrict__ diag,
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= chi) return;
     Scalar w  = diag[k];
-    Scalar sq = 0.f, sqi = 0.f;
-    if (fabsf(w) >= cut) { sq = sqrtf(fabsf(w)); sqi = 1.f / sq; }
+    Scalar sq = 0, sqi = 0;
+    if (fabs(w) >= cut) { sq = sqrt(fabs(w)); sqi = (Scalar)1 / sq; }
     sqV[k]  = sq;
     isqV[k] = sqi;
 }
@@ -149,7 +139,7 @@ __global__ void build_M_from_U(const Scalar* __restrict__ U,
     int col = idx / k;      // col = c + new_chi*d
     int c   = col % new_chi;
     int d   = col / new_chi;
-    Scalar sqS = sqrtf(fmaxf(S[c] * inv_snorm, 0.f));
+    Scalar sqS = sqrt(fmax(S[c] * inv_snorm, (Scalar)0));
     M[idx] = U[(r * D_ + d) + (size_t)k_D * c] * sqS;
 }
 
@@ -168,7 +158,7 @@ __global__ void build_M_from_Vt(const Scalar* __restrict__ Vt,
     int col = idx / k2;     // col = c + new_chi*d
     int c   = col % new_chi;
     int d   = col / new_chi;
-    Scalar sqS = sqrtf(fmaxf(S[c] * inv_snorm, 0.f));
+    Scalar sqS = sqrt(fmax(S[c] * inv_snorm, (Scalar)0));
     M[idx] = Vt[c + (size_t)kfull * (r * D_ + d)] * sqS;
 }
 
@@ -258,10 +248,10 @@ struct GateOps {
                const Scalar* A, int lda,
                const Scalar* B, int ldb,
                Scalar* C, int ldc,
-               Scalar alpha=1.f, Scalar beta=0.f)
+               Scalar alpha=1, Scalar beta=0)
     {
-        RB_CHECK(rocblas_sgemm(handle,opA,opB,m,n,k,
-                               &alpha,A,lda,B,ldb,&beta,C,ldc));
+        RB_CHECK(sblas::gemm(handle,opA,opB,m,n,k,
+                             &alpha,A,lda,B,ldb,&beta,C,ldc));
     }
 
     /* ── mode_n_contract ─────────────────────────────────────────────── */
@@ -272,8 +262,8 @@ struct GateOps {
         int L=1, R=1;
         for(int i=0;i<mode;i++)      L *= shape[i];
         for(int i=mode+1;i<ndim;i++) R *= shape[i];
-        float alpha=1.f, beta=0.f;
-        RB_CHECK(rocblas_sgemm_strided_batched(handle,
+        Scalar alpha=1, beta=0;
+        RB_CHECK(sblas::gemm_strided_batched(handle,
             rocblas_operation_none,
             rocblas_operation_transpose,
             L, chi_out, chi_in,
@@ -473,9 +463,22 @@ struct GateOps {
             HIP_CHECK(hipMemcpy(psi,cur,total*sizeof(Scalar),hipMemcpyDeviceToDevice));
     }
 
+    /* ── upload_gate ─────────────────────────────────────────────────── */
+    // PTMs are generated as float (gates are real, RST=real). Convert to the
+    // Scalar type on the host, then upload — the one f32→Scalar boundary.
+    void upload_gate(const float* G, int n, Scalar* dG) {
+        if constexpr (sizeof(Scalar) == sizeof(float)) {
+            HIP_CHECK(hipMemcpy(dG, G, (size_t)n*sizeof(Scalar), hipMemcpyHostToDevice));
+        } else {
+            std::vector<Scalar> tmp(n);
+            for (int i=0;i<n;i++) tmp[i] = (Scalar)G[i];
+            HIP_CHECK(hipMemcpy(dG, tmp.data(), (size_t)n*sizeof(Scalar), hipMemcpyHostToDevice));
+        }
+    }
+
     /* ── apply_unary_gate ────────────────────────────────────────────── */
     void apply_unary_gate(Scalar* psi, const Site& site, const Grid& grid,
-                          const Scalar* G, Scalar* tmp)
+                          const float* G, Scalar* tmp)
     {
         std::vector<int> shape;
         for(int d=0;d<MAX_DEGREE;d++)
@@ -486,7 +489,7 @@ struct GateOps {
         for(auto s:shape) total*=s;
         Scalar* dG;
         HIP_CHECK(hipMalloc(&dG,D*D*sizeof(Scalar)));
-        HIP_CHECK(hipMemcpy(dG,G,D*D*sizeof(Scalar),hipMemcpyHostToDevice));
+        upload_gate(G, D*D, dG);
         mode_n_contract(psi,shape.data(),ndim,dG,D,D,ndim-1,tmp);
         HIP_CHECK(hipMemcpy(psi,tmp,total*sizeof(Scalar),hipMemcpyDeviceToDevice));
         HIP_CHECK(hipFree(dG));
@@ -500,14 +503,14 @@ struct GateOps {
         int k=std::min(m,n); k_out=k;
         HIP_CHECK(hipMemcpy(Q,A,(size_t)m*n*sizeof(Scalar),hipMemcpyDeviceToDevice));
         Scalar* tau; HIP_CHECK(hipMalloc(&tau,k*sizeof(Scalar)));
-        RB_CHECK(rocsolver_sgeqrf(handle,m,n,Q,m,tau));
+        RB_CHECK(sblas::geqrf(handle,m,n,Q,m,tau));
         HIP_CHECK(hipStreamSynchronize(rbstream));
         {
             int threads = 256;
             int blocks  = ((size_t)k*n + threads-1) / threads;
             extract_upper_triangle<<<blocks, threads, 0, rbstream>>>(Q, R, m, k, n);
         }
-        RB_CHECK(rocsolver_sorgqr(handle,m,k,k,Q,m,tau));
+        RB_CHECK(sblas::orgqr(handle,m,k,k,Q,m,tau));
         HIP_CHECK(hipStreamSynchronize(rbstream));
         HIP_CHECK(hipFree(tau));
         // Enforce positive diagonal of R → unique gauge for cross inner products
@@ -531,7 +534,7 @@ struct GateOps {
         sgemm(rocblas_operation_transpose,rocblas_operation_none,
               n,n,m,A,m,A,m,gram,n);
         { int blocks=(n+255)/256; add_diagonal<<<blocks,256,0,rbstream>>>(gram,n,CHOL_DIAG_REG); }
-        RB_CHECK(rocsolver_spotrf(handle,rocblas_fill_upper,n,gram,n,potrf_info));
+        RB_CHECK(sblas::potrf(handle,rocblas_fill_upper,n,gram,n,potrf_info));
         HIP_CHECK(hipStreamSynchronize(rbstream));
         int hinfo; HIP_CHECK(hipMemcpy(&hinfo,potrf_info,sizeof(int),hipMemcpyDeviceToHost));
         if(hinfo!=0){k_out=0;return false;}
@@ -540,8 +543,8 @@ struct GateOps {
         // Solve Q × R = A in-place: init Q ← A, then rocblas_strsm overwrites Q.
         // rocblas_fill_upper: only reads upper triangle of R, lower ignored.
         HIP_CHECK(hipMemcpy(Q, A, (size_t)m*n*sizeof(Scalar), hipMemcpyDeviceToDevice));
-        float alpha = 1.f;
-        RB_CHECK(rocblas_strsm(handle,
+        Scalar alpha = 1;
+        RB_CHECK(sblas::trsm(handle,
             rocblas_side_right,
             rocblas_fill_upper,
             rocblas_operation_none,
@@ -588,7 +591,7 @@ struct GateOps {
         std::vector<Scalar*>& out_messages,
         const std::vector<Scalar*>& env_messages,
         const std::vector<int>& frozen_chi,
-        const Scalar* G,
+        const float* G,
         Workspace& ws,
         int chi_max, Scalar cutoff=1e-10f,
         LayerMetrics* lm=nullptr,
@@ -663,38 +666,27 @@ struct GateOps {
               k1D,k2D,chi_cut,ws.A1,k1D,ws.A2,k2D,ws.RR4,k1D);
 
         // ── Step 6: Apply gate to RR4 ─────────────────────────────────
-        HIP_CHECK(hipMemcpyAsync(d_G,G,D*D*D*D*sizeof(Scalar),hipMemcpyHostToDevice,rbstream));
+        upload_gate(G, D*D*D*D, d_G);
         { int tot=(k1D*k2D+255)/256;
           apply_gate_to_RR4<<<tot,256,D*D*D*D*sizeof(Scalar),rbstream>>>(
               d_G,ws.RR4,ws.oR4,k1,k2,D); }
 
-        // ── Step 7: SVD of oR4 [k1D × k2D] in float64 (mixed precision) ──
-        // float32 SVD loses small singular values at large chi (Σλ²=1 with 400
-        // channels → λ_min can be ~1e-6, below float32 relative precision at
-        // scale). float64 gives 15 decimal digits — accurate singular values
-        // → accurate Vidal messages → BP finds correct fixed point.
+        // ── Step 7: SVD of oR4 [k1D × k2D] in Scalar precision ──────────
+        // SVD follows the Scalar type (sgesvd in float, dgesvd in double). At
+        // large chi with Σλ²=1 over many channels, λ_min can fall below float32
+        // relative precision — that is exactly what the double build is for
+        // (dgesvd gives 15 digits → accurate Vidal messages → correct BP).
         int kfull=std::min(k1D,k2D);
-        int oR4_n = k1D * k2D;
-        { int blocks=(oR4_n+255)/256;
-          cast_f32_to_f64<<<blocks,256,0,rbstream>>>(ws.oR4, ws.oR4_d, oR4_n); }
-        // Zero U_d and Vt_d — dgesvd(outofplace) may leave unused entries stale.
+        // Zero U and Vt — gesvd(outofplace) may leave unused entries stale.
         // Stale garbage from the previous gate feeds the reconstruction GEMM and
         // causes run-to-run non-determinism (and corruption at chi saturation).
-        HIP_CHECK(hipMemsetAsync(ws.U_d,  0, (size_t)k1D*kfull*sizeof(double), rbstream));
-        HIP_CHECK(hipMemsetAsync(ws.Vt_d, 0, (size_t)kfull*k2D*sizeof(double), rbstream));
+        HIP_CHECK(hipMemsetAsync(ws.U,  0, (size_t)k1D*kfull*sizeof(Scalar), rbstream));
+        HIP_CHECK(hipMemsetAsync(ws.Vt, 0, (size_t)kfull*k2D*sizeof(Scalar), rbstream));
         HIP_CHECK(hipMemset(ws.svd_info, 0, sizeof(int)));
-        RB_CHECK(rocsolver_dgesvd(handle,
+        RB_CHECK(sblas::gesvd(handle,
             rocblas_svect_singular, rocblas_svect_singular,
-            k1D, k2D, ws.oR4_d, k1D, ws.S_d, ws.U_d, k1D, ws.Vt_d, kfull,
-            ws.svd_work_d, rocblas_outofplace, ws.svd_info));
-        // Cast S_d (float64) → S (float32) for downstream use
-        { int blocks=(kfull+255)/256;
-          cast_f64_to_f32<<<blocks,256,0,rbstream>>>(ws.S_d, ws.S, kfull); }
-        // Cast U_d → U, Vt_d → Vt for reconstruction GEMMs (float32 sufficient)
-        { int blocks=(k1D*kfull+255)/256;
-          cast_f64_to_f32<<<blocks,256,0,rbstream>>>(ws.U_d, ws.U, k1D*kfull); }
-        { int blocks=(kfull*k2D+255)/256;
-          cast_f64_to_f32<<<blocks,256,0,rbstream>>>(ws.Vt_d, ws.Vt, kfull*k2D); }
+            k1D, k2D, ws.oR4, k1D, ws.S, ws.U, k1D, ws.Vt, kfull,
+            ws.svd_work, rocblas_outofplace, ws.svd_info));
         HIP_CHECK(hipStreamSynchronize(rbstream));
 
         // D2H singular values to determine new_chi (data-dependent truncation rank)
@@ -729,8 +721,8 @@ struct GateOps {
             lm->Se_over_logchi = std::max(lm->Se_over_logchi, Se / logchi);
 
             // Singular value gap: σ_{new_chi} / σ_{new_chi-1} (ratio at cut edge)
-            if(new_chi < kfull && new_chi > 0 && hS[new_chi-1] > 0.f)
-                lm->gap = std::min(lm->gap, hS[new_chi] / hS[new_chi-1]);
+            if(new_chi < kfull && new_chi > 0 && hS[new_chi-1] > 0)
+                lm->gap = std::min(lm->gap, (float)(hS[new_chi] / hS[new_chi-1]));
 
             lm->n_gates++;
         }
@@ -808,7 +800,7 @@ struct GateOps {
         std::vector<Scalar> msg((size_t)new_chi*new_chi,0.f);
         std::vector<Scalar> msg_v(new_chi);
         for(int i=0;i<new_chi;i++){
-            Scalar lam = std::max(hS[i]/snorm,0.f);
+            Scalar lam = std::max(hS[i]/snorm,(Scalar)0);
             msg[i+i*new_chi] = lam;
             msg_v[i]         = lam;
         }
@@ -829,7 +821,7 @@ struct GateOps {
     void apply_binary_gate(Scalar* psi_v1, Scalar* psi_v2,
                            const Gate& gate, Grid& grid,
                            std::vector<Scalar*>& messages,
-                           const Scalar* G, Workspace& ws,
+                           const float* G, Workspace& ws,
                            int chi_max, Scalar cutoff=1e-10f)
     {
         std::vector<int> cur_chi(grid.n_bonds);
