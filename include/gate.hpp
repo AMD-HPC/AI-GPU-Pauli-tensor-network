@@ -707,9 +707,11 @@ struct GateOps {
         int oR4_n = k1D * k2D;
         { int blocks=(oR4_n+255)/256;
           cast_f32_to_f64<<<blocks,256,0,rbstream>>>(ws.oR4, ws.oR4_d, oR4_n); }
-        { int blocks=(k1D*kfull+255)/256;  // U_d needs k1D×kfull
-          // zero U_d and Vt_d (dgesvd may not write unused entries)
-        }
+        // Zero U_d and Vt_d — dgesvd(outofplace) may leave unused entries stale.
+        // Stale garbage from the previous gate feeds the reconstruction GEMM and
+        // causes run-to-run non-determinism (and corruption at chi saturation).
+        HIP_CHECK(hipMemsetAsync(ws.U_d,  0, (size_t)k1D*kfull*sizeof(double), rbstream));
+        HIP_CHECK(hipMemsetAsync(ws.Vt_d, 0, (size_t)kfull*k2D*sizeof(double), rbstream));
         HIP_CHECK(hipMemset(ws.svd_info, 0, sizeof(int)));
         RB_CHECK(rocsolver_dgesvd(handle,
             rocblas_svect_singular, rocblas_svect_singular,
