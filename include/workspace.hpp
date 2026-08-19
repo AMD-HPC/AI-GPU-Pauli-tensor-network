@@ -164,16 +164,17 @@ struct Workspace {
     /* ── Env buffers — one chi×chi matrix per bond direction ─────────── */
 
     // For each bond direction d ∈ {UP, DOWN, LEFT, RIGHT}:
-    //   sqrt_env[d][chi×chi]:     √(message_d)  — used BEFORE QR
-    //   inv_sqrt_env[d][chi×chi]: 1/√(message_d) — used AFTER reconstruction
+    //   sqrt_env[d][chi×chi]:     √(message_d)  — legacy chi×chi (kept for transition)
+    //   inv_sqrt_env[d][chi×chi]: 1/√(message_d) — legacy chi×chi
+    //   sqrt_env_v[d][chi]:       diagonal of sqrt_env  — chi-vector (Phase 0)
+    //   inv_sqrt_env_v[d][chi]:   diagonal of inv_sqrt_env — chi-vector (Phase 0)
     //
-    // The env absorption works as:
-    //   contracted_v = ψ_v × sqrt_env[b0] × sqrt_env[b1] × ...
-    //   reconstructed_v = Q_v × inv_sqrt_env[b0] × inv_sqrt_env[b1] × ...
-    //
-    // This "gauges" the tensors into a canonical form for QR.
+    // Phase 0: absorb_env / deabsorb_env migrate to chi-vector path
+    // (mode_n_scale instead of mode_n_contract — O(chi) instead of O(chi²))
     Scalar* sqrt_env    [MAX_DEGREE] = {};
     Scalar* inv_sqrt_env[MAX_DEGREE] = {};
+    Scalar* sqrt_env_v    [MAX_DEGREE] = {};  // chi-vector (diagonal of sqrt_env)
+    Scalar* inv_sqrt_env_v[MAX_DEGREE] = {};  // chi-vector (diagonal of inv_sqrt_env)
 
     /* ── SYEVD scratch — for pseudo_sqrt ────────────────────────────── */
 
@@ -253,10 +254,12 @@ struct Workspace {
         _alloc(gram,  small);
         _alloc_scalar(S, n_max * D);
 
-        // Env buffers — only allocate as many as max_degree (not always 4)
+        // Env buffers — chi×chi (legacy) + chi-vector (Phase 0)
         for (int d=0; d<max_degree; d++) {
-            _alloc(sqrt_env[d],     env);
-            _alloc(inv_sqrt_env[d], env);
+            _alloc(sqrt_env[d],       env);
+            _alloc(inv_sqrt_env[d],   env);
+            _alloc_scalar(sqrt_env_v[d],     chi_max);  // chi-vector
+            _alloc_scalar(inv_sqrt_env_v[d], chi_max);  // chi-vector
         }
 
         // SYEVD scratch
@@ -300,6 +303,8 @@ struct Workspace {
         for (int d=0; d<max_degree; d++) {
             _free(sqrt_env[d]);
             _free(inv_sqrt_env[d]);
+            _free(sqrt_env_v[d]);
+            _free(inv_sqrt_env_v[d]);
         }
         _free(syevd_W); _free(syevd_E);
         _free_int(syevd_info);
