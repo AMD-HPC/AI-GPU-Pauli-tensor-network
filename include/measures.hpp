@@ -832,6 +832,31 @@ __global__ void normalize_and_delta(
     }
 }
 
+/* ── normalize_and_delta_v ───────────────────────────────────────────────────
+ * Chi-vector counterpart of normalize_and_delta (Vidal gauge). Writes the
+ * normalized diagonal directly as a chi-vector — no chi×chi matrix, no
+ * off-diagonal zeroing, no extract_diagonal round-trip. O(chi) not O(chi²). */
+__global__ void normalize_and_delta_v(
+    const Scalar* __restrict__ d_mu,    // new unnormalized diagonal [chi]
+    const Scalar* __restrict__ old_v,   // old chi-vector [chi]
+    Scalar*                    new_v,   // output chi-vector [chi] (may alias old_v)
+    const Scalar* __restrict__ d_s,     // Σ d_mu — written by rocblas_sdot
+    Scalar*                    d_delta, // running max delta (atomicMax int trick)
+    int chi,
+    float alpha)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= chi) return;
+    Scalar inv_s = (fabsf(*d_s) > 1e-12f) ? 1.f / *d_s : 1.f;
+    Scalar normalized = d_mu[i] * inv_s;
+    Scalar old_val    = old_v[i];
+    Scalar new_val    = (alpha >= 1.f) ? normalized
+                                       : ((1.f - alpha) * old_val + alpha * normalized);
+    Scalar diff       = fabsf(new_val - old_val);
+    atomicMax(reinterpret_cast<int*>(d_delta), __float_as_int(diff));
+    new_v[i] = new_val;
+}
+
 /* ── square_elements ─────────────────────────────────────────────────────────
  * Elementwise square: out[i] = in[i]². Used by norm BP to pre-process ψ so
  * the subsequent linear env contraction sums ψ² over all physical components. */
@@ -1222,13 +1247,16 @@ struct Measures {
                     RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_device));
                     RB_CHECK(rocblas_sdot(handle, chi, d_mu, 1, d_ones, 1, d_s));
                     RB_CHECK(rocblas_set_pointer_mode(handle, rocblas_pointer_mode_host));
-                    normalize_and_delta<<<blocks, 256, 0, rbstream>>>(
-                        d_mu, messages[msg_idx], messages[msg_idx], d_s, d_delta, chi, alpha);
-                    // Also extract diagonal to chi-vector if provided
                     if (messages_v && (*messages_v)[msg_idx]) {
+                        // Vidal gauge: write the chi-vector directly (O(chi)).
                         int vblocks = (chi + 255) / 256;
-                        extract_diagonal<<<vblocks, 256, 0, rbstream>>>(
-                            messages[msg_idx], (*messages_v)[msg_idx], chi);
+                        normalize_and_delta_v<<<vblocks, 256, 0, rbstream>>>(
+                            d_mu, (*messages_v)[msg_idx], (*messages_v)[msg_idx],
+                            d_s, d_delta, chi, alpha);
+                    } else {
+                        // Fallback: chi×chi diagonal write (no messages_v caller).
+                        normalize_and_delta<<<blocks, 256, 0, rbstream>>>(
+                            d_mu, messages[msg_idx], messages[msg_idx], d_s, d_delta, chi, alpha);
                     }
                 } else {
                     // ── Full chi×chi bilinear-form path ───────────────────────────────
