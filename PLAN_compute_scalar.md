@@ -17,15 +17,30 @@ memory layout.
 
 ---
 
-## Design Principle
+## Design Principle — REVISED: Same Type Throughout
 
 ```
-Storage (always float32):     psi, messages, messages_v, workspace buffers
-Computation (switchable):     QR, GEMM, SVD, BP SGEMV, vertex contractions
+using Scalar = float;   // -DScalar=float  (default, current)
+using Scalar = double;  // -DScalar=double (accurate, 2× memory)
 ```
 
-Mixed-precision boundary: upcast float32→float64 at computation entry,
-downcast float64→float32 at storage exit. These cast kernels already exist.
+**Everything is Scalar**: storage, computation, workspace, messages.
+No mixed-precision boundaries. No cast kernels. One type flows end-to-end.
+
+This is simpler than mixed precision:
+- One line change (Scalar typedef)
+- All kernels, BLAS calls, buffers change together automatically
+- No silent precision loss at cast boundaries
+- Easy to reason about, easy to test
+
+**Memory tradeoff**:
+| Machine | Scalar=float | Scalar=double | With lightcone (50%) |
+|---------|-------------|---------------|---------------------|
+| MI100 (32GB) | chi=400 | chi=283 | chi=400 double |
+| MI355X (309GB) | chi=1200 | chi=850 | chi=1200 double |
+
+**MI355X opportunity**: at double precision with 309GB, chi=565 fits easily.
+This is the target machine for production runs once the float64 binary is validated.
 
 ---
 
@@ -220,37 +235,55 @@ This is also the prerequisite for float64 env absorption (mode_n_scale_d is alre
 
 ---
 
-## Implementation Order
+## Implementation Order (Same-Type Design)
 
-- [ ] 0.1 Add sqrt_env_v / inv_sqrt_env_v chi-vectors to Workspace
-- [ ] 0.2 Update pseudo_sqrt to populate chi-vectors alongside chi×chi
-- [ ] 0.3 Replace absorb_env: mode_n_contract → mode_n_scale (sqrt_env_v)
-- [ ] 0.4 Replace deabsorb_env: mode_n_contract → mode_n_scale (inv_sqrt_env_v)
-- [ ] 0.5 Test baseline (chi=70 δ=1e-3) — must be identical
-- [ ] 1. Add `CScalar` typedef to types.hpp, `COMPUTE_SCALAR_DOUBLE` flag to Makefile
-- [ ] 2. Abstract householder_qr() / cholesky_qr() dispatch (sgeqrf→dgeqrf)
-- [ ] 3. Abstract absorb/deabsorb env: mode_n_scale → mode_n_scale_d when CScalar=double
-- [ ] 4. Abstract Bond GEMM (RR4 computation): sgemm → dgemm
-- [ ] 5. Abstract bp_update() SGEMV/SDOT dispatch
-- [ ] 6. Add double workspace buffers for QR (cv1_d, cv2_d, Q1_d, Q2_d)
-- [ ] 7. Add Makefile target `main_pauli_sweep_f64`
-- [ ] 8. Test: chi=70 δ=1e-3 both binaries identical
-- [ ] 9. Test: chi=450 δ=1e-4 float64 binary — C(t) correct through step 9?
+### Phase 0: sqrt_env chi×chi → chi-vector (performance, independent of Scalar type)
 
-## Full Computation Chain (CScalar=double)
+- [ ] 0.1 Add sqrt_env_v / inv_sqrt_env_v chi-vectors to Workspace (size chi_max per direction)
+- [ ] 0.2 Update pseudo_sqrt to populate chi-vectors
+- [ ] 0.3 Replace absorb_env: mode_n_contract(chi×chi) → mode_n_scale(chi-vector)
+- [ ] 0.4 Replace deabsorb_env: same replacement with inv_sqrt_env_v
+- [ ] 0.5 Test: chi=70 δ=1e-3 baseline unchanged (C(t) identical)
+- [ ] 0.6 Commit Phase 0
+
+### Phase 1: Scalar typedef + Makefile flag
+
+- [ ] 1.1 types.hpp: keep `using Scalar = float` as default
+        Add: `-DScalar=double` flag → `using Scalar = double`
+- [ ] 1.2 Makefile: add `main_pauli_sweep_f64` target with `-DScalar=double`
+- [ ] 1.3 Test compile: both targets build without errors
+
+### Phase 2: BLAS/solver dispatch by Scalar type
+
+All changes are `#ifdef` or template dispatch — existing Scalar kernels auto-switch.
+
+- [ ] 2.1 `GateOps::sgemm()`: `rocblas_sgemm` → `rocblas_dgemm` when Scalar=double
+- [ ] 2.2 `GateOps::mode_n_contract()`: sgemm_strided_batched → dgemm_strided_batched
+- [ ] 2.3 `GateOps::householder_qr()`: sgeqrf/sorgqr → dgeqrf/dorgqr
+- [ ] 2.4 `GateOps::cholesky_qr()`: spotrf/strsm → dpotrf/dtrsm
+- [ ] 2.5 `bp_update()`: sgemv/sdot → dgemv/ddot
+- [ ] 2.6 `normalize_and_delta()` kernel: Scalar template (auto-switches)
+- [ ] 2.7 Test: chi=70 δ=1e-3 float64 binary matches float32 baseline
+
+### Phase 3: Validation
+
+- [ ] 3.1 chi=200 δ=1e-4 float64: all 10 steps correct, gate_err < δ
+- [ ] 3.2 chi=283 δ=1e-4 float64 (same VRAM as chi=400 float32): stable?
+- [ ] 3.3 MI355X: chi=565 float64 with lightcone — faithful 10 cycles?
+
+## Full Computation Chain (Scalar=double, same type throughout)
 
 ```
-psi[float32] → upcast → absorb_env (mode_n_scale_d, chi-vector sqrt_env_v)
-  → cv[float64] → QR (dgeqrf, dorgqr) → R1,R2[float64]
-    → Bond GEMM (dgemm): R1^T R2 → RR4[float64]
-      → Gate (same, float64) → SVD (dgesvd, already done)
-        → Reconstruction (dgemm) → cv_new[float64]
-          → deabsorb_env (mode_n_scale_d, chi-vector inv_sqrt_env_v)
-            → psi_new[float64] → downcast → psi_new[float32]
-              → messages_v[float32] (from SVD singular values)
-                → BP (dgemv/ddot): updates messages_v in float64
-                  → vertex_scalar_diag (mode_n_scale_d, already float64)
+psi[double] → absorb_env (mode_n_scale, chi-vector sqrt_env_v[double])
+  → cv[double] → QR (dgeqrf, dorgqr) → R1,R2[double]
+    → Bond GEMM (dgemm): R1^T R2 → RR4[double]
+      → Gate → SVD (dgesvd) → λ_k[double] → messages_v[double]
+        → Reconstruction (dgemm) → cv_new[double]
+          → deabsorb_env (mode_n_scale, inv_sqrt_env_v[double])
+            → psi_new[double]
+              → BP (dgemv/ddot): messages updated in double
+                → vertex_scalar_diag (mode_n_scale_d → mode_n_scale)
 ```
 
-BP output (messages_v) stays float32 after BP — store normalized λ_k as float32.
-QR, env contraction, bond GEMM all in float64 — no intermediate downcast.
+No casts. No boundaries. Everything double when -DScalar=double.
+Memory doubles but logic is identical — one type flows end-to-end.
