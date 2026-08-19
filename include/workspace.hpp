@@ -72,10 +72,10 @@
  *     gram        — Gram matrix AᵀA for POTRF
  *     S           — singular values [D²*chi]
  *
- *   ENV BUFFERS (chi×chi per direction = 50×50 per bond):
- *     sqrt_env[d]     — √(BP message) for direction d
- *     inv_sqrt_env[d] — 1/√(BP message) for direction d
- *     Used to absorb/desorb environment before/after QR.
+ *   ENV BUFFERS (diagonal chi-vector per direction):
+ *     sqrt_env_v[d]     — √(BP message) for direction d
+ *     inv_sqrt_env_v[d] — 1/√(BP message) for direction d
+ *     Used to absorb/desorb environment before/after QR (mode_n_scale).
  *
  *   SCRATCH (for rocsolver calls):
  *     syevd_W, syevd_E, syevd_info — SYEVD eigenvalue computation
@@ -161,20 +161,15 @@ struct Workspace {
     // POTRF gives C = R^T · R where R is upper triangular → that's our R.
     Scalar* gram   = nullptr;
 
-    /* ── Env buffers — one chi×chi matrix per bond direction ─────────── */
+    /* ── Env buffers — one diagonal chi-vector per bond direction ────── */
 
-    // For each bond direction d ∈ {UP, DOWN, LEFT, RIGHT}:
-    //   sqrt_env[d][chi×chi]:     √(message_d)  — legacy chi×chi (kept for transition)
-    //   inv_sqrt_env[d][chi×chi]: 1/√(message_d) — legacy chi×chi
-    //   sqrt_env_v[d][chi]:       diagonal of sqrt_env  — chi-vector (Phase 0)
-    //   inv_sqrt_env_v[d][chi]:   diagonal of inv_sqrt_env — chi-vector (Phase 0)
-    //
-    // Phase 0: absorb_env / deabsorb_env migrate to chi-vector path
-    // (mode_n_scale instead of mode_n_contract — O(chi) instead of O(chi²))
-    Scalar* sqrt_env    [MAX_DEGREE] = {};
-    Scalar* inv_sqrt_env[MAX_DEGREE] = {};
-    Scalar* sqrt_env_v    [MAX_DEGREE] = {};  // chi-vector (diagonal of sqrt_env)
-    Scalar* inv_sqrt_env_v[MAX_DEGREE] = {};  // chi-vector (diagonal of inv_sqrt_env)
+    // For each bond direction d ∈ {UP, DOWN, LEFT, RIGHT}, the BP message is
+    // diagonal (Vidal/sqrt gauge), so absorb/deabsorb need only:
+    //   sqrt_env_v[d][chi]:     √(message_d)   — used by absorb_env
+    //   inv_sqrt_env_v[d][chi]: 1/√(message_d) — used by deabsorb_env
+    // via mode_n_scale (O(chi) elementwise), not a chi×chi contraction.
+    Scalar* sqrt_env_v    [MAX_DEGREE] = {};
+    Scalar* inv_sqrt_env_v[MAX_DEGREE] = {};
 
     /* ── SYEVD scratch — for pseudo_sqrt ────────────────────────────── */
 
@@ -254,12 +249,10 @@ struct Workspace {
         _alloc(gram,  small);
         _alloc_scalar(S, n_max * D);
 
-        // Env buffers — chi×chi (legacy) + chi-vector (Phase 0)
+        // Env buffers — diagonal chi-vectors (Vidal/sqrt gauge)
         for (int d=0; d<max_degree; d++) {
-            _alloc(sqrt_env[d],       env);
-            _alloc(inv_sqrt_env[d],   env);
-            _alloc_scalar(sqrt_env_v[d],     chi_max);  // chi-vector
-            _alloc_scalar(inv_sqrt_env_v[d], chi_max);  // chi-vector
+            _alloc_scalar(sqrt_env_v[d],     chi_max);
+            _alloc_scalar(inv_sqrt_env_v[d], chi_max);
         }
 
         // SYEVD scratch
@@ -301,8 +294,6 @@ struct Workspace {
         _free(A1);   _free(A2);
         _free(RR);   _free(S);    _free(gram);
         for (int d=0; d<max_degree; d++) {
-            _free(sqrt_env[d]);
-            _free(inv_sqrt_env[d]);
             _free(sqrt_env_v[d]);
             _free(inv_sqrt_env_v[d]);
         }

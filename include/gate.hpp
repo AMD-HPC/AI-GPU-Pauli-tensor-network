@@ -37,41 +37,6 @@
 #include <cassert>
 #include <algorithm>
 
-/* ── symmetrize_copy ─────────────────────────────────────────────────────────
- * Copies src[n×n] → dst[n×n] with dst[i,j] = 0.5*(src[i,j]+src[j,i]).
- * Replaces: D2H M (chi²) + CPU symmetrize loop + H2D sqE. */
-__global__ void symmetrize_copy(const Scalar* __restrict__ src, Scalar* dst, int n) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n*n) return;
-    int i = idx % n, j = idx / n;
-    dst[idx] = 0.5f * (src[i + (size_t)n*j] + src[j + (size_t)n*i]);
-}
-
-/* ── form_sqrt_matrices ──────────────────────────────────────────────────────
- * Given eigenvectors V[chi×chi] (col-major) and eigenvalues W[chi], computes:
- *   sqM[i,j]  = Σ_k V[i,k] * V[j,k] * sqrt(|W[k]|)   (if |W[k]| >= cut)
- *   isqM[i,j] = Σ_k V[i,k] * V[j,k] / sqrt(|W[k]|)
- * Replaces: D2H hW + D2H hV + CPU scale + hipMalloc×3 + H2D×3 + 2×GEMM + hipFree×3. */
-__global__ void form_sqrt_matrices(const Scalar* __restrict__ V,
-                                    const Scalar* __restrict__ W,
-                                    Scalar* sqM, Scalar* isqM,
-                                    int chi, Scalar cut) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= chi*chi) return;
-    int i = idx % chi, j = idx / chi;
-    Scalar s = 0.f, si = 0.f;
-    for (int k = 0; k < chi; k++) {
-        Scalar w = W[k];
-        Scalar sq = 0.f, sqi = 0.f;
-        if (fabsf(w) >= cut) { sq = sqrtf(fabsf(w)); sqi = 1.f / sq; }
-        Scalar vij = V[i + chi*k] * V[j + chi*k];
-        s  += vij * sq;
-        si += vij * sqi;
-    }
-    sqM[idx]  = s;
-    isqM[idx] = si;
-}
-
 /* ── cast_f32_to_f64 / cast_f64_to_f32 ──────────────────────────────────────
  * Element-wise float32↔float64 conversion for mixed-precision SVD. */
 __global__ void cast_f32_to_f64(const float* __restrict__ src, double* dst, int n) {
@@ -90,53 +55,8 @@ __global__ void extract_diagonal(const Scalar* __restrict__ M, Scalar* d, int ch
     if (i < chi) d[i] = M[i + chi * i];
 }
 
-/* ── find_max_diag ───────────────────────────────────────────────────────────
- * Finds the maximum value in a chi-vector d, writes result to out[0].
- * Single-block reduction — chi is small (≤ chi_max). */
-__global__ void find_max_diag(const Scalar* __restrict__ d, Scalar* out, int chi) {
-    __shared__ Scalar smax[256];
-    int tid = threadIdx.x;
-    Scalar v = (tid < chi) ? d[tid] : 0.f;
-    // Reduce within block
-    for (int i = blockDim.x/2; i > 0; i >>= 1) {
-        if (tid < i) v = (v > __shfl_down(v, i)) ? v : __shfl_down(v, i);
-        // Use shared memory for small block sizes
-    }
-    smax[tid] = v;
-    __syncthreads();
-    for (int s = blockDim.x/2; s > 0; s >>= 1) {
-        if (tid < s) smax[tid] = (smax[tid] > smax[tid+s]) ? smax[tid] : smax[tid+s];
-        __syncthreads();
-    }
-    if (tid == 0) out[0] = smax[0];
-}
-
-/* ── diag_sqrt_matrices ──────────────────────────────────────────────────────
- * Fast path for diagonal messages: sqM = diag(sqrt(d_k)), isqM = diag(1/sqrt(d_k)).
- * Bypasses ssyevd entirely — O(chi) instead of O(chi³).
- * Safe because BP diagonal path (normalize_and_delta) always produces diagonal
- * messages: off-diagonal entries are explicitly zeroed every sweep. */
-__global__ void diag_sqrt_matrices(const Scalar* __restrict__ diag, // chi diagonal entries
-                                    Scalar* sqM, Scalar* isqM,
-                                    int chi, Scalar cut) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= chi * chi) return;
-    int row = idx % chi;
-    int col = idx / chi;
-    if (row == col) {
-        Scalar w  = diag[row];
-        Scalar sq = 0.f, sqi = 0.f;
-        if (fabsf(w) >= cut) { sq = sqrtf(fabsf(w)); sqi = 1.f / sq; }
-        sqM[idx]  = sq;
-        isqM[idx] = sqi;
-    } else {
-        sqM[idx]  = 0.f;
-        isqM[idx] = 0.f;
-    }
-}
-
 /* ── diag_sqrt_vectors ───────────────────────────────────────────────────────
- * Chi-vector variant of diag_sqrt_matrices (Phase 0).
+ * Vidal/sqrt gauge: sqrt/inv_sqrt of a diagonal BP message.
  * sqV[k] = sqrt(diag[k]), isqV[k] = 1/sqrt(diag[k]) with threshold cut.
  * Writes chi entries (not chi²) — used by absorb_env/deabsorb_env via mode_n_scale. */
 __global__ void diag_sqrt_vectors(const Scalar* __restrict__ diag,
@@ -387,25 +307,16 @@ struct GateOps {
     // cut_rel: threshold relative to max diagonal entry. Entries below cut_rel*max
     // are zeroed in isqE (avoiding 1/sqrt(tiny) amplification). Default 1e-4 matches
     // the typical SVD cutoff — entries below this were already truncated by the gate.
-    void pseudo_sqrt(const Scalar* M, Scalar* sqE, Scalar* isqE,
-                     int chi, Workspace& ws,
-                     Scalar cut=PSEUDO_SQRT_CUT,
-                     Scalar* sqV=nullptr, Scalar* isqV=nullptr)  // Phase 0: chi-vector output
+    // Vidal/sqrt gauge: the BP message is diagonal, so sqrt/inv_sqrt are
+    // chi-vectors. sqV[k]=sqrt(λ_k), isqV[k]=1/sqrt(λ_k) (0 if λ_k<cut).
+    void pseudo_sqrt(const Scalar* M, int chi, Workspace& ws,
+                     Scalar* sqV, Scalar* isqV,
+                     Scalar cut=PSEUDO_SQRT_CUT)
     {
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
-        // Extract diagonal entries, then compute sqrt/inv_sqrt with threshold cut.
-        // Channels with λ < cut get isqE=0 — prevents 1/sqrt(tiny) amplification.
-        { int blocks=(chi+255)/256;
-          extract_diagonal<<<blocks,256,0,rbstream>>>(M, ws.syevd_W, chi); }
-        { int blocks=(chi*chi+255)/256;
-          diag_sqrt_matrices<<<blocks,256,0,rbstream>>>(
-              ws.syevd_W, sqE, isqE, chi, cut); }
-        // Phase 0: also populate chi-vectors if requested
-        if (sqV && isqV) {
-            int blocks=(chi+255)/256;
-            diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
-                ws.syevd_W, sqV, isqV, chi, cut);
-        }
+        int blocks=(chi+255)/256;
+        extract_diagonal<<<blocks,256,0,rbstream>>>(M, ws.syevd_W, chi);
+        diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(ws.syevd_W, sqV, isqV, chi, cut);
     }
 
     /* ── absorb_env ──────────────────────────────────────────────────── */
@@ -690,7 +601,7 @@ struct GateOps {
         Bond& bond=grid.bonds[gate.bond_id];
 
         // ── Step 1+2: pseudo_sqrt then absorb — per site, not interleaved.
-        // sv1 and sv2 share ws.sqrt_env/inv_sqrt_env indexed by bond_local.
+        // sv1 and sv2 share ws.sqrt_env_v/inv_sqrt_env_v indexed by bond_local.
         // Computing both sites' pseudo_sqrts before either absorb would let
         // sv2's loop overwrite sv1's slots when bond_local indices coincide.
         for(int d=0;d<MAX_DEGREE;d++){
@@ -698,8 +609,8 @@ struct GateOps {
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
+                        frozen_chi[eb.id],ws,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
         }
         absorb_env(psi_v1,sv1,grid,ws,cd1,frozen_chi,ws.cv1,ws.Q1);
 
@@ -708,8 +619,8 @@ struct GateOps {
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
+                        frozen_chi[eb.id],ws,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
         }
         absorb_env(psi_v2,sv2,grid,ws,cd2,frozen_chi,ws.cv2,ws.Q2);
 
@@ -857,14 +768,14 @@ struct GateOps {
 
         // ── Step 9b: deabsorb inv_sqrt envs ──────────────────────────
         // Recompute pseudo_sqrt per site immediately before its deabsorb so
-        // ws.inv_sqrt_env slots hold the correct site's values.
+        // ws.inv_sqrt_env_v slots hold the correct site's values.
         for(int d=0;d<MAX_DEGREE;d++){
             if(sv1.bond_id[d]<0||d==cd1) continue;
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
+                        frozen_chi[eb.id],ws,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
         }
         deabsorb_env(ws.cv1,sv1,grid,ws,cd1,new_chi,frozen_chi,ws.Q1);
 
@@ -873,8 +784,8 @@ struct GateOps {
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
+                        frozen_chi[eb.id],ws,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
         }
         deabsorb_env(ws.cv2,sv2,grid,ws,cd2,new_chi,frozen_chi,ws.Q2);
 
