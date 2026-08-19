@@ -135,6 +135,22 @@ __global__ void diag_sqrt_matrices(const Scalar* __restrict__ diag, // chi diago
     }
 }
 
+/* ── diag_sqrt_vectors ───────────────────────────────────────────────────────
+ * Chi-vector variant of diag_sqrt_matrices (Phase 0).
+ * sqV[k] = sqrt(diag[k]), isqV[k] = 1/sqrt(diag[k]) with threshold cut.
+ * Writes chi entries (not chi²) — used by absorb_env/deabsorb_env via mode_n_scale. */
+__global__ void diag_sqrt_vectors(const Scalar* __restrict__ diag,
+                                   Scalar* sqV, Scalar* isqV,
+                                   int chi, Scalar cut) {
+    int k = blockIdx.x * blockDim.x + threadIdx.x;
+    if (k >= chi) return;
+    Scalar w  = diag[k];
+    Scalar sq = 0.f, sqi = 0.f;
+    if (fabsf(w) >= cut) { sq = sqrtf(fabsf(w)); sqi = 1.f / sq; }
+    sqV[k]  = sq;
+    isqV[k] = sqi;
+}
+
 /* ── extract_upper_triangle ─────────────────────────────────────────────────
  * Extracts the k×n upper triangle from Q[m×n] (col-major, stride m) into
  * R[k×n] (col-major, stride k), zeroing the lower triangle.
@@ -341,7 +357,8 @@ struct GateOps {
     // the typical SVD cutoff — entries below this were already truncated by the gate.
     void pseudo_sqrt(const Scalar* M, Scalar* sqE, Scalar* isqE,
                      int chi, Workspace& ws,
-                     Scalar cut=PSEUDO_SQRT_CUT)
+                     Scalar cut=PSEUDO_SQRT_CUT,
+                     Scalar* sqV=nullptr, Scalar* isqV=nullptr)  // Phase 0: chi-vector output
     {
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
         // Extract diagonal entries, then compute sqrt/inv_sqrt with threshold cut.
@@ -351,6 +368,12 @@ struct GateOps {
         { int blocks=(chi*chi+255)/256;
           diag_sqrt_matrices<<<blocks,256,0,rbstream>>>(
               ws.syevd_W, sqE, isqE, chi, cut); }
+        // Phase 0: also populate chi-vectors if requested
+        if (sqV && isqV) {
+            int blocks=(chi+255)/256;
+            diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
+                ws.syevd_W, sqV, isqV, chi, cut);
+        }
     }
 
     /* ── absorb_env ──────────────────────────────────────────────────── */
@@ -641,7 +664,8 @@ struct GateOps {
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
         }
         absorb_env(psi_v1,sv1,grid,ws,cd1,frozen_chi,ws.cv1,ws.Q1);
 
@@ -650,7 +674,8 @@ struct GateOps {
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
         }
         absorb_env(psi_v2,sv2,grid,ws,cd2,frozen_chi,ws.cv2,ws.Q2);
 
@@ -804,7 +829,8 @@ struct GateOps {
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
         }
         deabsorb_env(ws.cv1,sv1,grid,ws,cd1,new_chi,frozen_chi,ws.Q1);
 
@@ -813,7 +839,8 @@ struct GateOps {
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
             pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff);
+                        ws.sqrt_env[li],ws.inv_sqrt_env[li],frozen_chi[eb.id],ws,cutoff,
+                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li]);
         }
         deabsorb_env(ws.cv2,sv2,grid,ws,cd2,new_chi,frozen_chi,ws.Q2);
 
