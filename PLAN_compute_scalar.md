@@ -176,13 +176,81 @@ At chi=450, δ=1e-4:
 
 ---
 
+## Phase 0: sqrt_env chi×chi → chi-vector (prerequisite for float64)
+
+The env absorption/deabsorption currently uses chi×chi SGEMM with sqrt_env/inv_sqrt_env.
+These matrices are DIAGONAL (produced by diag_sqrt_matrices which zeros off-diagonal).
+Storing and contracting them as chi×chi is wasteful and blocks float64 env computation.
+
+### 0.1 Add chi-vector env buffers to Workspace
+
+```cpp
+// workspace.hpp: replace chi×chi sqrt_env with chi-vectors
+Scalar* sqrt_env_v    [MAX_DEGREE] = {};  // chi-vector (diagonal of sqrt_env)
+Scalar* inv_sqrt_env_v[MAX_DEGREE] = {};  // chi-vector (diagonal of inv_sqrt_env)
+// Size: chi_max floats each (vs chi_max² currently)
+```
+
+### 0.2 Update pseudo_sqrt to populate chi-vectors
+
+```cpp
+// gate.hpp: after diag_sqrt_matrices, also extract diagonals to chi-vectors
+extract_diagonal<<<>>>(sqE,  sqrt_env_v[li],     chi);
+extract_diagonal<<<>>>(isqE, inv_sqrt_env_v[li],  chi);
+```
+
+### 0.3 Replace absorb_env mode_n_contract with mode_n_scale
+
+```cpp
+// gate.hpp: absorb_env — replace:
+mode_n_contract(cur, shape, ndim, ws.sqrt_env[li], chi, chi, li, nxt);
+// with:
+mode_n_scale(cur, shape, ndim, ws.sqrt_env_v[li], chi, li, nxt);
+// O(chi × volume) instead of O(chi² × volume)
+```
+
+### 0.4 Replace deabsorb_env mode_n_contract with mode_n_scale
+
+```cpp
+// gate.hpp: deabsorb_env — same replacement with inv_sqrt_env_v
+```
+
+**Test after Phase 0**: chi=70 δ=1e-3 baseline unchanged, chi=450 faster per gate step.
+This is also the prerequisite for float64 env absorption (mode_n_scale_d is already available).
+
+---
+
 ## Implementation Order
 
+- [ ] 0.1 Add sqrt_env_v / inv_sqrt_env_v chi-vectors to Workspace
+- [ ] 0.2 Update pseudo_sqrt to populate chi-vectors alongside chi×chi
+- [ ] 0.3 Replace absorb_env: mode_n_contract → mode_n_scale (sqrt_env_v)
+- [ ] 0.4 Replace deabsorb_env: mode_n_contract → mode_n_scale (inv_sqrt_env_v)
+- [ ] 0.5 Test baseline (chi=70 δ=1e-3) — must be identical
 - [ ] 1. Add `CScalar` typedef to types.hpp, `COMPUTE_SCALAR_DOUBLE` flag to Makefile
-- [ ] 2. Abstract bp_update() SGEMV/SDOT dispatch (highest impact)
-- [ ] 3. Abstract mode_n_contract() dispatch  
-- [ ] 4. Abstract householder_qr() / cholesky_qr() dispatch
-- [ ] 5. Add double workspace buffers if needed
-- [ ] 6. Add Makefile target `main_pauli_sweep_f64`
-- [ ] 7. Test: chi=70 δ=1e-3 both binaries identical
-- [ ] 8. Test: chi=450 δ=1e-4 float64 binary correct through step 9
+- [ ] 2. Abstract householder_qr() / cholesky_qr() dispatch (sgeqrf→dgeqrf)
+- [ ] 3. Abstract absorb/deabsorb env: mode_n_scale → mode_n_scale_d when CScalar=double
+- [ ] 4. Abstract Bond GEMM (RR4 computation): sgemm → dgemm
+- [ ] 5. Abstract bp_update() SGEMV/SDOT dispatch
+- [ ] 6. Add double workspace buffers for QR (cv1_d, cv2_d, Q1_d, Q2_d)
+- [ ] 7. Add Makefile target `main_pauli_sweep_f64`
+- [ ] 8. Test: chi=70 δ=1e-3 both binaries identical
+- [ ] 9. Test: chi=450 δ=1e-4 float64 binary — C(t) correct through step 9?
+
+## Full Computation Chain (CScalar=double)
+
+```
+psi[float32] → upcast → absorb_env (mode_n_scale_d, chi-vector sqrt_env_v)
+  → cv[float64] → QR (dgeqrf, dorgqr) → R1,R2[float64]
+    → Bond GEMM (dgemm): R1^T R2 → RR4[float64]
+      → Gate (same, float64) → SVD (dgesvd, already done)
+        → Reconstruction (dgemm) → cv_new[float64]
+          → deabsorb_env (mode_n_scale_d, chi-vector inv_sqrt_env_v)
+            → psi_new[float64] → downcast → psi_new[float32]
+              → messages_v[float32] (from SVD singular values)
+                → BP (dgemv/ddot): updates messages_v in float64
+                  → vertex_scalar_diag (mode_n_scale_d, already float64)
+```
+
+BP output (messages_v) stays float32 after BP — store normalized λ_k as float32.
+QR, env contraction, bond GEMM all in float64 — no intermediate downcast.
