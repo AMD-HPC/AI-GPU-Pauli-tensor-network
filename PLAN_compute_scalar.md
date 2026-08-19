@@ -152,6 +152,27 @@ template<> void sgemm<double>(...) { rocblas_dgemm(...); }
 
 ---
 
+## Inner Product (MPF) — Special Case
+
+The MPF inner product ⟨ψ_a|ψ_b⟩ uses **double-layer BP** on the network ψ_a ⊗ ψ_b.
+Messages in this BP are chi_a × chi_b matrices — NOT chi-vectors.
+
+**Why**: the double-layer mixes bond indices from two different states. Messages
+carry correlations between ψ_a's bond channels and ψ_b's bond channels —
+inherently full chi×chi, not diagonal.
+
+**For Scalar=double**: the inner product BP (bilinear_form_bp_gpu.hpp) needs
+the same sgemm→dgemm dispatch as autocorrelation BP. But the chi-vector
+optimization does NOT apply — messages stay chi×chi.
+
+**Files to update for Scalar=double inner products**:
+- `bilinear_form_bp_gpu.hpp`: sgemm → dgemm
+- `bilinear_form_bp_gpu3.hpp`: sgemm → dgemm
+- `bilinear_form_blf_gpu2.hpp`: sgemm → dgemm
+
+Add to Phase 2:
+- [ ] 2.8 Inner product BP: sgemm → dgemm in bilinear_form_bp_gpu*.hpp
+
 ## What Does NOT Change
 
 | Component | Reason |
