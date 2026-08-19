@@ -765,20 +765,26 @@ static Scalar bp_partitionfunction(
     for (auto& bond : grid.bonds) {
         if (bond.chi_alloc == 1) continue;  // outside lightcone: trivial message, contributes 0 to log Z
         int chi  = bond.chi;
-        int chi2 = chi * chi;
         // Bethe edge scalar: Ze = <μ_a, μ_b>_F = Σ_{i,j} μ_a[i,j]*μ_b[i,j].
-        // For diagonal messages (diag mode) off-diagonals are zero so this
-        // reduces to the old diagonal dot product.  For full chi×chi messages
-        // all elements are non-zero and must be included; using only the
-        // diagonal here (the old code) produces a wrong denominator while
-        // vertex_scalars use the full matrix — mismatch causes C(t) to blow up.
-        std::vector<Scalar> ma(chi2), mb(chi2);
-        HIP_CHECK(hipMemcpy(ma.data(), messages[bond.msg_from_a()],
-            chi2*sizeof(Scalar), hipMemcpyDeviceToHost));
-        HIP_CHECK(hipMemcpy(mb.data(), messages[bond.msg_from_b()],
-            chi2*sizeof(Scalar), hipMemcpyDeviceToHost));
         double ze = 0.0;
-        for(int k=0; k<chi2; k++) ze += (double)ma[k] * mb[k];
+        if (use_diag) {
+            // Vidal gauge: messages are diagonal → Ze = Σ_i v_a[i]*v_b[i].
+            std::vector<Scalar> va(chi), vb(chi);
+            HIP_CHECK(hipMemcpy(va.data(), (*messages_v_pf)[bond.msg_from_a()],
+                chi*sizeof(Scalar), hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(vb.data(), (*messages_v_pf)[bond.msg_from_b()],
+                chi*sizeof(Scalar), hipMemcpyDeviceToHost));
+            for(int i=0; i<chi; i++) ze += (double)va[i] * vb[i];
+        } else {
+            // Full chi×chi Frobenius dot (full_bp path).
+            int chi2 = chi * chi;
+            std::vector<Scalar> ma(chi2), mb(chi2);
+            HIP_CHECK(hipMemcpy(ma.data(), messages[bond.msg_from_a()],
+                chi2*sizeof(Scalar), hipMemcpyDeviceToHost));
+            HIP_CHECK(hipMemcpy(mb.data(), messages[bond.msg_from_b()],
+                chi2*sizeof(Scalar), hipMemcpyDeviceToHost));
+            for(int k=0; k<chi2; k++) ze += (double)ma[k] * mb[k];
+        }
         if(std::abs(ze) > 1e-30) {
             sign_den *= (ze > 0 ? 1.0 : -1.0);
             log_den  += std::log(std::abs(ze));
