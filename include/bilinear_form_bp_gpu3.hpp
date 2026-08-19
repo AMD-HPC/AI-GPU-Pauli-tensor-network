@@ -278,6 +278,24 @@ struct BLF_GPU3 {
         d_M_fwd.assign(n_bonds,nullptr); d_M_bwd.assign(n_bonds,nullptr);
         d_M_fwd2.assign(n_bonds,nullptr); d_M_bwd2.assign(n_bonds,nullptr);
 
+        // WARM-START = IDENTITY (M = I/min(ca,cb)). This is a deliberate,
+        // re-evaluatable choice — NOT the only option. See
+        // archive/INNER_PRODUCT_STATUS.md (2026-07-17): a kron warm-start
+        // outer(diag(msg_a), diag(msg_b)) was implemented and had ZERO effect
+        // in float32 — the loopy heavy-hex double-layer BP forgets its seed and
+        // flows to a single dominant fixed point, which is DEGENERATE for
+        // near-identical states (γ=1 tracks nl closely → A ill-conditioned,
+        // ~50% cross-overlap undercount vs exact tree).
+        //
+        // OPEN EXPERIMENT (after Scalar=double, Phase 1): re-test kron vs
+        // identity in FLOAT64. Hypothesis: the seed was inert in f32 because
+        // the inter-state distinction (small differences between near-equal
+        // Schmidt values) fell below the ~1e-7 f32 floor; f64's ~1e-15 floor
+        // may keep states distinguishable long enough for the warm-start to
+        // steer BP out of the degenerate basin. The kron seed is now trivially
+        // available as outer(v_a, v_b) from the unified Vidal chi-vectors
+        // (state.messages_v / Phase 0b). Do NOT hardcode-away this init: keep
+        // it a selectable knob when that experiment is run.
         for (auto& bond : ga.bonds) {
             int bid=bond.id; int ca=frozen_chi_a[bid], cb=frozen_chi_b[bid];
             int mn=std::min(ca,cb);

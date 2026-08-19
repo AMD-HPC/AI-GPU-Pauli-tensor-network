@@ -33,12 +33,17 @@
 /* ── Enable P2P access between all GPU pairs ────────────────────────────── */
 inline void enable_p2p(int n_gpus) {
     for (int i = 0; i < n_gpus; i++) {
-        hipSetDevice(i);
+        HIP_CHECK(hipSetDevice(i));
         for (int j = 0; j < n_gpus; j++) {
             if (i == j) continue;
             int can = 0;
-            hipDeviceCanAccessPeer(&can, i, j);
-            if (can) hipDeviceEnablePeerAccess(j, 0);
+            HIP_CHECK(hipDeviceCanAccessPeer(&can, i, j));
+            if (can) {
+                // Tolerate "already enabled" — benign on repeat calls.
+                hipError_t e = hipDeviceEnablePeerAccess(j, 0);
+                if (e != hipSuccess && e != hipErrorPeerAccessAlreadyEnabled)
+                    HIP_CHECK(e);
+            }
         }
     }
     printf("[P2P] Peer access enabled between %d GPUs\n", n_gpus);
@@ -52,7 +57,7 @@ inline std::vector<Scalar*> p2p_copy_psi(
     int src_dev,
     int dst_dev)
 {
-    hipSetDevice(dst_dev);
+    HIP_CHECK(hipSetDevice(dst_dev));
     std::vector<Scalar*> psi_dst(grid.n_sites, nullptr);
     for (auto& site : grid.sites) {
         size_t sz = (size_t)site.tensor_size_max(chi_max) * sizeof(Scalar);
@@ -65,7 +70,7 @@ inline std::vector<Scalar*> p2p_copy_psi(
 }
 
 inline void free_psi(std::vector<Scalar*>& psi, int dev) {
-    hipSetDevice(dev);
+    HIP_CHECK(hipSetDevice(dev));
     for (auto p : psi) if (p) HIP_CHECK(hipFree(p));
     psi.clear();
 }
@@ -94,7 +99,7 @@ inline void compute_overlaps_p2p(
     float* Ct_nl_out = nullptr)              // optional: noiseless C(t)
 {
     // Compute noiseless C(t) using noiseless psi + messages
-    hipSetDevice(gpu_nl);
+    HIP_CHECK(hipSetDevice(gpu_nl));
     double tb=0, tp=0; int sw=0; float dl=0.f;
     if (Ct_nl_out) {
         *Ct_nl_out = meas.autocorrelation_with_bp(
@@ -110,7 +115,7 @@ inline void compute_overlaps_p2p(
 
         // P2P copy noisy messages: GPU 1 → GPU 0
         // (messages must match the grid's bond chi values)
-        hipSetDevice(gpu_nl);
+        HIP_CHECK(hipSetDevice(gpu_nl));
         int nm = 2 * grid_n[g]->n_bonds;
         std::vector<Scalar*> msg_n_gpu0(nm, nullptr);
         for (auto& bond : grid_n[g]->bonds) {
