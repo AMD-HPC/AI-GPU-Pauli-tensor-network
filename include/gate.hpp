@@ -151,6 +151,23 @@ __global__ void diag_sqrt_vectors(const Scalar* __restrict__ diag,
     isqV[k] = sqi;
 }
 
+/* ── mode_n_scale_kernel_gate ───────────────────────────────────────────────
+ * Scale one tensor index by a diagonal chi-vector (Vidal/sqrt gauge).
+ * Layout matches mode_n_contract's rocBLAS strided-batched view:
+ * R batches of [L × chi] col-major; element (r,l,k) at r*(L*chi)+k*L+l. */
+__global__ void mode_n_scale_kernel_gate(const Scalar* __restrict__ in,
+                                         const Scalar* __restrict__ scale,
+                                         Scalar* out, int L, int chi, int R) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int total = L * chi * R;
+    if (idx >= total) return;
+    int l =  idx % L;
+    int k = (idx / L) % chi;
+    int pos = idx;               // r*(L*chi)+k*L+l == idx by construction
+    (void)l;
+    out[pos] = in[pos] * scale[k];
+}
+
 /* ── extract_upper_triangle ─────────────────────────────────────────────────
  * Extracts the k×n upper triangle from Q[m×n] (col-major, stride m) into
  * R[k×n] (col-major, stride k), zeroing the lower triangle.
@@ -348,6 +365,21 @@ struct GateOps {
             R));
     }
 
+    /* ── mode_n_scale ────────────────────────────────────────────────── */
+    // Diagonal-message counterpart of mode_n_contract: scale index `mode`
+    // by a chi-vector. O(chi×vol) vs O(chi²×vol), exact in Vidal gauge.
+    void mode_n_scale(const Scalar* in, const int* shape, int ndim,
+                      const Scalar* scale, int chi, int mode, Scalar* out)
+    {
+        int L=1, R=1;
+        for(int i=0;i<mode;i++)      L *= shape[i];
+        for(int i=mode+1;i<ndim;i++) R *= shape[i];
+        int total = L * chi * R;
+        int blocks = (total + 255) / 256;
+        hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
+        mode_n_scale_kernel_gate<<<blocks,256,0,rbstream>>>(in, scale, out, L, chi, R);
+    }
+
     /* ── pseudo_sqrt ─────────────────────────────────────────────────── */
     // Fast diagonal path: BP diagonal messages are always diagonal (normalize_and_delta
     // zeros off-diagonal elements every sweep). Extract diagonal entries and compute
@@ -399,8 +431,9 @@ struct GateOps {
             int chi_msg  = frozen_chi[grid.bonds[site.bond_id[d]].id];
             int chi_tens = grid.bonds[site.bond_id[d]].chi;
             if(chi_tens == chi_msg){
-                mode_n_contract(cur,shape.data(),ndim,ws.sqrt_env[li],
-                                chi_tens,chi_tens,li,nxt);
+                // Vidal/sqrt gauge: message is diagonal → O(chi) scale, exact.
+                mode_n_scale(cur,shape.data(),ndim,ws.sqrt_env_v[li],
+                             chi_tens,li,nxt);
                 std::swap(cur,nxt);
             }
         }
@@ -519,8 +552,9 @@ struct GateOps {
             int chi_msg  = frozen_chi[grid.bonds[site.bond_id[d]].id];
             int chi_tens = grid.bonds[site.bond_id[d]].chi;
             if(chi_tens == chi_msg){
-                mode_n_contract(cur,shape.data(),ndim,ws.inv_sqrt_env[li],
-                                chi_tens,chi_tens,li,nxt);
+                // Vidal/sqrt gauge: message is diagonal → O(chi) scale, exact.
+                mode_n_scale(cur,shape.data(),ndim,ws.inv_sqrt_env_v[li],
+                             chi_tens,li,nxt);
                 std::swap(cur,nxt);
             }
         }
