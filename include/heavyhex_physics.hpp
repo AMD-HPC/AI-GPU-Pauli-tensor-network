@@ -133,12 +133,20 @@ struct HeavyHexState {
             HIP_CHECK(hipMemset(messages[bond.msg_from_a()], 0, sz_sq));
             HIP_CHECK(hipMalloc(&messages[bond.msg_from_b()], sz_sq));
             HIP_CHECK(hipMemset(messages[bond.msg_from_b()], 0, sz_sq));
-            // chi-vector messages (new — diagonal entries only)
+            // chi-vector messages (new — diagonal entries only).
+            // Init the leading entry to 1 (identity message for the chi=1 bond),
+            // matching the chi×chi `messages` init above. Bonds never touched by
+            // BP (e.g. a lightcone in-cone bond whose far neighbor is outside)
+            // must present a trivial [1] message, NOT zero — else vertex_scalar_diag
+            // scales the vertex by 0 → C(t)=0 under lightcone.
             size_t sz_v = (size_t)bond.chi_alloc * sizeof(Scalar);
+            Scalar one_v = (Scalar)1;
             HIP_CHECK(hipMalloc(&messages_v[bond.msg_from_a()], sz_v));
             HIP_CHECK(hipMemset(messages_v[bond.msg_from_a()], 0, sz_v));
+            HIP_CHECK(hipMemcpy(messages_v[bond.msg_from_a()], &one_v, sizeof(Scalar), hipMemcpyHostToDevice));
             HIP_CHECK(hipMalloc(&messages_v[bond.msg_from_b()], sz_v));
             HIP_CHECK(hipMemset(messages_v[bond.msg_from_b()], 0, sz_v));
+            HIP_CHECK(hipMemcpy(messages_v[bond.msg_from_b()], &one_v, sizeof(Scalar), hipMemcpyHostToDevice));
         }
     }
 
