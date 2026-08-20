@@ -117,11 +117,15 @@ int main(int argc, char** argv) {
         {5,36},{5,38},{7,40},{7,41},{19,47},{19,56},{19,58},{23,52},{23,62}
     };
 
+    QrMode qr_mode = QrMode::Householder;
     for (int i=1; i<argc; i++) {
         std::string a(argv[i]);
         if (a.substr(0,11)=="--diagnose=") diagnose_step = atoi(argv[i]+11);
         if (a.substr(0,9) =="--center=") center = atoi(argv[i]+9);
         if (a.substr(0,8) =="--v_hop=") v_hop  = atof(argv[i]+8);
+        if (a=="--qr=cholesky")    qr_mode = QrMode::Cholesky;
+        if (a=="--qr=householder") qr_mode = QrMode::Householder;
+        if (a=="--qr=adaptive")    qr_mode = QrMode::Adaptive;
         if (a.substr(0,8) =="--state=") {
             // --state=NL or --state=N1 or --state=NL,N1,N2 etc.
             // Sets which states to run; all others are skipped.
@@ -193,9 +197,10 @@ int main(int argc, char** argv) {
     }
 
     printf("# main_pauli_sweep — %s\n", GRID_TAG);
-    printf("# chi=%d  n_steps=%d  cutoff=%.0e  center=%d  Scalar=%s (%zu bytes/elem)\n",
+    printf("# chi=%d  n_steps=%d  cutoff=%.0e  center=%d  Scalar=%s (%zu bytes/elem)  qr=%s\n",
            chi_max, n_steps, (double)cutoff, center,
-           (sizeof(Scalar)==8?"double":"float"), sizeof(Scalar));
+           (sizeof(Scalar)==8?"double":"float"), sizeof(Scalar),
+           qr_mode==QrMode::Cholesky?"cholesky":qr_mode==QrMode::Adaptive?"adaptive":"householder");
     printf("# STEP C_nl C_n1 C_n2 C_n3  chi  t(s)\n");
     printf("# PAULI_NL/N1/N2/N3 <step> <w_0> ... <w_{n_sites-1}>\n");
     fflush(stdout);
@@ -207,6 +212,7 @@ int main(int argc, char** argv) {
     for (int g=0; g<4; g++)
         if (active[g]) { ws_storage[g] = new Workspace(chi_max, max_deg); wss[g] = ws_storage[g]; }
     GateOps gate_ops(handle);
+    gate_ops.qr_mode = qr_mode;
 
     // Active states only — each with its own grid
     HeavyHexState* states[4] = {nullptr,nullptr,nullptr,nullptr};

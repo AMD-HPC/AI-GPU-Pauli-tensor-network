@@ -700,6 +700,37 @@ struct GateOps {
         }
         if(new_chi==0) new_chi=1;
 
+        // Diagnostic: dump SVD spectrum for bonds touching center site 13
+        // (bonds 32, 33, 34: sites 13↔48, 13↔49, 13↔50).
+        // Enable with SVD_DEBUG=1 env var.
+        static bool SVD_DBG = (getenv("SVD_DEBUG") != nullptr);
+        if (SVD_DBG && (bond.id==32||bond.id==33||bond.id==34)) {
+            Scalar snorm2=0; for(int i=0;i<new_chi;i++) snorm2+=hS[i]*hS[i];
+            Scalar snorm=(snorm2>0)?std::sqrt(snorm2):1;
+            fprintf(stderr,"[SVD] bond=%d sites=%d↔%d  kfull=%d new_chi=%d "
+                    "smax=%.6g  s[0]=%.6g s[new_chi-1]=%.6g "
+                    "s[new_chi]=%.6g (first skip)  snorm=%.6g  "
+                    "ratio_skip=%.4g\n",
+                    bond.id, bond.site_a, bond.site_b,
+                    kfull, new_chi,
+                    (double)smax,
+                    kfull>0?(double)hS[0]:0.0,
+                    new_chi>0?(double)hS[new_chi-1]:0.0,
+                    new_chi<kfull?(double)hS[new_chi]:0.0,
+                    (double)snorm,
+                    new_chi<kfull&&smax>0?(double)hS[new_chi]/(double)smax:0.0);
+            // Full spectrum (first 20 + last 5)
+            int show = std::min(kfull, 20);
+            fprintf(stderr,"[SVD]   spectrum[0..%d]: ", show-1);
+            for(int i=0;i<show;i++) fprintf(stderr,"%.4g ", (double)hS[i]);
+            if(kfull>show) {
+                fprintf(stderr,"... ");
+                int tail=std::min(5,kfull-show);
+                for(int i=kfull-tail;i<kfull;i++) fprintf(stderr,"%.4g ",(double)hS[i]);
+            }
+            fprintf(stderr,"\n");
+        }
+
         // ── SVD quality metrics ───────────────────────────────────────
         if(lm) {
             // Truncation error: discarded weight fraction (normalized by total)
@@ -730,10 +761,18 @@ struct GateOps {
         // Vidal gauge normalization: enforce Σ λ²=1 over kept singular values.
         // Prevents float32 overflow at large chi; physics preserved because
         // autocorrelation_with_bp computes num/den and the scale cancels.
-        Scalar snorm2=0.f;
-        for(int i=0;i<new_chi;i++) snorm2+=hS[i]*hS[i];
-        Scalar snorm=(snorm2>0.f)?std::sqrt(snorm2):1.f;
-        Scalar inv_snorm=1.f/snorm;
+        // Normalize over the FULL spectrum (all kfull singular values), not just
+        // the kept new_chi channels. This keeps snorm honest: lam[k]=hS[k]/snorm
+        // satisfies Σlam²_kept < 1, preventing gauge inflation at chi saturation.
+        // When chi is unsaturated kfull≈new_chi and the result is identical to
+        // the old kept-only sum. At saturation (new_chi=chi_max << kfull) the old
+        // sum gave snorm_kept > 1 → inflated messages → absorb_env inflated ψ →
+        // SVD produced smax > 1 (physically impossible) → exponential blowup.
+        // Sum smallest→largest for better float32 precision.
+        Scalar snorm2=0;
+        for(int i=kfull-1;i>=0;i--) snorm2+=hS[i]*hS[i];
+        Scalar snorm=(snorm2>0)?std::sqrt(snorm2):(Scalar)1;
+        Scalar inv_snorm=(Scalar)1/snorm;
 
         // ── Step 8: Reconstruct tensors via GPU kernels + GEMM ────────
         // build_M_from_U:  ws.U[k1D×kfull]  → ws.A1[k1×new_chi*D]
