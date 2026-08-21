@@ -238,7 +238,7 @@ struct GateOps {
     // Reverted to original — 1e-4 was too aggressive and zeroed valid channels
     // in the Vidal-normalized messages (Σλ²=1 at chi=400 has many small entries).
     static constexpr Scalar PSEUDO_SQRT_CUT = 10.f * FLT_EPSILON;
-    static constexpr Scalar CHOL_DIAG_REG   = 1e-8f;
+    Scalar CHOL_DIAG_REG = 1e-8f;  // runtime-settable: gate_ops.CHOL_DIAG_REG = X
     static constexpr int    CHOL_QR_MIN_N   = 150;
     static constexpr float  CHOL_QR_ASPECT  = 150.f;
 
@@ -647,6 +647,25 @@ struct GateOps {
         int k2 = std::min(m2,n2);
 
         // ── Step 4: QR decomposition ──────────────────────────────────
+        // Diagnostic: print ||cv|| for center bonds (32/33/34) before QR.
+        // ||cv||_F should be ≤ 1 if the state is properly normalized.
+        // ||cv|| > 1 means the input to QR is already inflated — gauge broken
+        // BEFORE QR runs, so the QR algorithm choice cannot be the root cause.
+        static bool SVD_DBG_CV = (getenv("SVD_DEBUG") != nullptr);
+        if (SVD_DBG_CV && (bond.id==32||bond.id==33||bond.id==34)) {
+            auto frob = [&](const Scalar* buf, int sz) {
+                std::vector<Scalar> h(sz);
+                HIP_CHECK(hipMemcpy(h.data(), buf, sz*sizeof(Scalar), hipMemcpyDeviceToHost));
+                double s=0; for(auto v:h) s+=(double)v*(double)v;
+                return std::sqrt(s);
+            };
+            double n1_frob = frob(ws.cv1, m1*n1);
+            double n2_frob = frob(ws.cv2, m2*n2);
+            fprintf(stderr,"[CV] bond=%d sites=%d↔%d  m1=%d n1=%d ||cv1||=%.6g  "
+                    "m2=%d n2=%d ||cv2||=%.6g\n",
+                    bond.id, bond.site_a, bond.site_b,
+                    m1, n1, n1_frob, m2, n2, n2_frob);
+        }
         int k1_out = adaptive_qr(ws.cv1,m1,n1,ws.Q1,ws.R1,ws.gram,ws.potrf_info,
                                  ws.chol_attempted,ws.chol_fallback,ws.chol_skipped);
         int k2_out = adaptive_qr(ws.cv2,m2,n2,ws.Q2,ws.R2,ws.gram,ws.potrf_info,
