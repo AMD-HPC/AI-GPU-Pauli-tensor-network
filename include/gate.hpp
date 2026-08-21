@@ -595,7 +595,8 @@ struct GateOps {
         Workspace& ws,
         int chi_max, Scalar cutoff=1e-10f,
         LayerMetrics* lm=nullptr,
-        std::vector<Scalar*>* out_messages_v=nullptr)  // chi-vector output (optional)
+        std::vector<Scalar*>* out_messages_v=nullptr,  // chi-vector output (optional)
+        const std::vector<Scalar*>* env_messages_v=nullptr)  // chi-vector env (optional)
     {
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
         const Site& sv1=grid.sites[gate.site_a];
@@ -604,16 +605,28 @@ struct GateOps {
         Bond& bond=grid.bonds[gate.bond_id];
 
         // ── Step 1+2: pseudo_sqrt then absorb — per site, not interleaved.
-        // sv1 and sv2 share ws.sqrt_env_v/inv_sqrt_env_v indexed by bond_local.
-        // Computing both sites' pseudo_sqrts before either absorb would let
-        // sv2's loop overwrite sv1's slots when bond_local indices coincide.
+        // When env_messages_v (chi-vector) is provided, use it directly —
+        // no extract_diagonal needed since messages_v IS the diagonal, and it
+        // carries the correctly Vidal-normalized lam[k] = hS[k]/snorm with
+        // Σlam²≤1. This fixes the ||cv||>1 gauge drift: pseudo_sqrt was
+        // reading chi×chi env_messages (potentially inflated) instead of the
+        // clean chi-vector written by the gate SVD.
         for(int d=0;d<MAX_DEGREE;d++){
             if(sv1.bond_id[d]<0||d==cd1) continue;
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
-            pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        frozen_chi[eb.id],ws,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
+            int chi = frozen_chi[eb.id];
+            int msg_idx = eb.msg_incoming(sv1.id);
+            if(env_messages_v && (*env_messages_v)[msg_idx]) {
+                // Direct chi-vector path: diag_sqrt_vectors on messages_v
+                int blocks=(chi+255)/256;
+                diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
+                    (*env_messages_v)[msg_idx],
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+            } else {
+                pseudo_sqrt(env_messages[msg_idx], chi, ws,
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+            }
         }
         absorb_env(psi_v1,sv1,grid,ws,cd1,frozen_chi,ws.cv1,ws.Q1);
 
@@ -621,9 +634,17 @@ struct GateOps {
             if(sv2.bond_id[d]<0||d==cd2) continue;
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
-            pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        frozen_chi[eb.id],ws,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
+            int chi = frozen_chi[eb.id];
+            int msg_idx = eb.msg_incoming(sv2.id);
+            if(env_messages_v && (*env_messages_v)[msg_idx]) {
+                int blocks=(chi+255)/256;
+                diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
+                    (*env_messages_v)[msg_idx],
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+            } else {
+                pseudo_sqrt(env_messages[msg_idx], chi, ws,
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+            }
         }
         absorb_env(psi_v2,sv2,grid,ws,cd2,frozen_chi,ws.cv2,ws.Q2);
 
@@ -823,9 +844,17 @@ struct GateOps {
             if(sv1.bond_id[d]<0||d==cd1) continue;
             int li=sv1.bond_local[d];
             const Bond& eb=grid.bonds[sv1.bond_id[d]];
-            pseudo_sqrt(env_messages[eb.msg_incoming(sv1.id)],
-                        frozen_chi[eb.id],ws,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
+            int chi = frozen_chi[eb.id];
+            int msg_idx = eb.msg_incoming(sv1.id);
+            if(env_messages_v && (*env_messages_v)[msg_idx]) {
+                int blocks=(chi+255)/256;
+                diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
+                    (*env_messages_v)[msg_idx],
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+            } else {
+                pseudo_sqrt(env_messages[msg_idx], chi, ws,
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+            }
         }
         deabsorb_env(ws.cv1,sv1,grid,ws,cd1,new_chi,frozen_chi,ws.Q1);
 
@@ -833,9 +862,17 @@ struct GateOps {
             if(sv2.bond_id[d]<0||d==cd2) continue;
             int li=sv2.bond_local[d];
             const Bond& eb=grid.bonds[sv2.bond_id[d]];
-            pseudo_sqrt(env_messages[eb.msg_incoming(sv2.id)],
-                        frozen_chi[eb.id],ws,
-                        ws.sqrt_env_v[li],ws.inv_sqrt_env_v[li],cutoff);
+            int chi = frozen_chi[eb.id];
+            int msg_idx = eb.msg_incoming(sv2.id);
+            if(env_messages_v && (*env_messages_v)[msg_idx]) {
+                int blocks=(chi+255)/256;
+                diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
+                    (*env_messages_v)[msg_idx],
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+            } else {
+                pseudo_sqrt(env_messages[msg_idx], chi, ws,
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+            }
         }
         deabsorb_env(ws.cv2,sv2,grid,ws,cd2,new_chi,frozen_chi,ws.Q2);
 

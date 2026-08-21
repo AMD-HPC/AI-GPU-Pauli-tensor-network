@@ -87,6 +87,13 @@ inline void do_trotter(
                                        ? ws.trotter_new_msg    : new_msg_dyn;
     std::vector<int> frozen_chi(n_bonds);
 
+    // Chi-vector snapshot of messages_v for pseudo_sqrt — O(chi) vs O(chi²).
+    // When messages_v is provided, freeze it here so apply_binary_gate can
+    // read the correctly Vidal-normalized lam[k] directly, bypassing the
+    // chi×chi extract_diagonal path that was causing ||cv||>1 gauge drift.
+    std::vector<Scalar*> frozen_msg_v(nm, nullptr);
+    bool have_msg_v = (messages_v != nullptr);
+
     if (!using_preallocated) {
         size_t alloc = (size_t)chi_max * chi_max * sizeof(Scalar);
         frozen_msg_dyn.assign(nm, nullptr);
@@ -97,11 +104,19 @@ inline void do_trotter(
             HIP_CHECK(hipMalloc(&new_msg_dyn[idx],    alloc));
         }
     }
+    // Allocate frozen chi-vector snapshots (freed at end of this call)
+    if (have_msg_v) {
+        for (auto& bond : grid.bonds) for (int d = 0; d < 2; d++) {
+            int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
+            size_t sz_v = (size_t)bond.chi_alloc * sizeof(Scalar);
+            HIP_CHECK(hipMalloc(&frozen_msg_v[idx], sz_v));
+        }
+    }
 
     // ── Color loop ────────────────────────────────────────────────────────────
     for (int c = 0; c < n_colors; c++) {
 
-        // Snapshot messages
+        // Snapshot messages (chi×chi) and messages_v (chi-vector)
         for (auto& b : grid.bonds) frozen_chi[b.id] = b.chi;
         for (auto& bond : grid.bonds) {
             int chi = bond.chi;
@@ -112,6 +127,11 @@ inline void do_trotter(
                     sz, hipMemcpyDeviceToDevice));
                 HIP_CHECK(hipMemcpy(new_msg[idx], messages[idx],
                     sz, hipMemcpyDeviceToDevice));
+                // Freeze chi-vector snapshot for pseudo_sqrt
+                if (have_msg_v && (*messages_v)[idx]) {
+                    HIP_CHECK(hipMemcpy(frozen_msg_v[idx], (*messages_v)[idx],
+                        (size_t)chi*sizeof(Scalar), hipMemcpyDeviceToDevice));
+                }
             }
         }
 
@@ -126,7 +146,8 @@ inline void do_trotter(
                 psi[gate.site_a], psi[gate.site_b],
                 gate, grid,
                 new_msg, frozen_msg, frozen_chi,
-                G, ws, chi_max, cutoff, lm, messages_v);
+                G, ws, chi_max, cutoff, lm, messages_v,
+                have_msg_v ? &frozen_msg_v : nullptr);
         }
 
         // Commit updated messages — skip outside-lightcone bonds
@@ -147,6 +168,10 @@ inline void do_trotter(
     if (!using_preallocated) {
         for (auto p : frozen_msg_dyn) if (p) HIP_CHECK(hipFree(p));
         for (auto p : new_msg_dyn)    if (p) HIP_CHECK(hipFree(p));
+    }
+    // Always free frozen_msg_v (dynamically allocated above)
+    if (have_msg_v) {
+        for (auto p : frozen_msg_v) if (p) HIP_CHECK(hipFree(p));
     }
 
     // ── Site kick ─────────────────────────────────────────────────────────────
