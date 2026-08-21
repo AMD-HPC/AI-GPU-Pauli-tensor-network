@@ -83,6 +83,16 @@ main_pauli_sweep_rect7x7: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_7x7 -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
 	@echo "Built $@ (rect_7x7)"
 
+main_pauli_sweep_f64_rect7x7: $(SRC)/main_pauli_sweep.cpp $(HEADERS) include/scalar_blas.hpp \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/rect_7x7.hpp \
+	include/rect_7x7_ideal_kick_eps010_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma1_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma2_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma3_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_7x7 -DSCALAR_DOUBLE -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
+	@echo "Built $@ (rect_7x7, Scalar=double)"
+
 main_pauli_sweep_hh_dep: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
 	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
 	include/heavyhex_ideal_kick_eps010_data.hpp \
@@ -229,7 +239,7 @@ test_overlap_gpu: test/test_overlap_gpu.cpp $(HEADERS) \
 clean:
 	rm -f main_heavyhex_gamma_mpf_2gpu main_heavyhex_gamma_mpf_DG_2gpu \
 	      main_heavyhex_ergodic_mpf_2gpu main_heavyhex_ergodic2_mpf_2gpu \
-	      main_pauli_sweep main_pauli_sweep_f64 main_pauli_sweep_rect7x7 main_pauli_sweep_hh_dep \
+	      main_pauli_sweep main_pauli_sweep_f64 main_pauli_sweep_rect7x7 main_pauli_sweep_f64_rect7x7 main_pauli_sweep_hh_dep \
 	      main_lightcone main_gauge_compare \
 	      main_heavyhex main_heavyhex_mpf main_heavyhex_gamma_mpf \
 	      main_heavyhex_gamma_mpf_ip main_heavyhex_ergodic_mpf \
