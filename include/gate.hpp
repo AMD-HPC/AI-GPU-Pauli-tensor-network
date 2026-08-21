@@ -48,15 +48,30 @@ __global__ void extract_diagonal(const Scalar* __restrict__ M, Scalar* d, int ch
 /* ── diag_sqrt_vectors ───────────────────────────────────────────────────────
  * Vidal/sqrt gauge: sqrt/inv_sqrt of a diagonal BP message.
  * sqV[k] = sqrt(diag[k]), isqV[k] = 1/sqrt(diag[k]) with threshold cut.
+ * inv_cap: cap on isqV = 1/sqrt(inv_cap). Limits deabsorb amplification for
+ * near-threshold channels. The gate rotates ψ but messages don't rotate —
+ * 1/sqrt(λ) amplifies the mismatch. Capping at 1/sqrt(δ) (SVD cutoff)
+ * prevents near-cutoff channels from amplifying ||ψ|| unboundedly.
+ * Set inv_cap=cut (default) to get original behavior (no extra cap).
  * Writes chi entries (not chi²) — used by absorb_env/deabsorb_env via mode_n_scale. */
 __global__ void diag_sqrt_vectors(const Scalar* __restrict__ diag,
                                    Scalar* sqV, Scalar* isqV,
-                                   int chi, Scalar cut) {
+                                   int chi, Scalar cut,
+                                   Scalar inv_cap=0)  // 0 = no cap (use cut)
+{
     int k = blockIdx.x * blockDim.x + threadIdx.x;
     if (k >= chi) return;
     Scalar w  = diag[k];
     Scalar sq = 0, sqi = 0;
-    if (fabs(w) >= cut) { sq = sqrt(fabs(w)); sqi = (Scalar)1 / sq; }
+    if (fabs(w) >= cut) {
+        sq  = sqrt(fabs(w));
+        sqi = (Scalar)1 / sq;
+        // Cap 1/sqrt(λ) to prevent deabsorb from amplifying dimensions
+        // that the gate rotation has made inconsistent with frozen messages.
+        Scalar cap_thresh = (inv_cap > 0) ? inv_cap : cut;
+        Scalar max_sqi = (Scalar)1 / sqrt(cap_thresh);
+        if (sqi > max_sqi) sqi = max_sqi;
+    }
     sqV[k]  = sq;
     isqV[k] = sqi;
 }
@@ -301,12 +316,13 @@ struct GateOps {
     // chi-vectors. sqV[k]=sqrt(λ_k), isqV[k]=1/sqrt(λ_k) (0 if λ_k<cut).
     void pseudo_sqrt(const Scalar* M, int chi, Workspace& ws,
                      Scalar* sqV, Scalar* isqV,
-                     Scalar cut=PSEUDO_SQRT_CUT)
+                     Scalar cut=PSEUDO_SQRT_CUT,
+                     Scalar inv_cap=0)  // 0 = use cut as cap (no extra limit)
     {
         hipStream_t rbstream; rocblas_get_stream(handle, &rbstream);
         int blocks=(chi+255)/256;
         extract_diagonal<<<blocks,256,0,rbstream>>>(M, ws.syevd_W, chi);
-        diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(ws.syevd_W, sqV, isqV, chi, cut);
+        diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(ws.syevd_W, sqV, isqV, chi, cut, inv_cap);
     }
 
     /* ── absorb_env ──────────────────────────────────────────────────── */
@@ -622,10 +638,10 @@ struct GateOps {
                 int blocks=(chi+255)/256;
                 diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
                     (*env_messages_v)[msg_idx],
-                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff, cutoff);
             } else {
                 pseudo_sqrt(env_messages[msg_idx], chi, ws,
-                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff, cutoff);
             }
         }
         absorb_env(psi_v1,sv1,grid,ws,cd1,frozen_chi,ws.cv1,ws.Q1);
@@ -640,10 +656,10 @@ struct GateOps {
                 int blocks=(chi+255)/256;
                 diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
                     (*env_messages_v)[msg_idx],
-                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff, cutoff);
             } else {
                 pseudo_sqrt(env_messages[msg_idx], chi, ws,
-                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff, cutoff);
             }
         }
         absorb_env(psi_v2,sv2,grid,ws,cd2,frozen_chi,ws.cv2,ws.Q2);
@@ -850,10 +866,10 @@ struct GateOps {
                 int blocks=(chi+255)/256;
                 diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
                     (*env_messages_v)[msg_idx],
-                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff, cutoff);
             } else {
                 pseudo_sqrt(env_messages[msg_idx], chi, ws,
-                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff, cutoff);
             }
         }
         deabsorb_env(ws.cv1,sv1,grid,ws,cd1,new_chi,frozen_chi,ws.Q1);
@@ -868,10 +884,10 @@ struct GateOps {
                 int blocks=(chi+255)/256;
                 diag_sqrt_vectors<<<blocks,256,0,rbstream>>>(
                     (*env_messages_v)[msg_idx],
-                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff);
+                    ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], chi, cutoff, cutoff);
             } else {
                 pseudo_sqrt(env_messages[msg_idx], chi, ws,
-                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff);
+                            ws.sqrt_env_v[li], ws.inv_sqrt_env_v[li], cutoff, cutoff);
             }
         }
         deabsorb_env(ws.cv2,sv2,grid,ws,cd2,new_chi,frozen_chi,ws.Q2);
