@@ -87,7 +87,7 @@ inline void compute_overlaps_p2p(
     Measures& meas,                          // on GPU 0
     const Grid& grid_nl,                     // noiseless grid (GPU 0)
     const std::vector<Scalar*>& psi_nl,      // noiseless psi (GPU 0)
-    const std::vector<Scalar*>& msg_nl,      // noiseless messages (GPU 0)
+    const std::vector<Scalar*>& msg_nl,      // noiseless messages chi×chi (GPU 0, unused — kept for API compat)
     int center_site,
     const NoisyHeavyHexGrid* grid_n[],       // noisy grids (GPU 1)
     const HeavyHexState* state_n[],          // noisy states (GPU 1)
@@ -96,48 +96,68 @@ inline void compute_overlaps_p2p(
     int gpu_nl,                              // GPU 0
     int gpu_n,                               // GPU 1
     float* overlaps_out,                     // [n_gammas] output
-    float* Ct_nl_out = nullptr)              // optional: noiseless C(t)
+    float* Ct_nl_out = nullptr,              // optional: noiseless C(t)
+    const std::vector<Scalar*>* msg_nl_v = nullptr)  // noiseless messages_v (chi-vector, GPU 0)
 {
-    // Compute noiseless C(t) using noiseless psi + messages
+    // Compute noiseless C(t) using noiseless psi + messages_v (chi-vector).
+    // messages_v is the correct Vidal-normalized source; chi×chi msg_nl kept
+    // for API compatibility but no longer used here.
     HIP_CHECK(hipSetDevice(gpu_nl));
     double tb=0, tp=0; int sw=0; float dl=0.f;
     if (Ct_nl_out) {
         *Ct_nl_out = meas.autocorrelation_with_bp(
             grid_nl, psi_nl, msg_nl,
-            center_site, 100, &tb, &tp, &sw, &dl);
+            center_site, 100, &tb, &tp, &sw, &dl,
+            nullptr, msg_nl_v);
     }
 
-    // For each gamma: P2P copy noisy psi + messages to GPU 0, compute overlap
+    // For each gamma: P2P copy noisy psi + messages_v (chi-vector) to GPU 0.
+    // The cross inner product (chi_a×chi_b) is built at the DESTINATION from
+    // the diagonals — we only need to ship the chi-vectors, not the chi×chi.
+    // Bandwidth: chi floats/bond vs chi² — O(chi) instead of O(chi²).
     for (int g = 0; g < n_gammas; g++) {
         // P2P copy noisy psi: GPU 1 → GPU 0
         auto psi_n_gpu0 = p2p_copy_psi(
             state_n[g]->psi, *grid_n[g], chi_n, gpu_n, gpu_nl);
 
-        // P2P copy noisy messages: GPU 1 → GPU 0
-        // (messages must match the grid's bond chi values)
+        // P2P copy noisy messages_v (chi-vectors): GPU 1 → GPU 0
         HIP_CHECK(hipSetDevice(gpu_nl));
         int nm = 2 * grid_n[g]->n_bonds;
+        // Still need chi×chi stub for autocorrelation_with_bp messages param
+        // (used as warm-start source for extract_diagonal in bp_converge).
+        // TODO: after pseudo_sqrt fix (Step 2), this can also become chi-vector only.
         std::vector<Scalar*> msg_n_gpu0(nm, nullptr);
+        std::vector<Scalar*> msg_n_gpu0_v(nm, nullptr);
         for (auto& bond : grid_n[g]->bonds) {
             for (int d = 0; d < 2; d++) {
                 int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
                 int chi = bond.chi;
+                // chi×chi (still needed for autocorrelation_with_bp messages param)
                 size_t sz = (size_t)chi*chi*sizeof(Scalar);
                 HIP_CHECK(hipMalloc(&msg_n_gpu0[idx], sz));
                 HIP_CHECK(hipMemcpyPeer(msg_n_gpu0[idx], gpu_nl,
                                         state_n[g]->messages[idx], gpu_n, sz));
+                // chi-vector: ship only the diagonal (O(chi) vs O(chi²))
+                size_t sz_v = (size_t)chi*sizeof(Scalar);
+                HIP_CHECK(hipMalloc(&msg_n_gpu0_v[idx], sz_v));
+                if (state_n[g]->messages_v[idx]) {
+                    HIP_CHECK(hipMemcpyPeer(msg_n_gpu0_v[idx], gpu_nl,
+                                            state_n[g]->messages_v[idx], gpu_n, sz_v));
+                } else {
+                    HIP_CHECK(hipMemset(msg_n_gpu0_v[idx], 0, sz_v));
+                }
             }
         }
 
-        // Compute ⟨ψ_nl|ψ_n⟩: use noisy grid + noisy messages + noisy psi
-        // This gives C(t) of the noisy operator in the noisy environment —
-        // which is the correct approximation for the MPF overlap.
+        // Compute ⟨ψ_nl|ψ_n⟩ using noisy environment.
         overlaps_out[g] = meas.autocorrelation_with_bp(
             static_cast<const Grid&>(*grid_n[g]), psi_n_gpu0, msg_n_gpu0,
-            center_site, 100, &tb, &tp, &sw, &dl);
+            center_site, 100, &tb, &tp, &sw, &dl,
+            nullptr, &msg_n_gpu0_v);
 
         // Free scratch on GPU 0
         free_psi(psi_n_gpu0, gpu_nl);
-        for (auto p : msg_n_gpu0) if (p) HIP_CHECK(hipFree(p));
+        for (auto p : msg_n_gpu0)   if (p) HIP_CHECK(hipFree(p));
+        for (auto p : msg_n_gpu0_v) if (p) HIP_CHECK(hipFree(p));
     }
 }

@@ -260,12 +260,16 @@ int main(int argc, char** argv) {
         HIP_CHECK(hipSetDevice(0));
         float C_nl = meas.autocorrelation_with_bp(
             static_cast<Grid&>(grid_nl), state_nl.psi, state_nl.messages,
-            center, BP_SWEEPS);
+            center, BP_SWEEPS,
+            nullptr, nullptr, nullptr, nullptr, nullptr,
+            &state_nl.messages_v);
         float C_n[N_GAMMA];
         for (int g=0; g<N_GAMMA; g++)
             C_n[g] = meas.autocorrelation_with_bp(
                 static_cast<Grid&>(*grids_n[g]), states_n[g]->psi,
-                states_n[g]->messages, center, BP_SWEEPS);
+                states_n[g]->messages, center, BP_SWEEPS,
+                nullptr, nullptr, nullptr, nullptr, nullptr,
+                &states_n[g]->messages_v);
 
         int chi_nl = 1, chi_n = 1;
         for (auto& b : grid_nl.bonds)      chi_nl = std::max(chi_nl, b.chi);
