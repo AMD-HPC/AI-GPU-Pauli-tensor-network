@@ -135,6 +135,26 @@ The frontier analysis claim ("exact at chi≈1") is self-consistent.
 
 ---
 
+## Observed: 20-cycle rect_7x7 frontier lifecycle (PAPER_r7_50_20c)
+
+- Cycles 1-9: frontier MPF perfect — all waves separated, clean signal
+- Cycle 10: γ=1 catches F_nl=6 (hits lattice boundary) → δ1=0 → MPF anchor lost → coefficients blow up [+10.67, -22.38, +12.71]
+- Cycles 11-20: boundary saturation — F_nl=F_γ1=6, F_γ2=4, F_γ3=3 frozen
+- LR-constrained MPF stays stable throughout (causal constraint prevents blow-up)
+- Entropy MPF also stays good — uses full (v,t) not just frontier position
+
+Boundary is not an enemy — it's a stabilizing constraint.
+Full lifecycle: growth → saturation → reflection → only entropy/LR MPF reliable.
+
+## NEXT SESSION: fitting by frontiers
+
+Explore α(t) and α(d) — time-dependent and shell-dependent MPF:
+- α(t): fit at each cycle t over F(t) = frontier union at time t
+- α(d): fit per BFS shell d, window around t_γi(d)
+- Both give spatially/temporally resolved coefficients vs single global α
+- Key: sparse in γ naturally — far shells only fast waves contribute
+- Implementation: modify plot_mpf_entropy.py or new script
+
 ## Open Questions
 
 1. Implement α(t) and α(d) — time-dependent and shell-dependent MPF
