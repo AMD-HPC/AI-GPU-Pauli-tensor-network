@@ -101,6 +101,36 @@ run_phase5() {
     done
 }
 
+# ── Phase 7: Paper figure runs — NO --v_hop (full spatial signal required) ───
+# IMPORTANT: MPF entropy figures require all sites active.
+# --v_hop kills distant-site signal → entropy MPF = frontier MPF (degenerate).
+# Use this phase for final paper-quality data.
+run_phase7() {
+    echo "[Phase 7] Paper figure runs — no v_hop, full spatial signal"
+
+    # HH dep: the clean MPF figure (= paper Figure 7 at chi=200)
+    ROCR_VISIBLE_DEVICES=0 ./main_pauli_sweep_hh_dep 200 10 1e-3 \
+        --center=$CENTER_HH \
+        > logs/PAPER_hh_dep_200_10c.log 2>&1 &
+
+    # HH dep 20 cycles: new contribution (longer time evolution)
+    ROCR_VISIBLE_DEVICES=1 ./main_pauli_sweep_hh_dep 200 20 1e-3 \
+        --center=$CENTER_HH \
+        > logs/PAPER_hh_dep_200_20c.log 2>&1 &
+
+    # R7: paper-exact reproduction (chi=50, no v_hop — this IS the paper's log)
+    # logs/spatial_mpf_rect7x7_chi50_1e-3_v2.log already exists!
+    # Run at chi=50 for 20 cycles (new: longer time)
+    ROCR_VISIBLE_DEVICES=2 ./main_pauli_sweep_rect7x7 50 20 1e-3 \
+        --center=$CENTER_R7 \
+        > logs/PAPER_r7_50_20c.log 2>&1 &
+
+    wait && echo "[Phase 7] DONE"
+    echo "Generate paper figures:"
+    echo "  python3 scripts/plot_mpf_entropy.py --log logs/PAPER_hh_dep_200_10c.log --graph data/graphs/heavy_hex_3x3.json --center 13 --threshold 1e-4 --layout graph"
+    echo "  python3 scripts/plot_mpf_entropy.py --log logs/PAPER_r7_50_20c.log --graph data/graphs/rect_7x7.json --center 24 --threshold 1e-4 --layout rect --nx 7 --ny 7"
+}
+
 # ── Phase 6: Rect_7x7 production (after safe chi known) ─────────────────────
 run_phase6() {
     CHI_R7=${2:-40}  # pass safe chi as second arg
@@ -135,6 +165,7 @@ case $PHASE in
     4)    run_phase4 ;;
     5)    run_phase5 ;;
     6)    run_phase6 $2 ;;
+    7)    run_phase7 ;;
     summary) show_summary ;;
     all)
         run_phase1

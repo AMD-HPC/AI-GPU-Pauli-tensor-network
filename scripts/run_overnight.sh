@@ -7,10 +7,14 @@
 set -e
 mkdir -p logs
 
-V_HOP_HH=0.500
-V_HOP_R7=0.500
+V_HOP_HH=0.500   # for memory-efficient runs (collapse analysis, large chi)
+V_HOP_R7=0.500   # for memory-efficient runs
 CENTER_HH=13
 CENTER_R7=24
+# NOTE: MPF/frontier paper figures must NOT use --v_hop
+# Full spatial signal required for entropy MPF to find different coefficients
+# --v_hop kills distant-site signal → frontier MPF = entropy MPF (degenerate)
+# Use V_HOP_HH/R7 only for: chi sweeps, collapse analysis, timing runs
 TS=$(date +%Y%m%d_%H%M%S)
 LOGDIR="logs/overnight_${TS}"
 mkdir -p $LOGDIR
