@@ -17,9 +17,10 @@
 - **Chi at collapse**: 200 (saturated exactly at step 10)
 - **C_n1/2/3**: HEALTHY (+0.813/+0.743/+0.724) — noisy states protected
 - **Mechanism**: chi growth faster in f64 → saturation at step 10 → gauge drift cascade
-- **Type**: A (gauge drift at chi saturation)
+- **Type**: B (BP/measurement failure at chi saturation) — NOT Type A
 - **Special**: noiseless collapses, noisy survive — noise is protective
-- **SVD_DEBUG**: PENDING → run with same params + SVD_DEBUG=1
+- **SVD_DEBUG**: DONE → logs/C001_hh_f64_svd.log
+  smax=0.77-0.94 throughout — SVD physically valid, collapse is in BP/measurement
 
 ### C002 — A5, heavy-hex, chi=380 δ=1e-4 (f32)
 - **Binary**: main_pauli_sweep
@@ -30,31 +31,24 @@
 - **smax at collapse**: 1.07-1.76 (bonds 32/33/34) — physically impossible
 - **SVD_DEBUG**: DONE (logs/e3_svd_debug.log, e7_fix_svd.log)
 
-### C003 — B1, rect_7x7, chi=70 δ=1e-3 (f32)
+### C003 — B_r7_chi30/40/50, rect_7x7, chi=30/40/50 δ=1e-3 (f32)
 - **Binary**: main_pauli_sweep_rect7x7
-- **Step**: 6 (C_nl +0.417, gate_err=1.72e-3)
-- **Chi at collapse**: 70 (saturated at step 2!)
-- **Mechanism**: degree-4 sites → chi saturates in 2 steps → immediate gauge drift
-- **Type**: A (gauge drift, accelerated by degree-4 topology)
-- **Special**: C4 symmetric but still collapses — C4 protects BP traps, not gauge drift
-- **SVD_DEBUG**: PENDING
-
-### C004 — B_r7_chi30, rect_7x7, chi=30 δ=1e-3 (f32)
-- **Binary**: main_pauli_sweep_rect7x7
-- **Step**: ~3-4 (C_nl degrading, gate_err=1.59e-4 at step 3)
-- **Chi at collapse**: 30 (saturates step 2)
-- **Type**: A
-- **SVD_DEBUG**: PENDING
-
-### C005 — B_r7_chi40, rect_7x7, chi=40 δ=1e-3 (f32)
-- **Step**: ~3-4, gate_err=6.45e-5 at step 3
-- **Type**: A
-- **SVD_DEBUG**: PENDING
-
-### C006 — B_r7_chi50, rect_7x7, chi=50 δ=1e-3 (f32)
-- **Step**: ~3-4, gate_err=3.26e-5 at step 3
-- **Type**: A
-- **SVD_DEBUG**: PENDING
+- **Pattern**: GRADUAL DECAY, not sudden collapse
+  - Step 2: chi saturates at 28 for ALL chi_max values (30/40/50)
+  - C_nl follows nearly identical trajectory regardless of chi_max
+  - Step 10: C_nl ≈ 0.22-0.23 (decays from -0.913 at step 1)
+  - gate_err grows monotonically (1.7e-2 at step 10)
+- **Type**: UNKNOWN — may be Type A (gauge drift) or physical C(t) decay
+  - NOT like heavy-hex Type A: no sudden flip, no sign inversion
+  - chi_max irrelevant → physical entanglement demand is ~28 channels
+  - Step 1 C_nl=-0.913 (not -0.924 like hh) → different initial behavior
+- **Key finding**: chi_max=28 is the physical entanglement demand for rect_7x7 δ=1e-3
+  After saturation at step 2, truncation error accumulates steadily
+- **SVD_DEBUG**: PENDING — needed to determine if smax>1 (Type A) or physical decay
+  ```bash
+  SVD_DEBUG=1 ROCR_VISIBLE_DEVICES=? ./main_pauli_sweep_rect7x7 50 10 1e-3 \
+      --center=24 --v_hop=0.500 > logs/C003_r7_svd_debug.log 2>&1
+  ```
 
 ---
 
@@ -79,31 +73,59 @@ Priority order (most informative first):
 
 ---
 
-## Collapse Type Classification
+## SVD_DEBUG Results (C001, C003)
 
-**Type A: Gauge drift at chi saturation**
-- Signature: smax > 1 after SVD (physically impossible)
-- ||ψ||_F grows monotonically, explodes at saturation
-- N(v,t): loop-shell spikes, center drain, ΣN +46%
-- Causal violation: N_outside spikes
-- Cause: frozen-message deabsorb 1/√λ amplification
-- Present in: ALL collapses seen so far
+### C001 — hh f64 chi=200 δ=1e-3 step 10: smax < 1 throughout
+- bonds 32/33/34: smax=0.77-0.94, snorm≈0.984-1.002
+- **No Type A gauge collapse** despite C_nl=+0.413
+- Chi=200 fully saturated at step 10 but SVD is physically valid
+- Collapse comes from BP/measurement failure at chi saturation, not gauge
+- **Classification: Type B (BP/measurement at saturation)**
 
-**Type B: BP spurious fixed point (trap)**
-- Signature: BP converges but to wrong fixed point
-- C(t) wrong sign/magnitude from early steps
-- N(v,t): no causal violation, wrong distribution shape
-- Cause: loopy graph BP non-uniqueness
-- Present in: NOT YET OBSERVED in CppSim
-  (C4 symmetry protects rect_7x7; heavy-hex traps may exist at larger chi)
+### C003 — rect_7x7 chi=50 δ=1e-3: smax < 1 throughout, snorm≈1
+- All bonds: smax=0.87-0.99, snorm=0.997-0.999
+- **No collapse of any type** — physically honest truncation
+- C(t) decays because chi=50 insufficient for true entanglement demand (~28+ channels)
+- The simulation fails gracefully, not catastrophically
+- **Classification: Physical truncation error (not a collapse)**
 
 ---
 
-## Key Findings
+## Collapse Type Classification (UPDATED)
 
-1. **All observed collapses are Type A** (gauge drift), not Type B (BP trap)
-2. **Noise is protective**: noisy states have smaller chi → never saturate → survive
-3. **Degree-4 (rect_7x7) collapses faster**: chi saturates in 2 steps vs 7-8 steps (hh)
-4. **C4 symmetry ≠ collapse-free**: protects BP uniqueness, not gauge drift
-5. **δ controls threshold**: δ=1e-3 safe, δ=1e-4 collapses for both topologies
-6. **f64 collapses EARLIER than f32**: faster chi growth → earlier saturation
+**Type A: Gauge drift at chi saturation**
+- Signature: **smax > 1** after SVD (physically impossible for unitary gate)
+- ||ψ||_F grows monotonically, explodes at saturation
+- N(v,t): loop-shell spikes, center drain, ΣN +46%, causal violation
+- Cause: frozen-message deabsorb 1/√λ amplification cascades
+- Present in: hh f32 chi=380 δ=1e-4 (C002)
+- Detectable: hard invariant violation, unambiguous
+
+**Type B: BP/measurement failure at chi saturation**
+- Signature: **smax < 1** (SVD valid) but C_nl collapses
+- Noisy states (smaller chi) survive; noiseless (larger chi) collapses
+- N(v,t): TBD — needs investigation
+- Cause: chi saturation makes BP fixed point unstable for the measurement
+- Present in: hh f64 chi=200 δ=1e-3 NL only (C001)
+- Detectable: C_nl collapses but C_n1/2/3 healthy; smax < 1
+
+**Type P: Physical truncation (not a collapse)**
+- Signature: **smax < 1**, snorm ≈ 1, C(t) decays monotonically
+- Chi_max insufficient for true entanglement; simulation degrades gracefully
+- No sudden inversion, no causal violation
+- Present in: rect_7x7 chi=30/40/50 δ=1e-3 (C003)
+- Detectable: gate_err grows smoothly, C_nl decays without inverting
+
+---
+
+## Key Findings (UPDATED)
+
+1. **Three distinct failure modes**, all separable by smax:
+   - Type A (smax>1): catastrophic gauge cascade — hard stop, trust nothing
+   - Type B (smax<1, C_nl collapses): BP/measurement failure — noiseless collapses, noisy ok
+   - Type P (smax<1, C_nl decays): physical truncation — graceful, honest
+2. **Noise is protective against Type A and B**: smaller chi → never saturate → survive
+3. **f64 reaches Type B earlier**: faster chi growth → saturation at step 10 where f32 is at 162
+4. **Rect_7x7 shows Type P only**: C4 symmetry + girth-4 loops → no gauge traps, honest decay
+5. **smax is the diagnostic**: >1 = stop immediately; <1 = characterize further
+6. **δ=1e-3, chi≤200 f32**: safe regime for heavy-hex production runs
