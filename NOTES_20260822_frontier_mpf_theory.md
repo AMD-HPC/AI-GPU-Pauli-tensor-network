@@ -146,6 +146,77 @@ The frontier analysis claim ("exact at chi≈1") is self-consistent.
 Boundary is not an enemy — it's a stabilizing constraint.
 Full lifecycle: growth → saturation → reflection → only entropy/LR MPF reliable.
 
+## Handwritten Notes 2026-08-22 — Complete Theory (3 pages)
+
+### Page 1: TIME-first formulation
+
+Fix time t. n(v,t) is Pauli's weights.
+
+F_n(t) = {v : n(v,t) ≠ 0 AND n(v,t-1) = 0}  (first arrival set)
+F(t) = F_n(t) ∪ ∪_i F_γi(t)  (union frontier)
+
+**α(t) = [α₁(t), α₂(t), α₃(t)]** — fit at fixed t over v ∈ F(t):
+
+MSE:          min  1/|F(t)| Σ_{v∈F(t)} (Σi αi n_γi(v,t) - n(v,t))²
+Cross-entropy: min  1/|F(t)| Σ_{v∈F(t)} -ln(Σi αi n_γi(v,t) / n(v,t))
+
+"This is an average space frontier that will be spatially separated and damped."
+t ≠ fixed → space is fuzzy boundary (the Heisenberg duality).
+
+---
+
+### Page 2: SPACE-first formulation
+
+F(d) = {v : d(center, v) = d}  (BFS shell at depth d)
+
+Arrival times: t_n(v) for noiseless, t_γi(v) ≤ t_n(v) for noisy (in normal ordering).
+
+**α(d) = [α₁(d), α₂(d), α₃(d)]** — fit at fixed shell d:
+
+min_α  Σ_{v∈F(d)} Σ_{t∈T} (Σi αi n_γi(v,t) - n(v,t))²
+
+**Key question: WHICH time window T?**
+
+[1] Evaluate at t_γi (noisy arrival, single snapshot):
+    1/|F(d)| Σ_{v∈F(d)} -ln(Σi αi n_γi(v, t_γi) / n(v, t_n))
+
+[2] Sum over t ≤ t_n (all pre-noiseless-arrival):
+    1/|F(d)| Σ_{v∈F(d)} Σ_{t≤t_n} -ln(Σi αi n_γi(v,t) / n(v,t))
+    ⚠ Problem: t ≤ t_γi → n_γi(v,t) = 0 (wave hasn't arrived yet)
+    → artificial zeros contaminate the average
+
+[3] Restrict to active window t_γi ≤ t ≤ t_γ3:
+    Σ_{v∈F(d)} Σ_{t_γi ≤ t ≤ t_γ3} -ln(Σi αi n_γi(v,t) / n(v,t))
+    Only sum when noisy wave is actually active → no artificial zeros ✓
+    If n_γi always active with n(v,t)
+
+**Option [3] is the cleanest:** avoids pre-arrival zeros, natural window.
+
+---
+
+### Page 3: GENERALIZATION — Space-Time bias correction
+
+Label: "Generalization / Space Timeline"
+
+"There is a delay in time because t_n < t_g [t_γi]."
+
+Extended model with bias b(d) per BFS shell:
+
+    Σi αi n_γi(v,t) + b(d(v)) ≈ n(v,t)
+    ↳ d-bias to compensate the arrival delay
+
+Valid when: ∀v, n_γi(v,t) ≠ 0 when t ≤ t_γi and t_γi ≤ t_n
+
+**Physical meaning of b(d):**
+- α_i: which noisy state to combine (amplitude scaling)
+- b(d): how much the delay shifts the amplitude at shell d
+- Together: decouple spatial (which wave?) from temporal (how late?) correction
+
+**Connection to window option [3]:**
+At t = t_γi: b(d) = n(v,t_n) - Σi αi n_γi(v,t_γi)
+             = the amplitude gap between noiseless at ITS arrival and noisy at ITS arrival
+This is the "d-bias" — the amplitude deficit caused by the delay D(v) = t_n - t_γi.
+
 ## NEXT SESSION: fitting by frontiers
 
 Explore α(t) and α(d) — time-dependent and shell-dependent MPF:
