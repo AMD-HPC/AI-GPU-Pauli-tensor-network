@@ -29,9 +29,17 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as mgrid
 
 GCOL = {'NL':'black','N1':'#2196F3','N2':'#FF9800','N3':'#E91E63',
-        'MPF':'#2ECC40','MPF_E':'#9B59B6'}
+        'MPF':'#2ECC40','MPF_E':'#9B59B6','MPF_T':'#1A237E',
+        'MPF_D1':'#8BC34A','MPF_D2':'#795548'}  # brown — distinct from all others
+
+# Dashed for noisy inputs, solid for MPF outputs
+GLINE = {'NL':'-','N1':'--','N2':'--','N3':'--',
+         'MPF':'-','MPF_E':'-','MPF_T':'-','MPF_D1':'-','MPF_D2':'-'}
 LABS = {'NL':'Noiseless','N1':'γ=1','N2':'γ=2','N3':'γ=3',
-        'MPF':'MPF (frontier)','MPF_E':'MPF (entropy)'}
+        'MPF':'MPF (frontier)','MPF_E':'MPF (entropy)',
+        'MPF_T':'MPF α(t) time-proj',
+        'MPF_D1':'MPF α(d) space-proj opt1',
+        'MPF_D2':'MPF α(d) space-proj opt2'}
 FLOOR = 1e-7
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -128,6 +136,167 @@ def entropy_loss_global(ni_vt, nl_vt, thr):
         L[t]=np.sum(-np.log(np.clip(ni_vt[t,mask],FLOOR,None)/
                             np.clip(nl_vt[t,mask],FLOOR,None)))
     return L
+
+def fit_alpha_d(ni_stack, nl_vt, t_nl, t_gi_list, dist, thr, option=1):
+    """
+    Space projection: α(d) — for each BFS shell d, fit α over time.
+
+    Option 1 (single snapshot):
+      min_α  Σ_{v∈V_d} -ln( Σi αi n_γi(v, t_γi(v)) / n(v, t_n(v)) )
+      Each noisy wave at its own arrival vs noiseless at its arrival.
+      One (v,t) pair per site — no zero problem.
+
+    Option 2 (spreading window [t_γ1, t_γ3]):
+      min_α  Σ_{v∈V_d} Σ_{t∈[min_i t_γi(v), max_i t_γi(v)]}
+                        -ln( Σi αi n_γi(v,t) / n(v,t) )
+      Captures the period when noisy waves are spreading apart.
+      Note: early t in window may have zeros (FLOOR clips).
+
+    Returns:
+      alpha_d: dict {d: array(ngamma)} — coefficients per shell
+      mpf_d_vt: (nc, ns) — reconstructed field
+    """
+    nc, ns  = nl_vt.shape
+    ngamma  = ni_stack.shape[0]
+    max_d   = int(dist[dist >= 0].max())
+    alpha_d = {}
+    mpf_d_vt = np.zeros((nc, ns))
+
+    for d in range(max_d + 1):
+        vset = np.where(dist == d)[0]
+        # Only sites where noiseless and all noisy have arrived
+        valid = [v for v in vset if t_nl[v] >= 0 and
+                 all(t_gi_list[k][v] >= 0 for k in range(ngamma))]
+        if len(valid) < ngamma:
+            alpha_d[d] = np.ones(ngamma) / ngamma
+            continue
+
+        if option == 1:
+            # Single snapshot: evaluate each noisy at its own arrival time
+            rows = []
+            targets = []
+            for v in valid:
+                row = np.array([ni_stack[k, t_gi_list[k][v], v]
+                                for k in range(ngamma)])
+                tgt = nl_vt[t_nl[v], v]
+                if tgt > FLOOR and np.all(row > 0):
+                    rows.append(row); targets.append(tgt)
+            if len(rows) < ngamma:
+                alpha_d[d] = np.ones(ngamma) / ngamma
+                continue
+            A = np.array(rows); b = np.array(targets)
+
+            def obj1(c):
+                mpf = np.clip(A @ c, FLOOR, None)
+                return np.sum(-np.log(mpf / np.clip(b, FLOOR, None)))
+            def jac1(c):
+                mpf = np.clip(A @ c, FLOOR, None)
+                return -np.sum(A / mpf[:, None], axis=0)
+
+        else:  # option 2: spreading window [min t_γi, max t_γi]
+            rows_vt = []   # list of (ni_vec, nl_val) per (v,t)
+            for v in valid:
+                t_lo = min(t_gi_list[k][v] for k in range(ngamma))
+                t_hi = max(t_gi_list[k][v] for k in range(ngamma))
+                for t in range(t_lo, t_hi + 1):
+                    if t >= nc: break
+                    nl_val = nl_vt[t, v]
+                    ni_vec = np.array([ni_stack[k, t, v] for k in range(ngamma)])
+                    if nl_val > FLOOR:
+                        rows_vt.append((ni_vec, nl_val))
+            if len(rows_vt) < ngamma:
+                alpha_d[d] = np.ones(ngamma) / ngamma
+                continue
+            A = np.array([r[0] for r in rows_vt])
+            b = np.array([r[1] for r in rows_vt])
+
+            def obj1(c):
+                mpf = np.clip(A @ c, FLOOR, None)
+                return np.sum(-np.log(mpf / np.clip(b, FLOOR, None)))
+            def jac1(c):
+                mpf = np.clip(A @ c, FLOOR, None)
+                return -np.sum(A / mpf[:, None], axis=0)
+
+        # Shared solve
+        x0 = alpha_d.get(d-1, np.ones(ngamma)/ngamma)
+        cons_d = [
+            {'type':'eq',   'fun': lambda c: np.sum(c) - 1.0},
+            {'type':'ineq', 'fun': lambda c: A @ c},
+            {'type':'ineq', 'fun': lambda c: np.clip(b, FLOOR, None) - A @ c}
+        ]
+        res = minimize(obj1, x0=x0, jac=jac1, method='SLSQP',
+                       constraints=cons_d,
+                       options={'ftol':1e-10, 'maxiter':500})
+        alpha_d[d] = res.x
+
+    # Reconstruct full field: apply α(d(v)) at each site v, all cycles
+    alpha_site = np.array([alpha_d.get(dist[v], np.ones(ngamma)/ngamma)
+                           for v in range(ns)])  # (ns, ngamma)
+    for t in range(nc):
+        for v in range(ns):
+            mpf_d_vt[t, v] = np.dot(alpha_site[v],
+                                     ni_stack[:, t, v])
+    return alpha_d, mpf_d_vt
+
+def fit_alpha_t(ni_stack, nl_vt, dist, thr):
+    """
+    Time projection: α(t) — for each cycle t, fit α over frontier sites F(t).
+
+    F(t) = union of first-arrival sites across all states at time t.
+    At these sites chi≈1 → simulation exact → fit operates on exact data.
+
+    Returns:
+      alpha_t: (nc, 3) — coefficients per cycle
+      mpf_t_vt: (nc, ns) — reconstructed field applying α(t) at each cycle t
+    """
+    nc, ns = nl_vt.shape
+    ngamma = ni_stack.shape[0]
+    alpha_t  = np.zeros((nc, ngamma))
+    mpf_t_vt = np.zeros((nc, ns))
+
+    for t in range(nc):
+        # F(t): first-arrival sites for NL or any noisy state at this cycle
+        nl_prev = nl_vt[t-1] if t > 0 else np.zeros(ns)
+        frontier = (nl_vt[t] > thr) & (nl_prev <= thr)
+        for k in range(ngamma):
+            ni_prev = ni_stack[k, t-1] if t > 0 else np.zeros(ns)
+            frontier |= (ni_stack[k, t] > thr) & (ni_prev <= thr)
+
+        # Also include any active frontier site (any wave nonzero, NL nonzero)
+        active = nl_vt[t] > thr
+        for k in range(ngamma):
+            active &= (ni_stack[k, t] > thr)
+        mask = frontier & active
+
+        if mask.sum() < ngamma:
+            # Not enough frontier sites — fall back to all active sites
+            mask = active
+        if mask.sum() < ngamma:
+            # Still not enough — use previous α
+            alpha_t[t] = alpha_t[t-1] if t > 0 else np.ones(ngamma)/ngamma
+            mpf_t_vt[t] = np.einsum('k,kj->j', alpha_t[t], ni_stack[:, t, :])
+            continue
+
+        # Fit α(t): minimize MSE on frontier sites at this cycle
+        # min ||Σk αk n_γk(v,t) - n_nl(v,t)||² for v ∈ mask
+        A = ni_stack[:, t, :][:, mask].T   # (M, ngamma)
+        b = nl_vt[t, mask]                  # (M,)
+
+        def obj(c): return np.sum((A @ c - b)**2)
+        def jac(c): return 2 * A.T @ (A @ c - b)
+        cons = [{'type':'eq', 'fun': lambda c: np.sum(c) - 1.0},
+                {'type':'ineq', 'fun': lambda c: A @ c},           # ≥ 0
+                {'type':'ineq', 'fun': lambda c: b - A @ c}]       # ≤ n_nl
+
+        x0 = alpha_t[t-1] if t > 0 else np.ones(ngamma)/ngamma
+        res = minimize(obj, x0=x0, jac=jac, method='SLSQP',
+                       constraints=cons, options={'ftol':1e-10,'maxiter':500})
+        alpha_t[t] = res.x
+
+        # Apply α(t) to ALL sites at cycle t
+        mpf_t_vt[t] = np.einsum('k,kj->j', alpha_t[t], ni_stack[:, t, :])
+
+    return alpha_t, mpf_t_vt
 
 def scatter_map(ax, vals, pos, ns, t_nl, cmap, vmin, vmax, cb_label, title):
     xs_w,ys_w,xs_b,ys_b,xs_c,ys_c,cs=[],[],[],[],[],[],[]
@@ -242,9 +411,41 @@ def main():
     t_mpf_e  = arrival_time(mpf_e_vt, thr)
     print(f"MPF entropy coefficients:  {np.round(c_mpf_e,3)}  sum={c_mpf_e.sum():.3f}")
 
-    all_states = gammas + ['MPF', 'MPF_E']
-    all_vt     = {**data, 'MPF': mpf_vt,  'MPF_E': mpf_e_vt}
-    all_tg     = {**t_g,  'MPF': t_mpf,   'MPF_E': t_mpf_e}
+    # ── Time projection: α(t) ─────────────────────────────────────────────────
+    # Fit one α per cycle over frontier sites F(t) — chi≈1, exact data.
+    # α(t) is a "time projection": at cycle t, which combination of noisy
+    # states best reconstructs the noiseless spatial field at the frontier?
+    print("\n[Time projection α(t)]")
+    alpha_t, mpf_t_vt = fit_alpha_t(ni_stack, nl_vt, dist, thr)
+    t_mpf_t = arrival_time(mpf_t_vt, thr)
+    print(f"  α(t) shape: {alpha_t.shape}  (one vector per cycle)")
+    print(f"  α(t) range: [{alpha_t.min():.3f}, {alpha_t.max():.3f}]")
+    for k, g in enumerate(gammas):
+        print(f"  α_{g}(t): mean={alpha_t[:,k].mean():.3f}  "
+              f"min={alpha_t[:,k].min():.3f}  max={alpha_t[:,k].max():.3f}")
+
+    # ── Space projection: α(d) option 1 (single snapshot) ───────────────────
+    print("\n[Space projection α(d) — option 1: single snapshot]")
+    t_gi_list = [t_g[g] for g in gammas]
+    alpha_d1, mpf_d1_vt = fit_alpha_d(ni_stack, nl_vt, t_nl, t_gi_list,
+                                        dist, thr, option=1)
+    t_mpf_d1 = arrival_time(mpf_d1_vt, thr)
+    for d in sorted(alpha_d1.keys()):
+        print(f"  α(d={d}): {np.round(alpha_d1[d],3)}")
+
+    # ── Space projection: α(d) option 2 (spreading window [t_γ1, t_γ3]) ─────
+    print("\n[Space projection α(d) — option 2: window [t_γ1, t_γ3]]")
+    alpha_d2, mpf_d2_vt = fit_alpha_d(ni_stack, nl_vt, t_nl, t_gi_list,
+                                        dist, thr, option=2)
+    t_mpf_d2 = arrival_time(mpf_d2_vt, thr)
+    for d in sorted(alpha_d2.keys()):
+        print(f"  α(d={d}): {np.round(alpha_d2[d],3)}")
+
+    all_states = gammas + ['MPF', 'MPF_E', 'MPF_T', 'MPF_D1', 'MPF_D2']
+    all_vt     = {**data, 'MPF': mpf_vt,  'MPF_E': mpf_e_vt,
+                  'MPF_T': mpf_t_vt, 'MPF_D1': mpf_d1_vt, 'MPF_D2': mpf_d2_vt}
+    all_tg     = {**t_g,  'MPF': t_mpf,   'MPF_E': t_mpf_e,
+                  'MPF_T': t_mpf_t, 'MPF_D1': t_mpf_d1, 'MPF_D2': t_mpf_d2}
 
     # ── per-site entropy loss for all states ─────────────────────────────────
     L_site = {}
@@ -271,11 +472,13 @@ def main():
                 if not np.all(np.isnan(L_site[g])))
     max_d = int(dist[dist>=0].max())
 
-    fig = plt.figure(figsize=(22, 14))
-    gs  = mgrid.GridSpec(3, 7, figure=fig,
+    n_states = len(all_states)  # 8: N1,N2,N3,MPF,MPF_E,MPF_T,MPF_D1,MPF_D2
+    ncols = 1 + n_states        # 1 label + 1 per state
+    fig = plt.figure(figsize=(4*n_states, 18))
+    gs  = mgrid.GridSpec(4, ncols, figure=fig,
                          hspace=0.50, wspace=0.38,
                          left=0.04, right=0.98,
-                         top=0.92,  bottom=0.06)
+                         top=0.93,  bottom=0.05)
 
     # ── Row 0: spatial entropy loss maps ─────────────────────────────────────
     ax_lbl0 = fig.add_subplot(gs[0,0]); ax_lbl0.axis('off')
@@ -289,10 +492,14 @@ def main():
 
     for col,g in enumerate(all_states,start=1):
         ax=fig.add_subplot(gs[0,col])
-        cmap='YlGn' if g=='MPF' else 'YlOrRd'
+        cmap='YlGn' if g in ('MPF','MPF_E','MPF_T','MPF_D1','MPF_D2') else 'YlOrRd'
+        vals_g = L_site[g][~np.isnan(L_site[g])]
+        mu_g   = vals_g.mean() if len(vals_g) > 0 else np.nan
+        better = mu_g < best_noisy_mu
+        marker = '↓' if better else '↑'
         scatter_map(ax, L_site[g], pos, ns, t_nl,
                     cmap, 0, L_max, '$\\mathcal{L}$',
-                    f'{LABS[g]}\n$\\mathcal{{L}}(v)$')
+                    f'{LABS[g]}\nμ={mu_g:.3f} {marker}')
 
     # ── Row 1: global L(t) ────────────────────────────────────────────────────
     ax_lbl1=fig.add_subplot(gs[1,0]); ax_lbl1.axis('off')
@@ -307,7 +514,7 @@ def main():
     ax_gl=fig.add_subplot(gs[1,1:])
     for g in all_states:
         lw=2.8 if g=='MPF' else 1.8
-        ax_gl.plot(cycles, L_glob[g], '-', color=GCOL[g], lw=lw,
+        ax_gl.plot(cycles, L_glob[g], GLINE[g], color=GCOL[g], lw=lw,
                    label=LABS[g], zorder=5 if g=='MPF' else 3)
     ax_gl.axhline(0,color='gray',lw=0.8,ls=':')
     ax_gl.set_xlabel('Cycle',fontsize=10)
@@ -336,7 +543,8 @@ def main():
             shells.append(d); mu_L.append(vals.mean()); sig_L.append(vals.std())
         shells=np.array(shells); mu_L=np.array(mu_L); sig_L=np.array(sig_L)
         lw=2.8 if g=='MPF' else 1.8
-        ax_sh.plot(shells,mu_L,'o-',color=GCOL[g],lw=lw,ms=6,
+        ls = GLINE[g]
+        ax_sh.plot(shells,mu_L,f'o{ls}',color=GCOL[g],lw=lw,ms=6,
                    label=LABS[g],zorder=5 if g=='MPF' else 3)
         ax_sh.fill_between(shells,mu_L-sig_L,mu_L+sig_L,
                             alpha=0.12,color=GCOL[g])
@@ -347,15 +555,47 @@ def main():
     ax_sh.legend(fontsize=9)
     ax_sh.grid(True,alpha=0.3)
 
+    # ── Row 3: α(t) time projection coefficients ─────────────────────────────
+    ax_lbl3 = fig.add_subplot(gs[3,0]); ax_lbl3.axis('off')
+    ax_lbl3.text(0.5, 0.5,
+                 "Time\nprojection\n$\\alpha(t)$\n\n"
+                 "One $\\alpha$ per\ncycle, fit on\nfrontier F(t)\n\n"
+                 "Shows how\ncorrection\nevolves in time",
+                 ha='center', va='center', fontsize=9,
+                 transform=ax_lbl3.transAxes,
+                 bbox=dict(boxstyle='round', fc='#e8f4fd', ec='#00BCD4', alpha=0.7))
+
+    ax_at = fig.add_subplot(gs[3, 1:])
+    colors_g = {'N1':'#2196F3','N2':'#FF9800','N3':'#E91E63'}
+    for k, g in enumerate(gammas):
+        ax_at.plot(cycles, alpha_t[:, k], '-o', color=colors_g[g],
+                   lw=1.8, ms=4, label=f'$\\alpha_{{{g[1]}}}(t)$')
+    ax_at.axhline(0, color='gray', lw=0.8, ls=':')
+    ax_at.axhline(1, color='gray', lw=0.8, ls=':')
+    # Mark global α for comparison
+    for k, g in enumerate(gammas):
+        ax_at.axhline(c_mpf_e[k], color=colors_g[g], lw=1.2, ls='--', alpha=0.5,
+                      label=f'global $\\alpha_{{{g[1]}}}$ (entropy)')
+    ax_at.set_xlabel('Cycle', fontsize=10)
+    ax_at.set_ylabel('$\\alpha_i(t)$', fontsize=10)
+    ax_at.set_title('Time projection coefficients α(t) vs global α (dashed)',
+                    fontsize=11)
+    ax_at.legend(fontsize=8, ncol=2)
+    ax_at.grid(True, alpha=0.3)
+
     # ── Title ─────────────────────────────────────────────────────────────────
-    cf_str = ', '.join(f'{c:.2f}' for c in c_mpf)
-    ce_str = ', '.join(f'{c:.2f}' for c in c_mpf_e)
+    cf_str  = ', '.join(f'{c:.2f}' for c in c_mpf)
+    ce_str  = ', '.join(f'{c:.2f}' for c in c_mpf_e)
+    mpft_mu = np.nanmean(L_site['MPF_T'][~np.isnan(L_site['MPF_T'])])
+    print(f"  MPF α(t) time-proj: {mpft_mu:.3f}  "
+          f"{'BETTER' if mpft_mu < best_noisy_mu else 'worse'}")
     fig.suptitle(
         f'MPF entropy loss recovery — {tag}\n'
         f'Frontier MPF $c$=[{cf_str}]    Entropy MPF $c$=[{ce_str}]\n'
         f'Best noisy μ={best_noisy_mu:.2f} | '
         f'Frontier MPF μ={mpf_mu:.2f} | '
-        f'Entropy MPF μ={mpfe_mu:.2f}',
+        f'Entropy MPF μ={mpfe_mu:.2f} | '
+        f'Time-proj μ={mpft_mu:.2f}',
         fontsize=11, y=0.97)
 
     out=args.out or args.log.replace('.log','_mpf_entropy.png')
