@@ -30,11 +30,12 @@ import matplotlib.gridspec as mgrid
 
 GCOL = {'NL':'black','N1':'#2196F3','N2':'#FF9800','N3':'#E91E63',
         'MPF':'#2ECC40','MPF_E':'#9B59B6','MPF_T':'#1A237E',
-        'MPF_D1':'#8BC34A','MPF_D2':'#795548'}  # brown — distinct from all others
+        'MPF_D1':'#8BC34A','MPF_D2':'#795548'}
 
 # Dashed for noisy inputs, solid for MPF outputs
 GLINE = {'NL':'-','N1':'--','N2':'--','N3':'--',
-         'MPF':'-','MPF_E':'-','MPF_T':'-','MPF_D1':'-','MPF_D2':'-'}
+         'MPF':'-','MPF_E':'-','MPF_T':'-',
+         'MPF_D1':'-','MPF_D2':'-'}
 LABS = {'NL':'Noiseless','N1':'γ=1','N2':'γ=2','N3':'γ=3',
         'MPF':'MPF (frontier)','MPF_E':'MPF (entropy)',
         'MPF_T':'MPF α(t) time-proj',
@@ -150,7 +151,7 @@ def fit_alpha_d(ni_stack, nl_vt, t_nl, t_gi_list, dist, thr, option=1):
       min_α  Σ_{v∈V_d} Σ_{t∈[min_i t_γi(v), max_i t_γi(v)]}
                         -ln( Σi αi n_γi(v,t) / n(v,t) )
       Captures the period when noisy waves are spreading apart.
-      Note: early t in window may have zeros (FLOOR clips).
+      Better conditioned than option 1 — more data per shell.
 
     Returns:
       alpha_d: dict {d: array(ngamma)} — coefficients per shell
@@ -234,8 +235,7 @@ def fit_alpha_d(ni_stack, nl_vt, t_nl, t_gi_list, dist, thr, option=1):
                            for v in range(ns)])  # (ns, ngamma)
     for t in range(nc):
         for v in range(ns):
-            mpf_d_vt[t, v] = np.dot(alpha_site[v],
-                                     ni_stack[:, t, v])
+            mpf_d_vt[t, v] = np.dot(alpha_site[v], ni_stack[:, t, v])
     return alpha_d, mpf_d_vt
 
 def fit_alpha_t(ni_stack, nl_vt, dist, thr):
@@ -428,7 +428,7 @@ def main():
     print("\n[Space projection α(d) — option 1: single snapshot]")
     t_gi_list = [t_g[g] for g in gammas]
     alpha_d1, mpf_d1_vt = fit_alpha_d(ni_stack, nl_vt, t_nl, t_gi_list,
-                                        dist, thr, option=1)
+                                       dist, thr, option=1)
     t_mpf_d1 = arrival_time(mpf_d1_vt, thr)
     for d in sorted(alpha_d1.keys()):
         print(f"  α(d={d}): {np.round(alpha_d1[d],3)}")
@@ -436,10 +436,16 @@ def main():
     # ── Space projection: α(d) option 2 (spreading window [t_γ1, t_γ3]) ─────
     print("\n[Space projection α(d) — option 2: window [t_γ1, t_γ3]]")
     alpha_d2, mpf_d2_vt = fit_alpha_d(ni_stack, nl_vt, t_nl, t_gi_list,
-                                        dist, thr, option=2)
+                                       dist, thr, option=2)
     t_mpf_d2 = arrival_time(mpf_d2_vt, thr)
     for d in sorted(alpha_d2.keys()):
         print(f"  α(d={d}): {np.round(alpha_d2[d],3)}")
+
+    # NOTE: α(d) + b(d) information latency (option 3) was implemented but
+    # DISQUALIFIED: violates Lieb-Robinson (n_MPF > n_nl at some sites).
+    # b(d) is a shell-level constant that cannot guarantee n_MPF ≤ n_nl at
+    # every (v,t) without per-point constraints. hh: min L=-3.7 (40x overshoot),
+    # r7: min L=-4.2 (67x overshoot). Concept is valid but needs reformulation.
 
     all_states = gammas + ['MPF', 'MPF_E', 'MPF_T', 'MPF_D1', 'MPF_D2']
     all_vt     = {**data, 'MPF': mpf_vt,  'MPF_E': mpf_e_vt,
@@ -566,14 +572,14 @@ def main():
         a1 = [alpha_d1[d][k] for d in shells_d]
         a2 = [alpha_d2[d][k] for d in shells_d]
         ax_ad.plot(shells_d, a1, 'o-',  color=colors_g[g], lw=1.5, ms=4,
-                   label=f'$\\alpha_{{{g[1]}}}(d)$ opt1 (snapshot)')
-        ax_ad.plot(shells_d, a2, 's--', color=colors_g[g], lw=1.5, ms=4, alpha=0.7,
-                   label=f'$\\alpha_{{{g[1]}}}(d)$ opt2 (window)')
+                   label=f'$\\alpha_{{{g[1]}}}(d)$ opt1')
+        ax_ad.plot(shells_d, a2, 's--', color=colors_g[g], lw=1.5, ms=4, alpha=0.6,
+                   label=f'$\\alpha_{{{g[1]}}}(d)$ opt2')
     ax_ad.axhline(0, color='gray', lw=0.8, ls=':')
     ax_ad.axhline(1, color='gray', lw=0.8, ls=':')
     ax_ad.set_xlabel('BFS shell d', fontsize=10)
     ax_ad.set_ylabel('$\\alpha_i(d)$', fontsize=10)
-    ax_ad.set_title('Space projection $\\alpha(d)$ — solid=opt1 snapshot, dash=opt2 window',
+    ax_ad.set_title('Space projection $\\alpha(d)$ — snapshot opt1 | window opt2',
                     fontsize=11)
     ax_ad.legend(fontsize=7, ncol=2)
     ax_ad.grid(True, alpha=0.3)
