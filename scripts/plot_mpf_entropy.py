@@ -467,16 +467,19 @@ def main():
     print(f"  MPF (frontier):   {mpf_mu:.3f}  {'BETTER' if mpf_mu < best_noisy_mu else 'worse'}")
     print(f"  MPF (entropy):    {mpfe_mu:.3f}  {'BETTER' if mpfe_mu < best_noisy_mu else 'worse'}")
 
-    # ── Figure: 3 rows × (1 label + 6 panels) ────────────────────────────────
+    # ── Figure layout: 3 rows ─────────────────────────────────────────────────
+    # Row 0: spatial maps (one per state)
+    # Row 1: L(t) [left] | L(v) per BFS shell [right]  — loss in time and space
+    # Row 2: α(t) [left] | α(d) opt1+opt2 [right]      — coefficients in time and space
     L_max = max(np.nanmax(L_site[g]) for g in all_states
                 if not np.all(np.isnan(L_site[g])))
     max_d = int(dist[dist>=0].max())
 
-    n_states = len(all_states)  # 8: N1,N2,N3,MPF,MPF_E,MPF_T,MPF_D1,MPF_D2
-    ncols = 1 + n_states        # 1 label + 1 per state
-    fig = plt.figure(figsize=(4*n_states, 18))
-    gs  = mgrid.GridSpec(4, ncols, figure=fig,
-                         hspace=0.50, wspace=0.38,
+    n_states = len(all_states)
+    ncols = 1 + n_states
+    fig = plt.figure(figsize=(4*n_states, 16))
+    gs  = mgrid.GridSpec(3, ncols, figure=fig,
+                         hspace=0.55, wspace=0.38,
                          left=0.04, right=0.98,
                          top=0.93,  bottom=0.05)
 
@@ -501,87 +504,79 @@ def main():
                     cmap, 0, L_max, '$\\mathcal{L}$',
                     f'{LABS[g]}\nμ={mu_g:.3f} {marker}')
 
-    # ── Row 1: global L(t) ────────────────────────────────────────────────────
-    ax_lbl1=fig.add_subplot(gs[1,0]); ax_lbl1.axis('off')
-    ax_lbl1.text(0.5,0.5,
-                 "Global\nentropy loss\nper cycle\n\n"
-                 "$L(t)=\\sum_v$\n$-\\ln\\frac{n}{n_{\\rm nl}}$\n\n"
-                 "MPF (green)\nshould sit\nnear zero",
-                 ha='center',va='center',fontsize=9,
-                 transform=ax_lbl1.transAxes,
-                 bbox=dict(boxstyle='round',fc='#f5f5f5',ec='gray',alpha=0.7))
-
-    ax_gl=fig.add_subplot(gs[1,1:])
+    # ── Row 1 left: L(t) global cross-entropy per cycle ──────────────────────
+    half = ncols // 2
+    ax_gl = fig.add_subplot(gs[1, 0:half])
     for g in all_states:
-        lw=2.8 if g=='MPF' else 1.8
+        lw = 2.5 if g not in ('N1','N2','N3') else 1.5
         ax_gl.plot(cycles, L_glob[g], GLINE[g], color=GCOL[g], lw=lw,
-                   label=LABS[g], zorder=5 if g=='MPF' else 3)
-    ax_gl.axhline(0,color='gray',lw=0.8,ls=':')
-    ax_gl.set_xlabel('Cycle',fontsize=10)
-    ax_gl.set_ylabel('$L(t) = \\sum_v -\\ln(n/n_{\\rm nl})$',fontsize=10)
-    ax_gl.set_title('Global cross-entropy loss — noisy vs MPF-corrected',fontsize=11)
-    ax_gl.legend(fontsize=9,loc='upper left')
-    ax_gl.grid(True,alpha=0.3)
+                   label=LABS[g], zorder=5 if 'MPF' in g else 3)
+    ax_gl.axhline(0, color='gray', lw=0.8, ls=':')
+    ax_gl.set_xlabel('Cycle', fontsize=10)
+    ax_gl.set_ylabel('$L(t) = \\sum_v -\\ln(n/n_{\\rm nl})$', fontsize=10)
+    ax_gl.set_title('$L(t)$ — cross-entropy loss per cycle', fontsize=11)
+    ax_gl.legend(fontsize=8, loc='upper left', ncol=2)
+    ax_gl.grid(True, alpha=0.3)
 
-    # ── Row 2: per-shell distribution ─────────────────────────────────────────
-    ax_lbl2=fig.add_subplot(gs[2,0]); ax_lbl2.axis('off')
-    ax_lbl2.text(0.5,0.5,
-                 "Per-BFS-shell\n$\\mathcal{L}(v)$\nmean ± σ\n\n"
-                 "Removes\ndistance bias.\nMPF (green)\nshould collapse\ntoward zero\nat all shells",
-                 ha='center',va='center',fontsize=9,
-                 transform=ax_lbl2.transAxes,
-                 bbox=dict(boxstyle='round',fc='#f5f5f5',ec='gray',alpha=0.7))
-
-    ax_sh=fig.add_subplot(gs[2,1:])
+    # ── Row 1 right: L(v) per BFS shell ──────────────────────────────────────
+    ax_sh = fig.add_subplot(gs[1, half:])
     for g in all_states:
-        L_v=L_site[g]
-        shells,mu_L,sig_L=[],[],[]
+        L_v = L_site[g]
+        shells, mu_L, sig_L = [], [], []
         for d in range(max_d+1):
-            idx=np.where(dist==d)[0]
-            vals=L_v[idx]; vals=vals[~np.isnan(vals)]
+            idx  = np.where(dist==d)[0]
+            vals = L_v[idx]; vals = vals[~np.isnan(vals)]
             if len(vals)==0: continue
             shells.append(d); mu_L.append(vals.mean()); sig_L.append(vals.std())
-        shells=np.array(shells); mu_L=np.array(mu_L); sig_L=np.array(sig_L)
-        lw=2.8 if g=='MPF' else 1.8
+        shells = np.array(shells); mu_L = np.array(mu_L); sig_L = np.array(sig_L)
+        lw = 2.5 if g not in ('N1','N2','N3') else 1.5
         ls = GLINE[g]
-        ax_sh.plot(shells,mu_L,f'o{ls}',color=GCOL[g],lw=lw,ms=6,
-                   label=LABS[g],zorder=5 if g=='MPF' else 3)
-        ax_sh.fill_between(shells,mu_L-sig_L,mu_L+sig_L,
-                            alpha=0.12,color=GCOL[g])
-    ax_sh.axhline(0,color='gray',lw=1,ls='--')
-    ax_sh.set_xlabel('BFS shell (distance from center)',fontsize=10)
-    ax_sh.set_ylabel('$\\mathcal{L}(v)$ mean ± σ',fontsize=10)
-    ax_sh.set_title('Entropy loss per BFS shell — MPF recovery',fontsize=11)
-    ax_sh.legend(fontsize=9)
-    ax_sh.grid(True,alpha=0.3)
+        ax_sh.plot(shells, mu_L, f'o{ls}', color=GCOL[g], lw=lw, ms=5,
+                   label=LABS[g], zorder=5 if 'MPF' in g else 3)
+        ax_sh.fill_between(shells, mu_L-sig_L, mu_L+sig_L, alpha=0.10, color=GCOL[g])
+    ax_sh.axhline(0, color='gray', lw=1, ls='--')
+    ax_sh.set_xlabel('BFS shell (distance from center)', fontsize=10)
+    ax_sh.set_ylabel('$\\mathcal{L}(v)$ mean ± σ', fontsize=10)
+    ax_sh.set_title('$L(v)$ — entropy loss per BFS shell', fontsize=11)
+    ax_sh.legend(fontsize=8, ncol=2)
+    ax_sh.grid(True, alpha=0.3)
 
-    # ── Row 3: α(t) time projection coefficients ─────────────────────────────
-    ax_lbl3 = fig.add_subplot(gs[3,0]); ax_lbl3.axis('off')
-    ax_lbl3.text(0.5, 0.5,
-                 "Time\nprojection\n$\\alpha(t)$\n\n"
-                 "One $\\alpha$ per\ncycle, fit on\nfrontier F(t)\n\n"
-                 "Shows how\ncorrection\nevolves in time",
-                 ha='center', va='center', fontsize=9,
-                 transform=ax_lbl3.transAxes,
-                 bbox=dict(boxstyle='round', fc='#e8f4fd', ec='#00BCD4', alpha=0.7))
-
-    ax_at = fig.add_subplot(gs[3, 1:])
+    # ── Row 2 left: α(t) time projection coefficients ────────────────────────
     colors_g = {'N1':'#2196F3','N2':'#FF9800','N3':'#E91E63'}
+    ax_at = fig.add_subplot(gs[2, 0:half])
     for k, g in enumerate(gammas):
         ax_at.plot(cycles, alpha_t[:, k], '-o', color=colors_g[g],
-                   lw=1.8, ms=4, label=f'$\\alpha_{{{g[1]}}}(t)$')
+                   lw=1.8, ms=4, label=f'$\\alpha_{{{g[1]}}}(t)$ time-proj')
     ax_at.axhline(0, color='gray', lw=0.8, ls=':')
     ax_at.axhline(1, color='gray', lw=0.8, ls=':')
-    # Mark global α for comparison
     for k, g in enumerate(gammas):
         ax_at.axhline(c_mpf_e[k], color=colors_g[g], lw=1.2, ls='--', alpha=0.5,
-                      label=f'global $\\alpha_{{{g[1]}}}$ (entropy)')
+                      label=f'global $\\alpha_{{{g[1]}}}$')
     ax_at.set_xlabel('Cycle', fontsize=10)
     ax_at.set_ylabel('$\\alpha_i(t)$', fontsize=10)
-    ax_at.set_title('Time projection coefficients α(t) vs global α (dashed)',
+    ax_at.set_title('Time projection $\\alpha(t)$ — solid=per cycle, dashed=global',
                     fontsize=11)
     ax_at.legend(fontsize=8, ncol=2)
     ax_at.grid(True, alpha=0.3)
+
+    # ── Row 2 right: α(d) space projection — both options ────────────────────
+    ax_ad = fig.add_subplot(gs[2, half:])
+    shells_d = sorted(alpha_d1.keys())
+    for k, g in enumerate(gammas):
+        a1 = [alpha_d1[d][k] for d in shells_d]
+        a2 = [alpha_d2[d][k] for d in shells_d]
+        ax_ad.plot(shells_d, a1, 'o-',  color=colors_g[g], lw=1.5, ms=4,
+                   label=f'$\\alpha_{{{g[1]}}}(d)$ opt1 (snapshot)')
+        ax_ad.plot(shells_d, a2, 's--', color=colors_g[g], lw=1.5, ms=4, alpha=0.7,
+                   label=f'$\\alpha_{{{g[1]}}}(d)$ opt2 (window)')
+    ax_ad.axhline(0, color='gray', lw=0.8, ls=':')
+    ax_ad.axhline(1, color='gray', lw=0.8, ls=':')
+    ax_ad.set_xlabel('BFS shell d', fontsize=10)
+    ax_ad.set_ylabel('$\\alpha_i(d)$', fontsize=10)
+    ax_ad.set_title('Space projection $\\alpha(d)$ — solid=opt1 snapshot, dash=opt2 window',
+                    fontsize=11)
+    ax_ad.legend(fontsize=7, ncol=2)
+    ax_ad.grid(True, alpha=0.3)
 
     # ── Title ─────────────────────────────────────────────────────────────────
     cf_str  = ', '.join(f'{c:.2f}' for c in c_mpf)

@@ -249,3 +249,32 @@ Explore α(t) and α(d) — time-dependent and shell-dependent MPF:
 2. Compare α(t) to global α: does it improve on asymmetric grids (heavy-hex hw noise)?
 3. Correct v_hop measurement: run lightcone sweep with all 4 states, use v_γ3
 4. Window size Δ for α(d): how sensitive are results to Δ?
+
+## Figure restructure 2026-08-23
+
+New 3-row layout making space-time duality explicit:
+
+```
+Row 0: Spatial maps L(v) — one per method, μ annotated with ↓/↑
+Row 1: L(t) [left] | L(v) per BFS shell [right]   — loss in TIME and SPACE
+Row 2: α(t) [left] | α(d) opt1+opt2 [right]       — coefficients in TIME and SPACE
+```
+
+Left column = TIME view. Right column = SPACE view.
+Row 1 = LOSS (how bad is the noise?). Row 2 = COEFFICIENTS (how to correct?).
+
+Styling: γ=1,2,3 dashed (inputs), MPF variants solid (outputs).
+
+Results on PAPER_hh_dep_200_10c.log:
+- MPF α(t) time-proj: μ=0.481 — BEST (55% vs best noisy 1.058)
+- MPF entropy (global): μ=0.596 — 44% improvement
+- MPF frontier (global): μ=1.058 — tied with γ=1
+- MPF α(d) opt2: μ=1.050 — slightly worse (only d=1,2,3 have valid fits)
+- MPF α(d) opt1: μ=1.218 — worse
+
+α(t) insight: α_N1 increases over time (γ=1 more important at later cycles),
+α_N3 becomes more negative (larger subtraction needed), α_N2 ≈ 0 throughout.
+The time-resolved fit adapts to changing noise structure — global α averages it away.
+
+α(d) insight: only d=1,2,3 valid (γ=3 velocity ≈ 0.152 hops/cycle × 10 = 1.5 hops
+max, so γ=3 never reaches d≥4). Need 20-cycle data or rect_7x7 for more shells.
