@@ -278,3 +278,57 @@ The time-resolved fit adapts to changing noise structure — global α averages 
 
 α(d) insight: only d=1,2,3 valid (γ=3 velocity ≈ 0.152 hops/cycle × 10 = 1.5 hops
 max, so γ=3 never reaches d≥4). Need 20-cycle data or rect_7x7 for more shells.
+
+## Session 2026-08-23 — Key discoveries
+
+### Phantom waves
+After the noiseless frontier is absorbed (all sites reached), slower noisy waves
+(γ=2, γ=3) continue spreading — their frontiers are still active. These are
+"phantom waves": they arrive at sites where noiseless passed cycles ago.
+
+At phantom arrival: n_γi(v,t) is a fresh frontier (chi≈1, EXACT).
+                   n_nl(v,t) is the interior tail (chi large, approximate).
+
+The ratio n_γi/n_nl is still meaningful — measures cumulative damping along
+the path. α(t) remains well-conditioned as long as phantom frontiers are
+separated from each other.
+
+### Interference
+When the noiseless wave reflects from the lattice boundary and returns, it
+interferes with itself. Observable in C_nl as:
+- Decay stabilizes at cycle ~12-13 (heavy-hex, center=13, 3 hops)
+- Sudden amplitude drop at cycle 17 (destructive interference)
+- Irregular non-monotone pattern cycles 17-20
+
+The noisy waves (v_γ≈0.15) haven't reached the boundary yet at those cycles
+→ C_n1/n2/n3 continue smooth monotone decay while C_nl shows interference.
+
+Cross-entropy at cycles 17-20 compares single-pass phantom against two-wave
+interference noiseless reference → measurement contaminated.
+
+### Why rect_7×7 20c stays stable (α(t) μ=1.394, 70% improvement)
+- Center=24 is 6 hops from boundary
+- v_γ3=0.097 → γ=3 phantom active until cycle ~62
+- Phantom waves remain separated long after noiseless absorbed
+- α(t) stays well-conditioned throughout 20 cycles
+
+### Why heavy-hex 20c fails (α(t) μ=4.206, WORSE)
+- Center=13 is only 3 hops from boundary
+- v_γ1≈v_γ2≈v_γ3≈0.15 (near-degenerate) → all phantoms absorbed together
+- F(t) collapses at cycle ~12-13 simultaneously with noiseless absorption
+- α(t) becomes ill-conditioned → wild coefficient swings → μ degrades
+
+### Summary table (all cases)
+| Topology | Noise | Cycles | Global MPF | α(t) | Key |
+|---|---|---|---|---|---|
+| Rect 7×7 | i.i.d. dep | 10 | +24% | **+65%** | no boundary hit |
+| Rect 7×7 | i.i.d. dep | 20 | +28% | **+70%** | phantom waves active |
+| Heavy-hex | i.i.d. dep | 10 | +44% | **+55%** | no boundary hit |
+| Heavy-hex | i.i.d. dep | 20 | +1% | **-20%** | interference kills α(t) |
+| Heavy-hex | Hardware | 10 | fails | **+19%** | α(t) only survivor |
+
+### The tools we have
+- plot_mpf_entropy.py: spatial maps + L(t) + L(v) + α(t) + α(d), all in one figure
+- Three MPF variants: global entropy, time-projection α(t), space-projection α(d)
+- Boundary detection: interference signature in C_nl, coefficient instability in α(t)
+- The measure makes clear WHERE information is recoverable and WHERE it is lost
