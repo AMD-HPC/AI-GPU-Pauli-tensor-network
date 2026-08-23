@@ -217,6 +217,23 @@ At t = t_γi: b(d) = n(v,t_n) - Σi αi n_γi(v,t_γi)
              = the amplitude gap between noiseless at ITS arrival and noisy at ITS arrival
 This is the "d-bias" — the amplitude deficit caused by the delay D(v) = t_n - t_γi.
 
+**Critical: addressing -ln → -∞ when t_n > t_γi**
+
+The cross-entropy -ln(Σi αi n_γi(v,t) / n(v,t)) diverges when:
+- t < t_γi: n_γi(v,t) = 0 → numerator = 0 → -ln(0) = **+∞**
+- t_γi ≤ t but amplitude tiny: n_γi ≈ 0 → -ln(~0) = **large positive**
+- t > t_n and wave grows: ratio unstable in both directions
+
+**Window [3] prevents the +∞:** by restricting to t_γi ≤ t ≤ t_γ3, n_γi(v,t) > 0
+for ALL i by construction — all waves have arrived, no zero denominators.
+
+**Bias b(d) provides additional protection:** when t_n > t_γi (noiseless arrives AFTER
+noisy — e.g. rotation noise), the reconstruction Σi αi n_γi + b(d) is shifted upward
+by b(d) > 0, bounding the argument of -ln away from zero even at early t.
+
+Together: window [3] + bias b(d) make the cross-entropy numerically well-defined
+and physically meaningful throughout the active frontier window.
+
 ## NEXT SESSION: fitting by frontiers
 
 Explore α(t) and α(d) — time-dependent and shell-dependent MPF:
