@@ -83,6 +83,20 @@ evolution into one scalar per cycle, losing spatial information and
 dominated by the lightcone interior where $\chi$ is large and the
 approximation is least faithful.
 
+Related approaches exploit the lightcone causal structure for error
+mitigation: lightcone shading~\cite{eddins2024lightconeshading} tightens
+probabilistic error cancellation bounds by restricting to the observable's
+causal cone; non-zero noise extrapolation~\cite{thompson2025nonzero}
+adds noise to ease tensor network simulation then extrapolates back,
+the reverse of our amplification strategy; and Pauli
+propagation~\cite{eddins2026noisecanceling} cancels noise classically
+before hardware measurement.
+Recent work~\cite{chang2026noise} proposes exploiting the coupling
+between depolarizing noise and operator weight to extract a global
+weight spectrum from noisy circuits at variable noise strength.
+We extend this to a site-resolved observable: rather than integrating
+over all sites, we track $n(v,t)$ per site per cycle, recovering the
+full spatial structure of how noise deforms the lightcone.
 The non-identity Pauli weight $n(v,t) = \sum_{P:\,P_v\neq I} c_P(t)^2$
 is extracted from the same simulation at no additional cost.
 By normalization $\sum_P c_P^2=1$, it is a probability~\cite{nahum2018operator}
@@ -96,6 +110,10 @@ in the pure amplitude damping regime (off-diagonal fraction $\approx36\%$,
 constant across $\gamma$, $\Delta<0.002$): noise delays and damps the
 Hamiltonian-determined wave without redirecting it, making the wavemap
 a model-free noise diagnostic.
+This is consistent with the analytical result of~\cite{yu2026lightconescalingincircuitnoise}
+that a noise event contributes only when it overlaps the Heisenberg
+evolution of the measured Pauli operator; our wavemap makes this
+overlap structure spatially explicit and site-resolved.
 Fitting time-adaptive MPF coefficients $\alpha(t)$ over the frontier
 recovers up to 55\% of information loss on heavy-hex and 65\% on
 rect $7\times7$; since $\gamma$ maps to the ZNE gate-folding
