@@ -1,0 +1,554 @@
+%% qiml26.tex — AAAI QIML 2026 short paper
+%% Build: pdflatex qiml26.tex && bibtex qiml26 && pdflatex qiml26.tex && pdflatex qiml26.tex
+%% Deadline: 2026-09-01 | 6-8 pages excluding references | two-column
+
+\documentclass[letterpaper]{article}
+\usepackage[submission]{aaai24}
+\usepackage{times}
+\usepackage{helvet}
+\usepackage{courier}
+\usepackage[hyphens]{url}
+\usepackage{graphicx}
+\urlstyle{rm}
+\def\UrlFont{\rm}
+\usepackage{natbib}
+\usepackage{caption}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\frenchspacing
+\setlength{\pdfpagewidth}{8.5in}
+\setlength{\pdfpageheight}{11in}
+
+\pdfinfo{/TemplateVersion (2024.1)}
+
+% ─────────────────────────────────────────────────────────────────────────────
+
+\title{The Pauli Lightcone Frontier as a Space-Time Observable\\
+       for Quantum Noise Characterization}
+
+\author{Anonymous Submission}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We simulate the kicked Heisenberg Ising model on two lattices and
+study the non-identity Pauli weight $n(v,t)$, the probability that the
+evolved operator has support at site $v$ at cycle $t$, as a space-time
+observable.  Under noise amplification at levels $\gamma$, the
+$n(v,t)$ directly reveals how noise deforms the operator lightcone
+across the lattices.  We introduce the \emph{wavemap}: a spatial
+portrait of noise effects assigning each site a per-noise-level
+arrival delay $l_\gamma(v)$ and cross-entropy loss
+$\mathcal{L}_\gamma(v)$.  The wavemap provides direct observable
+signatures of the noise eigenvalue structure: pure amplitude damping
+produces a uniform spatial delay with no weight injection outside the
+lightcone, while rotation-type noise injects weight at unvisited
+sites, making the frontier appear locally faster.  Applying
+the multi-product formula (MPF) with time-adaptive coefficients
+$\alpha(t)$ over the frontier recovers up to 55\% of the information
+loss relative to the best noisy sample.  The noise amplification
+parameter $\gamma$ maps directly to the gate-folding factor in
+zero-noise extrapolation, making the wavemap methodology immediately
+applicable to real quantum processors.
+\end{abstract}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction and Setup}
+\label{sec:intro}
+
+We simulate the kicked isotropic Heisenberg model~\cite{Begusic2025RealTime}:
+\begin{equation}
+H = J\!\sum_{\langle ij\rangle}(X_iX_j+Y_iY_j+Z_iZ_j),\quad
+U_{\rm kick}=\textstyle\prod_v R_x(2\phi)
+\end{equation}
+with $\phi=1.414$,
+on two topologies: the IBM heavy-hex $3\times3$ lattice (68 sites,
+76 bonds) with per-bond hardware noise PTMs~\cite{Hu2025Demonstration},
+and a rectangular $7\times7$ lattice (49 sites, 84 bonds) with synthetic
+uniform depolarizing noise.
+We use a GPU-accelerated belief propagation tensor network simulator
+with Trotter step $\varepsilon=0.10$, bond dimension $\chi$, and
+truncation cutoff $\delta=10^{-3}$ ($\chi=200$ heavy-hex, $\chi=50$
+rect $7\times7$).
+
+Noise enters via Pauli transfer matrices
+(PTMs)~\cite{rudolph2025simulating}: each bond PTM composes the ideal
+gate with $M_\gamma^{(b)} = \gamma M_{\rm hw}^{(b)} + (1-\gamma)I$,
+amplifying hardware noise by factor $\gamma=1,2,3$.
+The standard observable, the autocorrelation
+$C(t)=\langle Z_c(t)Z_c(0)\rangle$, compresses the entire space-time
+evolution into one scalar per cycle, losing spatial information and
+dominated by the lightcone interior where $\chi$ is large and the
+approximation is least faithful.
+
+The non-identity Pauli weight $n(v,t) = \sum_{P:\,P_v\neq I} c_P(t)^2$
+is extracted from the same simulation at no additional cost.
+By normalization $\sum_P c_P^2=1$, it is a probability~\cite{nahum2018operator}
+— not an approximation — and retains the full spatial field at every
+cycle.
+At the lightcone frontier where $\chi\approx1$ and the simulation is
+exact, $n(v,t)$ is the most reliable observable the simulation
+produces.
+Eigenvalue analysis of the composed PTMs confirms both noise models are
+in the pure amplitude damping regime (off-diagonal fraction $\approx36\%$,
+constant across $\gamma$, $\Delta<0.002$): noise delays and damps the
+Hamiltonian-determined wave without redirecting it, making the wavemap
+a model-free noise diagnostic.
+Fitting time-adaptive MPF coefficients $\alpha(t)$ over the frontier
+recovers up to 55\% of information loss on heavy-hex and 65\% on
+rect $7\times7$; since $\gamma$ maps to the ZNE gate-folding
+factor~\cite{giurgica2020digital}, the method applies directly to
+real quantum processors.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{The Pauli Lightcone Wavemap}
+\label{sec:wavemap}
+This section introduces the wavemap observables following the progression:
+\begin{equation}
+  C(t) \;\xrightarrow{\text{spatialize}}\; n(v,t)
+       \;\xrightarrow{\text{amplify}}\; n_\gamma(v,t)
+       \;\xrightarrow{\text{minimize}}\; \min_\alpha \mathcal{L}
+  \label{eq:progression}
+\end{equation}
+\subsection{Autocorrelation as observable}
+
+The standard observable in tensor network simulation of quantum lattice
+models is the autocorrelation $C(t) = \langle Z_c(t) Z_c(0)\rangle$,
+computed as an inner product between the evolved operator and the
+initial state at the center site $c$.
+This compresses the entire space-time evolution into one number per cycle.
+Sites strongly affected by noise and sites barely affected contribute
+equally; furthermore, the computation is dominated by the interior of
+the lightcone, where bond dimension $\chi$ is large and the tensor
+network truncation is least faithful.
+
+\subsection{The Pauli weight $n(v,t)$ as a spatial observable}
+
+Any operator $O_c(t)$ initialized at the center and expanded in the
+$n$-qubit Pauli basis $\{I,X,Y,Z\}^{\otimes n}$ as
+$O_c(t) = \sum_P c_P(t)\,P$ satisfies $\sum_P c_P(t)^2 = 1$.
+The non-identity Pauli weight at site $v$ and cycle $t$ is:
+\begin{equation}
+    n(v,t) = \sum_{P:\,P_v \neq I} c_P(t)^2
+    \label{eq:nvt}
+\end{equation}
+The same simulation that computes $C(t)$ also computes $n(v,t)$ at no
+additional cost, retaining the full spatial distribution of operator
+support across the lattice at every cycle.
+
+
+\subsection{The $n(v,t)$ as a probability}
+
+By normalization, $n(v,t) \in [0,1]$ is the probability that a Pauli
+string sampled from the operator distribution acts non-trivially at
+site $v$~\cite{nahum2018operator,Tan2025Operator}.
+This is not an approximation: it follows directly from $\sum_P c_P^2=1$.
+The field $n(v,t)$ is therefore a probability distribution over the
+lattice, evolving in time as the operator spreads outward from the
+initialization site.
+
+\subsection{Lightcone: velocity and information}
+
+The \emph{frontier} at cycle $t$ is the set of sites first crossing a
+significance threshold $\varepsilon_{\rm th}$:
+\begin{equation}
+    \mathcal{F}(t) = \{v : n(v,t) > \varepsilon_{\rm th},\;
+                          n(v,t-1) \leq \varepsilon_{\rm th}\}
+\end{equation}
+Its maximum BFS distance from the center grows linearly at velocity
+$v_{\rm hop}$ (hops/cycle), establishing the Lieb-Robinson cone.  At
+frontier sites, $\chi\approx1$ by construction: nascent correlations
+have not yet built up, so the simulation is exact and $n(v,t)$ is
+computed without truncation error. This is where the lightcone
+carries its most reliable information.
+
+\subsection{Noiseless and noisy waves}
+
+We simulate four variants: noiseless (NL) and three noise amplification
+levels $\gamma=1,2,3$, where $\gamma$ rescales the noise channel
+$M_\gamma = \gamma M_{\rm hw} + (1-\gamma)I$.
+Each variant produces its own wavefront advancing at velocity
+$v_{\gamma} \leq v_{\rm nl}$: noise suppresses amplitudes below
+threshold, delaying the frontier crossing.
+For each site $v$ and noise level $\gamma$ we define the
+\emph{arrival delay} $l_\gamma(v) = t_\gamma(v) - t_{\rm nl}(v) \geq 0$
+and the \emph{amplitude ratio}
+$r_\gamma(v) = n_\gamma(v,t_\gamma(v))/n_{\rm nl}(v,t_\gamma(v)) \leq 1$,
+both guaranteed by the Lieb-Robinson bound for pure amplitude damping.
+Together they form the \emph{wavemap}: a spatial portrait of how noise
+deforms the lightcone, site by site (Figure~\ref{fig:wavemap}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{../fig_wavemap_delay.png}
+\caption{Arrival delay $l_\gamma(v)$ for $\gamma=1,2,3$ on heavy-hex
+$3\times3$ (top) and rect $7\times7$ (bottom). White: outside lightcone.
+Black: noiseless arrived, noisy did not. Delay increases monotonically
+with $\gamma$ on the uniform-noise rect lattice; heavy-hex shows
+non-monotone behavior reflecting hardware PTM heterogeneity.}
+\label{fig:wavemap}
+\end{figure}
+
+\subsection{Cross-entropy as the information cost}
+
+Since $n(v,t)$ is a probability, the natural measure of deviation
+between the noisy and noiseless is by loss of information.  As
+Jaynes~\cite{Jaynes1957PartI,Jaynes1957PartII} established, when
+quantities are probabilities, information-theoretic objectives are the
+correct and unifying choice: MSE penalizes amplitude error uniformly,
+while cross-entropy penalizes information loss proportionally to its
+magnitude.  We define the per-site cross-entropy loss summed over a
+delay-adaptive window $[t_\gamma(v)-\Delta,\,t_\gamma(v)+\Delta]$,
+$\Delta = \max(1,l_\gamma(v))$:
+\begin{equation}
+    \mathcal{L}_\gamma(v) = \sum_{t \in \text{window}}
+    -\ln \frac{n_\gamma(v,t)}{n_{\rm nl}(v,t)}
+    \label{eq:loss}
+\end{equation}
+Zero when the distributions coincide, positive when noise suppresses
+probability, with window width set by the delay itself so no free
+parameter is introduced.  This is the accumulated information loss at
+site $v$: the wavemap observable that quantifies, site by site, how
+much the noisy evolution has forgotten relative to the noiseless
+reference.
+
+Section~\ref{sec:results} shows how these observables enable MPF error recovery.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Results}
+\label{sec:results}
+
+Following the progression of Eq.~\ref{eq:progression}, we present
+results in three stages: the autocorrelation $C(t)$, the frontier
+velocity $v_{\rm hop}$ from $n(v,t)$, and the MPF entropy recovery.
+
+\subsection{Stage 1: Autocorrelation $C(t)$}
+
+Existing MPF methods operate at two levels of the same scalar observable.
+The first fits $C(t)$ directly: $\sum_i c_i C_{\gamma_i}(t) \approx C_{\rm nl}(t)$,
+one equation per cycle.
+The second solves the bilinear system $A\alpha = B$, where
+$A_{ij} = \langle\psi_{\gamma_i}|\psi_{\gamma_j}\rangle$ are noisy-noisy
+inner products and $B_i = \langle\psi_{\gamma_i}|\psi_{\rm nl}\rangle$
+are noisy-noiseless inner products: a richer fit, but still a global
+scalar per cycle, still dominated by the interior of the lightcone
+where $\chi$ is large and the approximation is least faithful.
+
+Table~\ref{tab:ct} shows $C(t)$ at each cycle for NL and
+$\gamma=1,2,3$ on both topologies.
+On heavy-hex, $C(t)$ oscillates and the noise levels are nearly
+indistinguishable: the scalar observable is almost blind to noise.
+On rect $7\times7$, $C(t)$ decays monotonically and the $\gamma$
+levels separate, but all spatial structure is lost.
+In both cases, $C(t)$ and $A\alpha=B$ compress the entire
+space-time evolution into one number per cycle.
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\small
+\begin{tabular}{r|rrrr|rrrr}
+\toprule
+ & \multicolumn{4}{c|}{Heavy-hex $3\times3$} & \multicolumn{4}{c}{Rect $7\times7$} \\
+$t$ & NL & $\gamma_1$ & $\gamma_2$ & $\gamma_3$ & NL & $\gamma_1$ & $\gamma_2$ & $\gamma_3$ \\
+\midrule
+ 1 & $-$.924 & $-$.924 & $-$.925 & $-$.925 & $-$.914 & $-$.916 & $-$.918 & $-$.920 \\
+ 2 & $+$.832 & $+$.836 & $+$.839 & $+$.843 & $+$.827 & $+$.843 & $+$.857 & $+$.870 \\
+ 3 & $-$.763 & $-$.773 & $-$.783 & $-$.792 & $-$.748 & $-$.791 & $-$.826 & $-$.854 \\
+ 4 & $+$.789 & $+$.803 & $+$.816 & $+$.828 & $+$.612 & $+$.696 & $+$.759 & $+$.808 \\
+ 5 & $-$.828 & $-$.848 & $-$.864 & $-$.878 & $-$.500 & $-$.623 & $-$.711 & $-$.774 \\
+ 6 & $+$.851 & $+$.876 & $+$.895 & $+$.909 & $+$.414 & $+$.574 & $+$.685 & $+$.761 \\
+ 7 & $-$.838 & $-$.870 & $-$.892 & $-$.907 & $-$.341 & $-$.534 & $-$.665 & $-$.751 \\
+ 8 & $+$.817 & $+$.857 & $+$.882 & $+$.897 & $+$.287 & $+$.508 & $+$.654 & $+$.744 \\
+ 9 & $-$.804 & $-$.853 & $-$.881 & $-$.896 & $-$.248 & $-$.495 & $-$.650 & $-$.742 \\
+10 & $+$.793 & $+$.853 & $+$.883 & $+$.898 & $+$.219 & $+$.490 & $+$.649 & $+$.740 \\
+\bottomrule
+\end{tabular}
+\caption{Autocorrelation $C(t) = \langle Z_c(t)Z_c(0)\rangle$ for
+noiseless (NL) and $\gamma=1,2,3$ on both topologies, 10 cycles
+($\chi=200$ hh, $\chi=50$ r7, $\delta=10^{-3}$).
+Heavy-hex: $C(t)$ oscillates and noise levels are nearly
+indistinguishable: the scalar observable is blind to noise structure.
+Rect $7\times7$: monotone decay separates $\gamma$ levels, but spatial
+information is lost.
+Bond dimension $\chi$ grows as $4\to163$ on heavy-hex and saturates at
+50 on rect $7\times7$; simulation cost scales as $\mathcal{O}(\chi^3)$,
+making the interior the computational bottleneck.}
+\label{tab:ct}
+\end{table}
+
+\subsection{Stage 2: Frontier velocity from $n(v,t)$}
+
+The non-identity Pauli weight $n(v,t)$ resolves the spatial structure
+invisible to $C(t)$.
+Table~\ref{tab:vhop} shows the frontier velocity $v_{\rm hop}$
+(hops/cycle), the slope of the maximum BFS frontier distance vs cycle.
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{2pt}
+\scriptsize
+\begin{tabular}{llr rrr rrr rrr}
+\toprule
+ & & & \multicolumn{3}{c}{$\gamma=1$} & \multicolumn{3}{c}{$\gamma=2$} & \multicolumn{3}{c}{$\gamma=3$} \\
+Topology & $v_{\rm nl}$ & $n_{\rm nl}$ & $n$ & $\mu_l$ & $\sigma_l$ & $n$ & $\mu_l$ & $\sigma_l$ & $n$ & $\mu_l$ & $\sigma_l$ \\
+\midrule
+HH $3\times3$ & 0.376 & 21 & 8 & 1.13 & 1.97 & 10 & 2.10 & 2.81 & 8 & 0.75 & 1.30 \\
+Rect $7\times7$ & 0.448 & 49 & 49 & 0.98 & 1.15 & 37 & 1.35 & 1.36 & 25 & 1.24 & 1.77 \\
+\bottomrule
+\end{tabular}
+\caption{Frontier velocity $v_{\rm nl}$ and per-site delay statistics
+$(n,\mu_l,\sigma_l)$ for each $\gamma$.
+$n$ = sites reached within 10 cycles; $\mu_l,\sigma_l$ = mean and
+std of arrival delay $l_\gamma(v)$ in cycles.
+Rect $7\times7$: all 49 sites reached at $\gamma=1$; monotone delay
+increase reflects uniform damping.
+Heavy-hex: non-monotone $n$ and $\mu_l$ reflect heterogeneous per-bond
+PTMs; survivorship bias makes $\gamma=3$ appear faster because it
+only reaches the easiest nearby sites.}
+\label{tab:vhop}
+\end{table}
+
+The frontier velocity $v_{\rm hop}$ is not a property of the noise alone.
+It is a joint function of three factors: the graph topology (minimum hop
+distance between connected sites, coordination number, girth), the
+Hamiltonian coupling $J_{ij}$ (which determines how much Pauli weight
+transfers per gate application), and the noise representation at gate
+level (how $\gamma$ rescales the effective amplitude per bond crossing).
+The per-site delay statistics $(n_{\rm reached},\,\mu_l,\,\sigma_l)$
+in Table~\ref{tab:vhop} provide the statistical fingerprint of all
+three combined: sites that the noisy wave fails to reach entirely
+($n_{\rm reached} < n_{\rm nl}$), the mean delay for those it does
+reach ($\mu_l$), and the spread ($\sigma_l$) reflecting path-dependent
+variation in coupling and noise accumulation.
+The wavemap therefore characterizes the interplay of geometry, dynamics,
+and noise in a single measurement.
+
+Sites outside the noiseless lightcone have $\chi=1$ identically: the
+operator has not yet reached them and they carry no correlations.
+Simulation outside the cone is unnecessary: the arrival time
+$t_{\rm nl}(v) = d(c,v)/v_{\rm hop}$ provides a per-site entry
+schedule, enabling lightcone-aware memory allocation that eliminates
+computation before each site activates.
+Crucially, the wavemap turns this boundary into a diagnostic: any
+$n_\gamma(v,t) > \varepsilon_{\rm th}$ observed \emph{outside} the
+noiseless cone is not silence but a signal: spontaneous activation
+that the frontier flags as anticausal.
+For pure amplitude damping this never occurs ($l_\gamma(v) \geq 0$
+always); its presence is a fingerprint of rotation-type noise injecting
+Pauli weight independently of the Hamiltonian causal structure.
+
+\subsection{Stage 3: MPF entropy recovery}
+
+The wavemap cross-entropy loss $\mathcal{L}_\gamma(v)$ is both a
+diagnostic and an objective: minimizing it over MPF coefficients
+recovers the noiseless Pauli weight field from noisy samples.
+
+All methods reconstruct $n_{\rm MPF}(v,t) = \sum_i c_i\, n_{\gamma_i}(v,t)$
+and are evaluated by the global mean cross-entropy loss $\mu_\mathcal{L}$
+(Eq.~\ref{eq:loss}), lower is better.
+
+A geometric baseline fits $c$ by minimizing squared error on the
+frontier distance series $\min_c \sum_t (F_{\rm MPF}(t)-F_{\rm nl}(t))^2$,
+subject to $F_{\rm MPF}(t)\leq F_{\rm nl}(t)$.
+This objective sees only scalar distances, never amplitudes.
+Evaluating its $n_{\rm MPF}$ on $\mu_\mathcal{L}$ yields 1.058/3.911
+with no improvement over the best noisy sample, confirming that
+geometric and information-theoretic objectives are not aligned.
+
+\textbf{MPF entropy} fits $c$ by directly minimizing $\mu_\mathcal{L}$:
+\begin{equation}
+    \min_{c_i}\; \sum_{v,t} -\ln\frac{n_{\rm MPF}}{n_{\rm nl}},\quad
+    \sum_i c_i = 1,\quad n_{\rm MPF} \leq n_{\rm nl}
+    \label{eq:entropy_mpf}
+\end{equation}
+Table~\ref{tab:entropy} (Section~\ref{sec:results}) shows $\mu_\mathcal{L}$
+for the noisy samples and MPF entropy on both topologies at 10 cycles;
+the geometric baseline is excluded as it optimizes a different objective.
+
+\subsection{Time-adaptive coefficients $\alpha(t)$}
+
+The global MPF entropy fit uses fixed $c$ across all space and time.
+We refine this by fitting one coefficient vector $\alpha(t)\in\mathbb{R}^3$
+per cycle over the union frontier
+$\mathcal{F}(t) = \mathcal{F}_{\rm nl}(t) \cup \bigcup_i \mathcal{F}_{\gamma_i}(t)$
+— a thin spatial shell where $\chi\approx1$ in all simulations and every
+sample is exact.
+The approximation is in the application: coefficients fitted on the
+frontier are extrapolated to all sites at that cycle.
+
+The dual, $\alpha(d)$, fixes a BFS shell and fits over a time window,
+a $\Delta$ in time rather than space.
+Table~\ref{tab:lt} shows $L(t)$ per cycle for $\gamma=1$, $\alpha(t)$,
+and $\alpha(d)$: heavy-hex at 20 cycles (to expose the frontier
+collapse at cycles 12--13), rect $7\times7$ at 10 cycles.
+Table~\ref{tab:ld} shows $L(d)$ per BFS shell at 10 cycles for both
+topologies.
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\scriptsize
+\begin{tabular}{r|rrr|rrr}
+\toprule
+ & \multicolumn{3}{c|}{Heavy-hex} & \multicolumn{3}{c}{Rect $7\times7$} \\
+$t$ & $\gamma_1$ & $\alpha(t)$ & $\alpha(d)$ & $\gamma_1$ & $\alpha(t)$ & $\alpha(d)$ \\
+\midrule
+ 1 &  0.11 &  0.00 &  0.00 &  0.85 &  0.01 &  0.01 \\
+ 2 &  0.23 &  0.02 &  0.00 &  3.17 &  0.25 &  0.66 \\
+ 3 &  0.91 &  0.16 &  0.00 &  8.83 &  1.56 &  2.00 \\
+ 4 &  1.33 &  0.29 &  0.00 & 20.00 &  5.42 & 18.88 \\
+ 5 &  1.61 &  0.42 &  0.00 & 33.51 & 12.16 & 39.20 \\
+ 6 &  3.58 &  1.22 &  2.16 & 43.47 & 18.45 & 53.56 \\
+ 7 &  5.30 &  2.18 &  4.90 & 44.96 & 19.46 & 55.85 \\
+ 8 &  6.76 &  3.43 &  6.86 & 46.06 & 20.64 & 57.51 \\
+ 9 &  8.11 &  4.89 &  8.03 & 47.41 & 21.69 & 59.26 \\
+10 &  8.58 &  5.44 &  8.47 & 49.06 & 23.06 & 61.16 \\
+11 & 14.90 & 14.08 & 18.33 & -- & -- & -- \\
+12 & 22.12 & 26.26 & 29.75 & -- & -- & -- \\
+13 & 23.51 & \textit{41.83} & 31.81 & -- & -- & -- \\
+14 & 24.69 & 28.76 & 33.47 & -- & -- & -- \\
+15 & 27.60 & 32.36 & 37.88 & -- & -- & -- \\
+16 & 28.65 & \textbf{7.35} & 39.38 & -- & -- & -- \\
+17 & 38.48 & 12.77 & 53.10 & -- & -- & -- \\
+18 & 39.36 & 14.34 & 54.15 & -- & -- & -- \\
+19 & 42.89 & 16.72 & 58.87 & -- & -- & -- \\
+20 & 50.29 & 21.62 & 68.60 & -- & -- & -- \\
+\midrule
+$\mu$ & 1.058 & \textbf{0.481} & 1.050 & 3.680 & \textbf{1.276} & 5.808 \\
+\bottomrule
+\end{tabular}
+\caption{Global cross-entropy loss $L(t)$ per cycle.
+Heavy-hex shown at 20 cycles; rect $7\times7$ at 10 cycles (--~=~not~run).
+$\alpha(t)$ outperforms $\gamma_1$ at every cycle except 12--15, where
+the noiseless wave reflects from the lattice boundary, the frontier
+empties, and $\alpha(t)$ becomes ill-conditioned (\textit{italics}).
+After cycle 16 the frontier repopulates and $\alpha(t)$ recovers
+strongly (\textbf{bold}).
+$\alpha(d)$ degrades monotonically.
+$\mu$ row: mean per-site $\mu_\mathcal{L}$ over the full run.
+Values floored at zero.\footnote{Not all physical constraints are
+enforced at every optimization step in this work; a full per-site
+Lieb-Robinson constraint would eliminate floored entries at the cost
+of a more complex solver.}}
+\label{tab:lt}
+\end{table}
+
+\begin{table}[t]
+\centering
+\setlength{\tabcolsep}{3pt}
+\scriptsize
+\begin{tabular}{r|rrr|rrr}
+\toprule
+ & \multicolumn{3}{c|}{Heavy-hex} & \multicolumn{3}{c}{Rect $7\times7$} \\
+$d$ & $\gamma_1$ & $\alpha(t)$ & $\alpha(d)$ & $\gamma_1$ & $\alpha(t)$ & $\alpha(d)$ \\
+\midrule
+0 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 & 0.00 \\
+1 &    0.03 & 0.00 &    0.00 &    0.07 & 0.00 &    0.00 \\
+2 &    0.07 & 0.01 &    0.00 &    0.25 & 0.02 &    0.01 \\
+3 &    0.21 & 0.05 &    0.00 &    0.62 & 0.13 &    0.10 \\
+4 &    0.51 & 0.24 &    0.92 &    1.11 & 0.40 &    1.79 \\
+5 &    0.88 & 0.62 &    1.50 &    1.70 & 0.84 &    2.53 \\
+6 &     --  &  --  &    --   &    2.33 & 1.38 &    3.27 \\
+\bottomrule
+\end{tabular}
+\caption{Mean cross-entropy loss $\mathcal{L}(d)$ per BFS shell.
+$\alpha(t)$ reduces loss at every shell; $\alpha(d)$ degrades at
+outer shells (too few sites per shell to constrain the fit).}
+\label{tab:ld}
+\end{table}
+
+\subsection{Summary}
+
+Table~\ref{tab:entropy} shows the global mean cross-entropy loss
+$\mu_\mathcal{L}$ for the noisy samples and MPF entropy on both
+topologies at 10 cycles ($\mu$ in Tab.~\ref{tab:lt} uses the same
+10-cycle runs).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Method & $\mu$ hh dep & $\mu$ rect $7{\times}7$ \\
+\midrule
+$\gamma=1$       & 1.058 & 3.680 \\
+$\gamma=2$       & 1.538 & 7.432 \\
+$\gamma=3$       & 2.277 & 8.003 \\
+\midrule
+MPF entropy      & 0.596 & 2.783 \\
+\bottomrule
+\end{tabular}
+\caption{Global mean per-site cross-entropy loss $\mu_\mathcal{L}$
+(lower is better), 10 cycles.
+The frontier MPF matches the best noisy sample; entropy-optimal MPF
+with the Lieb-Robinson constraint $n_{\rm MPF}\leq n_{\rm nl}$ reduces
+loss by 44\% on heavy-hex and 24\% on rect $7\times7$.
+Hardware PTM heterogeneity on heavy-hex creates an information-starved
+regime; uniform synthetic noise on the same topology recovers 49\%,
+isolating PTM heterogeneity as the cause.}
+\label{tab:entropy}
+\end{table}
+
+\subsection{Connection to hardware: ZNE}
+
+The noise amplification parameter $\gamma$ maps directly to the
+gate-folding factor in zero-noise extrapolation
+(ZNE)~\cite{giurgica2020digital}: running the circuit at fold factors
+$\gamma=1,2,3$ multiplies the effective noise per gate by $\gamma$,
+exactly the $M_\gamma$ model above.
+The Pauli weight $n(v,t)$ is accessible per qubit per cycle via local
+Pauli measurements.
+The wavemap observables and $\alpha(t)$ fitting then follow from the
+same computation applied to experimental data, no simulation required.
+The present work provides the ground truth and the methodology;
+hardware validation is a direct next step.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+\label{sec:conclusion}
+A brief list of consideration follows: First, eigenvalue analysis of
+the composed gate-plus-noise PTMs confirms pure amplitude damping: the
+spatial propagation pattern is entirely a property of the Hamiltonian,
+validating the wavemap as a model-free noise diagnostic.  Second, the
+Lieb-Robinson constraint $n_{\rm MPF}\leq n_{\rm nl}$ is a hard causal
+bound, not a regularizer; enforcing it pointwise is an open problem
+whose solution would eliminate the floored entries in
+Table~\ref{tab:lt}.  Third, fitting time-adaptive coefficients
+$\alpha(t)$ over the union frontier recovers 55\% of information loss
+on heavy-hex and 65\% on rect $7\times7$, outperforming both fixed
+global coefficients and space-adaptive $\alpha(d)$. Fourth, fast
+GPU-accelerated simulation enables systematic exploration of the
+causal relations between noise character, Hamiltonian coupling, and
+wavefront structure across a library of noise models and topologies.
+This opens the path to classifiers trained on simulation ground truth
+that diagnose noise type and severity directly from measured $n(v,t)$
+on real quantum processors, closing the loop between classical
+simulation and hardware characterization.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{fig_qiml_hh20c_qiml.png}
+\caption{Wavemap entropy recovery — heavy-hex $3\times3$, uniform
+depolarizing noise, 20 cycles ($\chi=200$, $\delta=10^{-3}$).
+\textbf{Row 1 (red)}: spatial cross-entropy loss $\mathcal{L}(v)$ for
+$\gamma=1,2,3$ — noise deforms the lightcone with increasing delay and
+amplitude loss.
+\textbf{Row 2 (green)}: MPF recovery via entropy-optimal global $c$
+and time-adaptive $\alpha(t)$; green = lower loss = better recovery.
+\textbf{Row 3}: $L(t)$ per cycle — $\alpha(t)$ outperforms $\gamma_1$
+until cycle 13 where the noiseless wave reflects from the boundary,
+the frontier empties, and $\alpha(t)$ becomes ill-conditioned; recovery
+resumes at cycle 16.
+\textbf{Row 4}: $L(d)$ per BFS shell — $\alpha(t)$ reduces loss at
+every shell; entropy MPF degrades at outer shells.}
+\label{fig:qiml}
+\end{figure*}
+
+\bibliography{qiml26}
+\bibliographystyle{aaai24}
+
+\end{document}

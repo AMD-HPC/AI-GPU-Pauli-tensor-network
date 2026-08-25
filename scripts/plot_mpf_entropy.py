@@ -327,6 +327,8 @@ def main():
     ap.add_argument('--ny',       type=int,   default=7)
     ap.add_argument('--layout',   default='rect', choices=['rect','graph'])
     ap.add_argument('--out',      default=None)
+    ap.add_argument('--qiml',     action='store_true',
+                    help='Generate 2x2 QIML figure (red/green spatial + L(t)/L(d))')
     args=ap.parse_args()
 
     data=parse_log(args.log)
@@ -602,6 +604,93 @@ def main():
     out=args.out or args.log.replace('.log','_mpf_entropy.png')
     plt.savefig(out,dpi=150,bbox_inches='tight')
     print(f"\nFigure saved: {out}")
+
+    # ── QIML figure: 4-row layout ─────────────────────────────────────────────
+    # Row 0: noisy spatial maps γ=1,2,3     (red/orange)
+    # Row 1: MPF recovery maps entropy+α(t) (green)
+    # Row 2: L(t) cross-entropy per cycle
+    # Row 3: L(d) per BFS shell
+    if args.qiml:
+        qiml_out = out.replace('.png','_qiml.png')
+        noisy_states = [g for g in all_states if g in ('N1','N2','N3')]
+        mpf_states   = [g for g in all_states if g in ('MPF_E','MPF_T')]
+        show_states  = noisy_states + mpf_states
+
+        n_noisy = len(noisy_states)   # 3
+        n_mpf   = len(mpf_states)     # 2
+        ncols_q = max(n_noisy, n_mpf)  # 3
+
+        fig2 = plt.figure(figsize=(4*ncols_q, 18))
+        gs2  = mgrid.GridSpec(4, ncols_q, figure=fig2,
+                              hspace=0.55, wspace=0.35,
+                              left=0.05, right=0.97,
+                              top=0.93,  bottom=0.05,
+                              height_ratios=[1, 1, 1.2, 1.2])
+
+        # Row 0: noisy (red)
+        for i, g in enumerate(noisy_states):
+            ax = fig2.add_subplot(gs2[0, i])
+            mu_g = np.nanmean(L_site[g][~np.isnan(L_site[g])])
+            scatter_map(ax, L_site[g], pos, ns, t_nl,
+                        'YlOrRd', 0, L_max, '$\\mathcal{L}$',
+                        f'{LABS[g]}  μ={mu_g:.2f}')
+
+        # Row 1: MPF recovery (green) — centre panels if fewer than ncols_q
+        offset = (ncols_q - n_mpf) // 2
+        for i, g in enumerate(mpf_states):
+            ax = fig2.add_subplot(gs2[1, offset + i])
+            mu_g = np.nanmean(L_site[g][~np.isnan(L_site[g])])
+            scatter_map(ax, L_site[g], pos, ns, t_nl,
+                        'YlGn', 0, L_max, '$\\mathcal{L}$',
+                        f'{LABS[g]}  μ={mu_g:.2f}')
+
+        # Row 2: L(t)
+        ax_lt = fig2.add_subplot(gs2[2, :])
+        for g in show_states:
+            lw = 2.2 if 'MPF' in g else 1.4
+            ax_lt.plot(cycles, L_glob[g], GLINE[g], color=GCOL[g],
+                       lw=lw, label=LABS[g], zorder=5 if 'MPF' in g else 3)
+        ax_lt.axhline(0, color='gray', lw=0.7, ls=':')
+        ax_lt.set_xlabel('Cycle', fontsize=10)
+        ax_lt.set_ylabel('$L(t)$', fontsize=10)
+        ax_lt.set_title('Cross-entropy loss $L(t)$ per cycle', fontsize=11)
+        ax_lt.legend(fontsize=9, ncol=3, loc='upper left')
+        ax_lt.grid(True, alpha=0.3)
+
+        # Row 3: L(d)
+        ax_ld = fig2.add_subplot(gs2[3, :])
+        for g in show_states:
+            L_v = L_site[g]
+            shells, mu_L, sig_L = [], [], []
+            for d in range(max_d+1):
+                idx  = np.where(dist==d)[0]
+                vals = L_v[idx]; vals = vals[~np.isnan(vals)]
+                if len(vals)==0: continue
+                shells.append(d); mu_L.append(vals.mean()); sig_L.append(vals.std())
+            shells = np.array(shells); mu_L = np.array(mu_L); sig_L = np.array(sig_L)
+            lw = 2.2 if 'MPF' in g else 1.4
+            ax_ld.plot(shells, mu_L, f'o{GLINE[g]}', color=GCOL[g],
+                       lw=lw, ms=5, label=LABS[g], zorder=5 if 'MPF' in g else 3)
+            ax_ld.fill_between(shells, mu_L-sig_L, mu_L+sig_L,
+                               alpha=0.12, color=GCOL[g])
+        ax_ld.axhline(0, color='gray', lw=0.7, ls='--')
+        ax_ld.set_xlabel('BFS shell $d$ (distance from center)', fontsize=10)
+        ax_ld.set_ylabel('$\\mathcal{L}(v)$ mean ± σ', fontsize=10)
+        ax_ld.set_title('Entropy loss $L(d)$ per BFS shell', fontsize=11)
+        ax_ld.legend(fontsize=9, ncol=3)
+        ax_ld.grid(True, alpha=0.3)
+
+        mpft_mu = np.nanmean(L_site['MPF_T'][~np.isnan(L_site['MPF_T'])])
+        fig2.suptitle(
+            f'Wavemap entropy recovery — {tag}   '
+            f'Best noisy μ={best_noisy_mu:.2f} | '
+            f'Entropy MPF μ={mpfe_mu:.2f} | '
+            f'α(t) μ={mpft_mu:.2f}',
+            fontsize=12, y=0.97)
+
+        plt.figure(fig2.number)
+        plt.savefig(qiml_out, dpi=150, bbox_inches='tight')
+        print(f"QIML figure saved: {qiml_out}")
 
 if __name__=='__main__':
     main()
