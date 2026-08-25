@@ -532,19 +532,14 @@ simulation and hardware characterization.
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{fig_qiml_hh20c_qiml.png}
-\caption{Wavemap entropy recovery — heavy-hex $3\times3$, uniform
+\caption{Wavemap entropy recovery, heavy-hex $3\times3$, uniform
 depolarizing noise, 20 cycles ($\chi=200$, $\delta=10^{-3}$).
-\textbf{Row 1 (red)}: spatial cross-entropy loss $\mathcal{L}(v)$ for
-$\gamma=1,2,3$ — noise deforms the lightcone with increasing delay and
-amplitude loss.
-\textbf{Row 2 (green)}: MPF recovery via entropy-optimal global $c$
-and time-adaptive $\alpha(t)$; green = lower loss = better recovery.
-\textbf{Row 3}: $L(t)$ per cycle — $\alpha(t)$ outperforms $\gamma_1$
-until cycle 13 where the noiseless wave reflects from the boundary,
-the frontier empties, and $\alpha(t)$ becomes ill-conditioned; recovery
-resumes at cycle 16.
-\textbf{Row 4}: $L(d)$ per BFS shell — $\alpha(t)$ reduces loss at
-every shell; entropy MPF degrades at outer shells.}
+\textbf{Rows 1--2}: spatial $\mathcal{L}(v)$: noisy $\gamma=1,2,3$
+(red) and MPF recovery via entropy-optimal $c$ and $\alpha(t)$ (green).
+\textbf{Row 3}: $L(t)$ per cycle; $\alpha(t)$ degrades at cycle 13
+(boundary reflection, frontier collapse) and recovers at cycle 16.
+\textbf{Row 4}: $L(d)$ per BFS shell; $\alpha(t)$ reduces loss at
+every shell.}
 \label{fig:qiml}
 \end{figure*}
 
