@@ -65,7 +65,7 @@ U_{\rm kick}=\textstyle\prod_v R_x(2\phi)
 \end{equation}
 with $\phi=1.414$,
 on two topologies: the IBM heavy-hex $3\times3$ lattice (68 sites,
-76 bonds) with per-bond hardware noise PTMs~\cite{Hu2025Demonstration},
+76 bonds) with per-bond hardware noise PTM~\cite{Hu2025Demonstration},
 and a rectangular $7\times7$ lattice (49 sites, 84 bonds) with synthetic
 uniform depolarizing noise.
 We use a GPU-accelerated belief propagation tensor network simulator
@@ -74,7 +74,7 @@ truncation cutoff $\delta=10^{-3}$ ($\chi=200$ heavy-hex, $\chi=50$
 rect $7\times7$).
 
 Noise enters via Pauli transfer matrices
-(PTMs)~\cite{rudolph2025simulating}: each bond PTM composes the ideal
+(PTM)~\cite{rudolph2025simulating}: each bond PTM composes the ideal
 gate with $M_\gamma^{(b)} = \gamma M_{\rm hw}^{(b)} + (1-\gamma)I$,
 amplifying hardware noise by factor $\gamma=1,2,3$.
 The standard observable, the autocorrelation
@@ -91,7 +91,7 @@ cycle.
 At the lightcone frontier where $\chi\approx1$ and the simulation is
 exact, $n(v,t)$ is the most reliable observable the simulation
 produces.
-Eigenvalue analysis of the composed PTMs confirms both noise models are
+Eigenvalue analysis of the composed PTM confirms both noise models are
 in the pure amplitude damping regime (off-diagonal fraction $\approx36\%$,
 constant across $\gamma$, $\Delta<0.002$): noise delays and damps the
 Hamiltonian-determined wave without redirecting it, making the wavemap
@@ -157,7 +157,7 @@ significance threshold $\varepsilon_{\rm th}$:
     \mathcal{F}(t) = \{v : n(v,t) > \varepsilon_{\rm th},\;
                           n(v,t-1) \leq \varepsilon_{\rm th}\}
 \end{equation}
-Its maximum BFS distance from the center grows linearly at velocity
+Its maximum breadth-first search (BFS) distance from the center grows linearly at velocity
 $v_{\rm hop}$ (hops/cycle), establishing the Lieb-Robinson cone.  At
 frontier sites, $\chi\approx1$ by construction: nascent correlations
 have not yet built up, so the simulation is exact and $n(v,t)$ is
@@ -284,7 +284,7 @@ making the interior the computational bottleneck.}
 The non-identity Pauli weight $n(v,t)$ resolves the spatial structure
 invisible to $C(t)$.
 Table~\ref{tab:vhop} shows the frontier velocity $v_{\rm hop}$
-(hops/cycle), the slope of the maximum BFS frontier distance vs cycle.
+(hops/cycle), the slope of the maximum BFS frontier distance versus cycle.
 
 \begin{table}[t]
 \centering
@@ -306,7 +306,7 @@ std of arrival delay $l_\gamma(v)$ in cycles.
 Rect $7\times7$: all 49 sites reached at $\gamma=1$; monotone delay
 increase reflects uniform damping.
 Heavy-hex: non-monotone $n$ and $\mu_l$ reflect heterogeneous per-bond
-PTMs; survivorship bias makes $\gamma=3$ appear faster because it
+PTM; survivorship bias makes $\gamma=3$ appear faster because it
 only reaches the easiest nearby sites.}
 \label{tab:vhop}
 \end{table}
@@ -510,7 +510,7 @@ hardware validation is a direct next step.
 \section{Conclusion}
 \label{sec:conclusion}
 A brief list of consideration follows: First, eigenvalue analysis of
-the composed gate-plus-noise PTMs confirms pure amplitude damping: the
+the composed gate-plus-noise PTM confirms pure amplitude damping: the
 spatial propagation pattern is entirely a property of the Hamiltonian,
 validating the wavemap as a model-free noise diagnostic.  Second, the
 Lieb-Robinson constraint $n_{\rm MPF}\leq n_{\rm nl}$ is a hard causal
