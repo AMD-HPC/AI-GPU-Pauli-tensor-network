@@ -100,11 +100,12 @@ full spatial structure of how noise deforms the lightcone.
 The non-identity Pauli weight $n(v,t) = \sum_{P:\,P_v\neq I} c_P(t)^2$
 is extracted from the same simulation at no additional cost.
 By normalization $\sum_P c_P^2=1$, it is a probability~\cite{nahum2018operator}
-— not an approximation — and retains the full spatial field at every
+(not an approximation) and retains the full spatial field at every
 cycle.
 At the lightcone frontier where $\chi\approx1$ and the simulation is
 exact, $n(v,t)$ is the most reliable observable the simulation
-produces.
+produces, provided the interior has sufficient $\chi$ to propagate
+the signal forward faithfully.
 Eigenvalue analysis of the composed PTM confirms both noise models are
 in the pure amplitude damping regime (off-diagonal fraction $\approx36\%$,
 constant across $\gamma$, $\Delta<0.002$): noise delays and damps the
@@ -175,12 +176,15 @@ significance threshold $\varepsilon_{\rm th}$:
     \mathcal{F}(t) = \{v : n(v,t) > \varepsilon_{\rm th},\;
                           n(v,t-1) \leq \varepsilon_{\rm th}\}
 \end{equation}
-Its maximum breadth-first search (BFS) distance from the center grows linearly at velocity
-$v_{\rm hop}$ (hops/cycle), establishing the Lieb-Robinson cone.  At
-frontier sites, $\chi\approx1$ by construction: nascent correlations
-have not yet built up, so the simulation is exact and $n(v,t)$ is
-computed without truncation error. This is where the lightcone
-carries its most reliable information.
+Its maximum breadth-first search (BFS) distance grows linearly at
+velocity $v_{\rm hop}$ (hops/cycle), establishing the Lieb-Robinson
+cone. Since $\chi\approx1$ at the frontier by construction, the
+simulation is exact there.
+Crucially, the simulation captures non-uniform frontiers naturally:
+irregular topology, per-bond coupling heterogeneity, and asymmetric
+noise all shape $\mathcal{F}(t)$ without any model assumption, as
+the heavy-hex results demonstrate (near-degenerate $v_{\gamma_2}
+\approx v_{\gamma_3}$, non-monotone delay, Table~\ref{tab:vhop}).
 
 \subsection{Noiseless and noisy waves}
 
@@ -196,7 +200,7 @@ and the \emph{amplitude ratio}
 $r_\gamma(v) = n_\gamma(v,t_\gamma(v))/n_{\rm nl}(v,t_\gamma(v)) \leq 1$,
 both guaranteed by the Lieb-Robinson bound for pure amplitude damping.
 Together they form the \emph{wavemap}: a spatial portrait of how noise
-deforms the lightcone, site by site (Figure~\ref{fig:wavemap}).
+deforms the lightcone, site by site and cycle by cycle (Figure~\ref{fig:wavemap}).
 
 \begin{figure}[t]
 \centering
@@ -232,7 +236,7 @@ site $v$: the wavemap observable that quantifies, site by site, how
 much the noisy evolution has forgotten relative to the noiseless
 reference.
 
-Section~\ref{sec:results} shows how these observables enable MPF error recovery.
+The next section shows how these observables enable MPF error recovery.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Results}
@@ -284,16 +288,10 @@ $t$ & NL & $\gamma_1$ & $\gamma_2$ & $\gamma_3$ & NL & $\gamma_1$ & $\gamma_2$ &
 10 & $+$.793 & $+$.853 & $+$.883 & $+$.898 & $+$.219 & $+$.490 & $+$.649 & $+$.740 \\
 \bottomrule
 \end{tabular}
-\caption{Autocorrelation $C(t) = \langle Z_c(t)Z_c(0)\rangle$ for
-noiseless (NL) and $\gamma=1,2,3$ on both topologies, 10 cycles
-($\chi=200$ hh, $\chi=50$ r7, $\delta=10^{-3}$).
-Heavy-hex: $C(t)$ oscillates and noise levels are nearly
-indistinguishable: the scalar observable is blind to noise structure.
-Rect $7\times7$: monotone decay separates $\gamma$ levels, but spatial
-information is lost.
-Bond dimension $\chi$ grows as $4\to163$ on heavy-hex and saturates at
-50 on rect $7\times7$; simulation cost scales as $\mathcal{O}(\chi^3)$,
-making the interior the computational bottleneck.}
+\caption{$C(t)$ for NL and $\gamma=1,2,3$, 10 cycles.
+Heavy-hex: noise levels nearly indistinguishable.
+Rect $7\times7$: monotone decay, spatial information lost.
+$\chi$ grows $4\to163$ on heavy-hex (cost $\sim\chi^3$); saturates at 50 on rect $7\times7$.}
 \label{tab:ct}
 \end{table}
 
@@ -317,15 +315,9 @@ HH $3\times3$ & 0.376 & 21 & 8 & 1.13 & 1.97 & 10 & 2.10 & 2.81 & 8 & 0.75 & 1.3
 Rect $7\times7$ & 0.448 & 49 & 49 & 0.98 & 1.15 & 37 & 1.35 & 1.36 & 25 & 1.24 & 1.77 \\
 \bottomrule
 \end{tabular}
-\caption{Frontier velocity $v_{\rm nl}$ and per-site delay statistics
-$(n,\mu_l,\sigma_l)$ for each $\gamma$.
-$n$ = sites reached within 10 cycles; $\mu_l,\sigma_l$ = mean and
-std of arrival delay $l_\gamma(v)$ in cycles.
-Rect $7\times7$: all 49 sites reached at $\gamma=1$; monotone delay
-increase reflects uniform damping.
-Heavy-hex: non-monotone $n$ and $\mu_l$ reflect heterogeneous per-bond
-PTM; survivorship bias makes $\gamma=3$ appear faster because it
-only reaches the easiest nearby sites.}
+\caption{Frontier velocity $v_{\rm nl}$ and delay statistics
+$(n,\mu_l,\sigma_l)$ per $\gamma$: sites reached, mean and std of
+arrival delay $l_\gamma(v)$ in cycles.}
 \label{tab:vhop}
 \end{table}
 
@@ -382,17 +374,36 @@ geometric and information-theoretic objectives are not aligned.
     \sum_i c_i = 1,\quad n_{\rm MPF} \leq n_{\rm nl}
     \label{eq:entropy_mpf}
 \end{equation}
-Table~\ref{tab:entropy} (Section~\ref{sec:results}) shows $\mu_\mathcal{L}$
-for the noisy samples and MPF entropy on both topologies at 10 cycles;
-the geometric baseline is excluded as it optimizes a different objective.
+Table~\ref{tab:entropy} shows $\mu_\mathcal{L}$ for the noisy samples
+and MPF entropy on both topologies at 10 cycles; the geometric baseline
+is excluded as it optimizes a different objective.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Method & $\mu$ hh dep & $\mu$ rect $7{\times}7$ \\
+\midrule
+$\gamma=1$       & 1.058 & 3.680 \\
+$\gamma=2$       & 1.538 & 7.432 \\
+$\gamma=3$       & 2.277 & 8.003 \\
+\midrule
+MPF entropy      & 0.596 & 2.783 \\
+\bottomrule
+\end{tabular}
+\caption{Mean per-site $\mu_\mathcal{L}$ (lower is better), 10 cycles.
+MPF entropy reduces loss 44\% on heavy-hex and 24\% on rect $7\times7$.}
+\label{tab:entropy}
+\end{table}
 
 \subsection{Time-adaptive coefficients $\alpha(t)$}
 
 The global MPF entropy fit uses fixed $c$ across all space and time.
 We refine this by fitting one coefficient vector $\alpha(t)\in\mathbb{R}^3$
 per cycle over the union frontier
-$\mathcal{F}(t) = \mathcal{F}_{\rm nl}(t) \cup \bigcup_i \mathcal{F}_{\gamma_i}(t)$
-— a thin spatial shell where $\chi\approx1$ in all simulations and every
+$\mathcal{F}(t) = \mathcal{F}_{\rm nl}(t) \cup \bigcup_i \mathcal{F}_{\gamma_i}(t)$,
+a thin spatial shell where $\chi\approx1$ in all simulations and every
 sample is exact.
 The approximation is in the application: coefficients fitted on the
 frontier are extrapolated to all sites at that cycle.
@@ -438,19 +449,12 @@ $t$ & $\gamma_1$ & $\alpha(t)$ & $\alpha(d)$ & $\gamma_1$ & $\alpha(t)$ & $\alph
 $\mu$ & 1.058 & \textbf{0.481} & 1.050 & 3.680 & \textbf{1.276} & 5.808 \\
 \bottomrule
 \end{tabular}
-\caption{Global cross-entropy loss $L(t)$ per cycle.
-Heavy-hex shown at 20 cycles; rect $7\times7$ at 10 cycles (--~=~not~run).
-$\alpha(t)$ outperforms $\gamma_1$ at every cycle except 12--15, where
-the noiseless wave reflects from the lattice boundary, the frontier
-empties, and $\alpha(t)$ becomes ill-conditioned (\textit{italics}).
-After cycle 16 the frontier repopulates and $\alpha(t)$ recovers
-strongly (\textbf{bold}).
-$\alpha(d)$ degrades monotonically.
-$\mu$ row: mean per-site $\mu_\mathcal{L}$ over the full run.
-Values floored at zero.\footnote{Not all physical constraints are
-enforced at every optimization step in this work; a full per-site
-Lieb-Robinson constraint would eliminate floored entries at the cost
-of a more complex solver.}}
+\caption{$L(t)$ per cycle: hh at 20 cycles, r7 at 10 (-- = not run).
+\textit{Italics}: $\alpha(t)$ ill-conditioned (frontier collapse, cycles 12--15).
+\textbf{Bold}: recovery after frontier repopulates.
+$\mu$ row: mean $\mu_\mathcal{L}$. Values floored at zero.\footnote{Not all
+per-site Lieb-Robinson constraints enforced; a full pointwise solver would
+eliminate floored entries.}}
 \label{tab:lt}
 \end{table}
 
@@ -476,38 +480,6 @@ $d$ & $\gamma_1$ & $\alpha(t)$ & $\alpha(d)$ & $\gamma_1$ & $\alpha(t)$ & $\alph
 $\alpha(t)$ reduces loss at every shell; $\alpha(d)$ degrades at
 outer shells (too few sites per shell to constrain the fit).}
 \label{tab:ld}
-\end{table}
-
-\subsection{Summary}
-
-Table~\ref{tab:entropy} shows the global mean cross-entropy loss
-$\mu_\mathcal{L}$ for the noisy samples and MPF entropy on both
-topologies at 10 cycles ($\mu$ in Tab.~\ref{tab:lt} uses the same
-10-cycle runs).
-
-\begin{table}[t]
-\centering
-\small
-\begin{tabular}{lcc}
-\toprule
-Method & $\mu$ hh dep & $\mu$ rect $7{\times}7$ \\
-\midrule
-$\gamma=1$       & 1.058 & 3.680 \\
-$\gamma=2$       & 1.538 & 7.432 \\
-$\gamma=3$       & 2.277 & 8.003 \\
-\midrule
-MPF entropy      & 0.596 & 2.783 \\
-\bottomrule
-\end{tabular}
-\caption{Global mean per-site cross-entropy loss $\mu_\mathcal{L}$
-(lower is better), 10 cycles.
-The frontier MPF matches the best noisy sample; entropy-optimal MPF
-with the Lieb-Robinson constraint $n_{\rm MPF}\leq n_{\rm nl}$ reduces
-loss by 44\% on heavy-hex and 24\% on rect $7\times7$.
-Hardware PTM heterogeneity on heavy-hex creates an information-starved
-regime; uniform synthetic noise on the same topology recovers 49\%,
-isolating PTM heterogeneity as the cause.}
-\label{tab:entropy}
 \end{table}
 
 \subsection{Connection to hardware: ZNE}
