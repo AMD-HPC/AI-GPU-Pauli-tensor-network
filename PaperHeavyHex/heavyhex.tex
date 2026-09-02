@@ -53,9 +53,9 @@ We simulate the isotropic Heisenberg model on the \texttt{heavy\_hex\_3x3}
 graph (68 sites, 76 bonds) in the Heisenberg picture using Pauli transfer
 matrices (PTMs), and study the autocorrelation $C(t) = \langle Z_c(t)Z_c(0)\rangle$
 and operator lightcone.
-We incorporate a fully parametric hardware noise model: per-bond, per-color-class
-$16\times 16$ PTMs are loaded from device characterization data and interleaved
-with unitary gates, with noise scaling factor $\gamma \in \{1.0, 2.0, 3.0\}$
+We incorporate a fully parametric noise model: per-bond, per-color-class
+$16\times 16$ PTMs inspired by realistic heavy-hex device noise profiles are
+interleaved with unitary gates, with noise scaling factor $\gamma \in \{1.0, 2.0, 3.0\}$
 for multi-product formula (MPF) extrapolation to zero noise.
 Chi convergence is demonstrated at $\chi=200$ ($|\mathrm{error}|<10^{-4}$,
 reference $\chi=430$) on a 32\,GB GPU, with a $\sim$10$\times$ wall-clock
@@ -157,8 +157,10 @@ We simulate the isotropic Heisenberg (XXX) model:
 \begin{equation}
     H = J \sum_{\langle ij \rangle} \bigl(X_i X_j + Y_i Y_j + Z_i Z_j\bigr)
 \end{equation}
-with bond-specific coupling $J_{\langle ij\rangle}$ from device characterization
-and Trotter step $\varepsilon$.
+with uniform per-bond coupling $J_{\langle ij\rangle} = 1$ and Trotter step $\varepsilon$.
+The coupling constants are simulation parameters that can be replaced by
+device-characterized or otherwise physically motivated values without
+modifying the methodology.
 In the Heisenberg picture, the two-site gate
 $U = e^{-i\varepsilon J(X\otimes X + Y\otimes Y + Z\otimes Z)}$
 is a $4\times4$ unitary acting on the two-qubit Hilbert space $\mathbb{C}^2\otimes\mathbb{C}^2$.
@@ -191,8 +193,8 @@ and three $4\times4$ rotation blocks, all real.
 \section{Hardware Noise Model}
 \label{sec:noise}
 
-We extend the simulation to include hardware noise channels characterized on the
-target device. In the Pauli transfer matrix (PTM) formalism, a noise channel $\mathcal{E}$
+We extend the simulation to include a fully parametric noise model
+representative of realistic heavy-hex device noise. In the Pauli transfer matrix (PTM) formalism, a noise channel $\mathcal{E}$
 acting on a two-site operator is represented as a $16\times16$ real matrix
 $E_{ij} = d^{-1}\,\mathrm{Tr}(P_i^\dagger\,\mathcal{E}(P_j))$,
 where $\{P_i\}$ is the two-site Pauli basis.
@@ -211,15 +213,15 @@ in its color class is:
     G_1 \cdot M_n^{(b)} \cdot G_2(\alpha_b) \cdot M_n^{(b)}
     \cdot G_3(\alpha_b) \cdot M_n^{(b)} \cdot G_4(\delta_b)
 \end{equation}
-where $M_n^{(b)}$ is the hardware noise PTM for bond $b$ in its color class,
-and $G_1$--$G_4$ implement the hardware sub-layers.
+where $M_n^{(b)}$ is the noise PTM for bond $b$ in its color class,
+and $G_1$--$G_4$ implement the gate sub-layers.
 After all color classes, a kick gate $R_x(2\phi)$ is applied once per site
 ($\phi = 1.41371669$).
 
-The noise characterization is fully parametric: a configuration file specifies
+The noise model is fully parametric: a configuration file specifies
 an independent $16\times16$ PTM for each (bond, color class) pair and noise
-scaling factor $\gamma \in \{1.0, 2.0, 3.0\}$ ($\gamma=1.0$: hardware noise
-as measured; $\gamma=2.0, 3.0$: amplified for MPF extrapolation).
+scaling factor $\gamma \in \{1.0, 2.0, 3.0\}$ ($\gamma=1.0$: baseline noise;
+$\gamma=2.0, 3.0$: amplified for MPF extrapolation).
 This single composed PTM is pre-computed per bond at build time,
 so runtime applies exactly one matrix--vector product per bond per Trotter step —
 the same cost as the noiseless simulation.
@@ -758,10 +760,10 @@ The full 10-cycle gamma-MPF computation at $\chi=70$ completes in under 5\,s on 
 Our design maintains the original idea of being topology-agnostic: gate
 and belief propagation kernels require no modification; only a new
 grid class and Hamiltonian gate matrix are needed for the new geometry.
-To showcase different physics, we incorporate a fully parametric hardware
-noise model: each bond carries an independent $16\times16$ Pauli transfer
-matrix per color class, loaded from device characterization data and
-reduced into a single matrix--vector product per bond — at no additional
+To showcase different physics, we incorporate a fully parametric noise
+model inspired by realistic heavy-hex device noise profiles: each bond
+carries an independent $16\times16$ Pauli transfer matrix per color class,
+reduced into a single matrix--vector product per bond at no additional
 runtime cost over the noiseless case. This approach captures bond
 interactions without assumptions on computation order, and is
 mathematically equivalent to sequential gate application.
