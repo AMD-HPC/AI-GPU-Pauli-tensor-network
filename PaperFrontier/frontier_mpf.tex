@@ -616,23 +616,21 @@ fall into qualitatively different regimes.
 
 \begin{table}[h]
 \centering
-\small
-\begin{tabular}{l l r rr rr}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{llrrrrr}
 \toprule
-Topology & Noise & Sites (NL/total) & Best noisy $\mu_\mathcal{L}$
-         & Frontier MPF & Entropy MPF & Improvement \\
+Topology & Noise & Sites & Best $\gamma$ & Frontier & Entropy & $\Delta$ \\
 \midrule
-Rect $7\times7$      & Uniform dep.  & 49/49 & 3.680 & 3.911 (worse) & 2.783 & $-24\%$ \\
-Heavy-hex $3\times3$ & Hardware PTMs & 21/68 & 7.962 & 9.532 (worse) & 9.532 & $0\%$ \\
-Heavy-hex $3\times3$ & Uniform dep.  & 21/68 & 1.058 & 1.058         & 0.538 & $-49\%$ \\
+Rect $7\times7$  & Uniform dep.  & 49/49 & 3.680 & 3.911 & 2.783 & $-24\%$ \\
+HH $3\times3$    & Hardware PTMs & 21/68 & 7.962 & 9.532 & 9.532 & $0\%$   \\
+HH $3\times3$    & Uniform dep.  & 21/68 & 1.058 & 1.058 & 0.538 & $-49\%$ \\
 \bottomrule
 \end{tabular}
-\caption{Mean per-site entropy loss $\mu_\mathcal{L}$.
-The third row, heavy-hex with uniform synthetic depolarizing noise, is the
-control experiment that isolates the cause of the information-starved regime.
-Under uniform noise the heavy-hex topology becomes information-rich (49\%
-improvement), proving that the information-starved result with hardware noise
-is caused by per-bond PTM heterogeneity, not by sparse lightcone coverage.}
+\caption{Mean per-site entropy loss $\mu_\mathcal{L}$ (lower is better).
+Row 3 (uniform dep.\ on heavy-hex) is the control experiment: uniform noise
+makes the topology information-rich (49\% improvement), isolating hardware
+PTM heterogeneity as the cause of the information-starved regime in row 2.}
 \label{tab:entropy_mpf}
 \end{table}
 
