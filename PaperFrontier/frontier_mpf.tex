@@ -209,7 +209,11 @@ We simulate the kicked isotropic Heisenberg model in the Heisenberg picture:
     \qquad
     U_{\rm kick} = \prod_v R_x(2\phi)_v,\quad \phi = 1.41371669
 \end{equation}
-with per-bond coupling $J_{\langle ij\rangle}$ and Trotter step $\varepsilon = 0.10$.
+with uniform per-bond coupling $J_{\langle ij\rangle} = 1$ and Trotter step
+$\varepsilon = 0.10$ for all results presented here.
+The coupling constants are simulation parameters that can be replaced by
+device-characterized or otherwise physically motivated values without
+modifying the wavemap methodology.
 Each Trotter cycle applies the bond gates across all color classes in sequence,
 followed by a single kick gate $R_x(2\phi)$ at every site.
 We use CppSim~\cite{dalberto2026cppsim}, a GPU-accelerated belief propagation
@@ -237,8 +241,9 @@ post-kick measurement point.
 
 We study two topologies under two noise models.
 For the heavy-hex $3\times3$ lattice (68 sites, 76 bonds), per-bond
-noise PTMs from a physical heavy-hex device with heterogeneous
-per-bond couplings are interleaved with the gate decomposition:
+noise PTMs representative of a physical heavy-hex device are interleaved
+with the gate decomposition (uniform $J=1$ couplings; noise PTMs can be
+replaced by device-characterized values without modifying the method):
 \begin{equation}
     \mathrm{PTM}_{\rm noisy}^{(b)} =
     G_1 \cdot M_\gamma^{(b)} \cdot G_2(\alpha_b) \cdot M_\gamma^{(b)}
