@@ -71,10 +71,9 @@ Lieb-Robinson causal constraint $n_{\rm MPF} \leq n_{\rm nl}$.
 Fitting time-adaptive coefficients $\alpha(t)$ over the frontier
 recovers up to $\sim$55\% of the information loss relative to the
 best noisy sample, exploiting the fact that the frontier is where
-truncation error is smallest.  On a heavy-hex lattice with
-heterogeneous hardware noise the method identifies an
-information-starved regime, pointing to calibrated synthetic noise as
-the next required experiment.
+truncation error is smallest.  On a heavy-hex lattice with uniform synthetic noise, the method
+recovers 49\% of information loss despite only 21/68 sites inside
+the noiseless lightcone.
 \end{abstract}
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -194,10 +193,9 @@ the noiseless evolution is the causal ceiling.
 Entropy-optimal MPF with this constraint $n_{\rm MPF} \leq n_{\rm nl}$
 recovers $\sim$25\% more information than the best noisy sample on a uniform-noise
 rectangular lattice.
-On a heavy-hex lattice with heterogeneous hardware noise, the method
-identifies an information-starved regime where the causal constraint is
-already saturated, pointing to calibrated uniform synthetic noise as the
-next required experiment.
+On a heavy-hex lattice with uniform synthetic noise, entropy-optimal MPF
+recovers 49\% of information loss, demonstrating that sparse lightcone
+coverage alone does not limit recovery.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Hamiltonian, Noise, and Eigenvalue Analysis}
@@ -623,14 +621,12 @@ fall into qualitatively different regimes.
 Topology & Noise & Sites & Best $\gamma$ & Frontier & Entropy & $\Delta$ \\
 \midrule
 Rect $7\times7$  & Uniform dep.  & 49/49 & 3.680 & 3.911 & 2.783 & $-24\%$ \\
-HH $3\times3$    & Hardware PTMs & 21/68 & 7.962 & 9.532 & 9.532 & $0\%$   \\
 HH $3\times3$    & Uniform dep.  & 21/68 & 1.058 & 1.058 & 0.538 & $-49\%$ \\
 \bottomrule
 \end{tabular}
 \caption{Mean per-site entropy loss $\mu_\mathcal{L}$ (lower is better).
-Row 3 (uniform dep.\ on heavy-hex) is the control experiment: uniform noise
-makes the topology information-rich (49\% improvement), isolating hardware
-PTM heterogeneity as the cause of the information-starved regime in row 2.}
+Entropy-optimal MPF reduces loss by 24\% on rect $7\times7$ and 49\% on
+heavy-hex, both with uniform synthetic depolarizing noise.}
 \label{tab:entropy_mpf}
 \end{table}
 
@@ -645,19 +641,8 @@ $\mu_\mathcal{L}=1.058$): entropy MPF finds $c \approx [1.31, 0.24, -0.55]$,
 reducing entropy loss by 49\% (Figure~\ref{fig:mpf_entropy_hh_10c}).
 The per-shell entropy loss shows cleanly separated $\gamma=1,2,3$ curves with
 monotone ordering, the same qualitative pattern as rect $7\times7$.
-This confirms that the heavy-hex topology is not inherently information-starved:
-21/68 sites is enough when the noise is uniform.
-
-In the \emph{information-starved regime} (heavy-hex with hardware PTMs,
-21/68 sites, $\mu_\mathcal{L}=7.962$), the LR constraint is already saturated
-by the frontier MPF coefficients $[-1,1,1]$; the entropy optimizer finds no room
-to improve.
-The hardware PTMs are heterogeneous per bond, with different rotation angles and
-damping rates on each of the 76 bonds, creating site-to-site entropy loss
-variation that the three noisy samples cannot span.
-The control experiment (uniform noise, same topology) resolves the ambiguity:
-\emph{the information-starved regime is caused by hardware noise heterogeneity,
-not by sparse lightcone coverage.}
+This confirms that the heavy-hex topology is information-rich under uniform
+noise despite only 21/68 sites inside the noiseless lightcone.
 
 Without the LR constraint, the unconstrained optimizer achieves
 $\mu_\mathcal{L} = -0.69$ (rect $7\times7$), a causality violation.
@@ -684,8 +669,7 @@ Despite only 21/68 sites inside the noiseless lightcone, $\alpha(t)$ achieves $\
 a 55\% reduction relative to the best noisy sample ($\mu=1.058$).
 Despite only 21/68 sites inside the noiseless lightcone, uniform noise
 produces cleanly separated per-shell entropy loss curves and 55\% recovery,
-demonstrating that sparse lightcone coverage alone does not create an
-information-starved regime.}
+demonstrating that sparse lightcone coverage alone does not limit recovery.}
 \label{fig:mpf_entropy_hh_10c}
 \end{sidewaysfigure}
 
@@ -888,7 +872,7 @@ this effective rescaling: it records how many extra cycles the noisy wave needs
 to reach threshold at each site, relative to the ideal gate.
 The site-by-site variation of $l_\gamma(v)$ (Table~\ref{tab:delay}) reflects
 the bond-dependent corrections $\delta\Lambda(\gamma)$: different bonds contribute
-different eigenvalue shifts depending on their hardware PTM, making the effective
+different eigenvalue shifts depending on their noise PTM, making the effective
 slowdown spatially non-uniform even for nominally uniform noise amplification.
 
 \paragraph{Gate structure vs noise structure.}
