@@ -644,6 +644,19 @@ monotone ordering, the same qualitative pattern as rect $7\times7$.
 This confirms that the heavy-hex topology is information-rich under uniform
 noise despite only 21/68 sites inside the noiseless lightcone.
 
+The uniform noise result also identifies a general phenomenon we call the
+\emph{information-starved regime}: when noise is heterogeneous per bond,
+different rotation angles and damping rates on each bond create site-to-site
+entropy loss variation that the three noisy samples $\gamma=1,2,3$ cannot span.
+The LR constraint is then already saturated by the best noisy sample, leaving
+the optimizer no room to improve.
+This regime is a property of noise heterogeneity, not of the lattice topology
+or lightcone sparsity — as the uniform noise result (49\% recovery on the same
+topology) demonstrates.
+Any sufficiently heterogeneous noise model, synthetic or real, would produce
+the same saturation; hardware validation of this prediction is a natural next
+step.
+
 Without the LR constraint, the unconstrained optimizer achieves
 $\mu_\mathcal{L} = -0.69$ (rect $7\times7$), a causality violation.
 The gap between unconstrained ($-0.69$) and LR-constrained ($+2.68$) entropy loss
