@@ -71,7 +71,7 @@ Lieb-Robinson causal constraint $n_{\rm MPF} \leq n_{\rm nl}$.
 Fitting time-adaptive coefficients $\alpha(t)$ over the frontier
 recovers up to $\sim$55\% of the information loss relative to the
 best noisy sample, exploiting the fact that the frontier is where
-truncation error is smallest.  On an IBM heavy-hex lattice with
+truncation error is smallest.  On a heavy-hex lattice with
 heterogeneous hardware noise the method identifies an
 information-starved regime, pointing to calibrated synthetic noise as
 the next required experiment.
@@ -194,7 +194,7 @@ the noiseless evolution is the causal ceiling.
 Entropy-optimal MPF with this constraint $n_{\rm MPF} \leq n_{\rm nl}$
 recovers $\sim$25\% more information than the best noisy sample on a uniform-noise
 rectangular lattice.
-On the IBM heavy-hex lattice with heterogeneous hardware noise, the method
+On a heavy-hex lattice with heterogeneous hardware noise, the method
 identifies an information-starved regime where the causal constraint is
 already saturated, pointing to calibrated uniform synthetic noise as the
 next required experiment.
@@ -209,8 +209,7 @@ We simulate the kicked isotropic Heisenberg model in the Heisenberg picture:
     \qquad
     U_{\rm kick} = \prod_v R_x(2\phi)_v,\quad \phi = 1.41371669
 \end{equation}
-with per-bond coupling $J_{\langle ij\rangle}$ from device characterization
-and Trotter step $\varepsilon = 0.10$.
+with per-bond coupling $J_{\langle ij\rangle}$ and Trotter step $\varepsilon = 0.10$.
 Each Trotter cycle applies the bond gates across all color classes in sequence,
 followed by a single kick gate $R_x(2\phi)$ at every site.
 We use CppSim~\cite{dalberto2026cppsim}, a GPU-accelerated belief propagation
@@ -237,9 +236,9 @@ a different wavefront trajectory; our observables are specific to the
 post-kick measurement point.
 
 We study two topologies under two noise models.
-For the IBM heavy-hex $3\times3$ lattice (68 sites, 76 bonds), per-bond
-noise PTMs measured from device characterization (ibm\_basquecountry) are
-interleaved with the gate decomposition:
+For the heavy-hex $3\times3$ lattice (68 sites, 76 bonds), per-bond
+noise PTMs from a physical heavy-hex device with heterogeneous
+per-bond couplings are interleaved with the gate decomposition:
 \begin{equation}
     \mathrm{PTM}_{\rm noisy}^{(b)} =
     G_1 \cdot M_\gamma^{(b)} \cdot G_2(\alpha_b) \cdot M_\gamma^{(b)}
@@ -680,8 +679,10 @@ $\alpha(t)$ achieves $\mu_\mathcal{L}=1.276$, a 65\% reduction relative to the b
 Same layout as Figure~\ref{fig:mpf_entropy_r7_10c}.
 Despite only 21/68 sites inside the noiseless lightcone, $\alpha(t)$ achieves $\mu_\mathcal{L}=0.481$,
 a 55\% reduction relative to the best noisy sample ($\mu=1.058$).
-Comparing with the hardware PTM result isolates the information-starved regime:
-heterogeneous per-bond noise, not sparse lightcone coverage, prevents recovery.}
+Despite only 21/68 sites inside the noiseless lightcone, uniform noise
+produces cleanly separated per-shell entropy loss curves and 55\% recovery,
+demonstrating that sparse lightcone coverage alone does not create an
+information-starved regime.}
 \label{fig:mpf_entropy_hh_10c}
 \end{sidewaysfigure}
 
