@@ -229,9 +229,8 @@ First, the sub-gates within each bond ($G_1\ldots G_4$ and interleaved noise
 channels) are pre-composed into a single $16\times16$ PTM per bond before
 simulation; belief propagation and truncation are applied once per full Trotter
 cycle, after all color classes have been applied.
-This differs from implementations that truncate after each color class or
-sub-gate~\cite{dalberto2026cppsim}, producing slightly faster $\chi$ growth
-per cycle, but the composed and sequential forms are physically equivalent.
+Belief propagation is applied once per full Trotter cycle, after all color
+classes, making the computation independent of color ordering.
 Second, $n(v,t)$ is recorded once per full Trotter cycle, after the kick gate
 fires; it is a snapshot of the operator state at the end of each complete cycle.
 The wavefront and all wavemap observables are defined in terms of these
