@@ -176,12 +176,15 @@ models~\cite{Hu2025Demonstration} and self-consistent Pauli noise
 learning~\cite{Chen2026Efficient} are complementary approaches that infer noise
 rates by fitting a model; our approach uses the spatial wavefront pattern to
 characterize noise without model assumptions.
-The multi-product formula for error mitigation has been applied to autocorrelation
-functions in tensor network simulations of the heavy-hex
-lattice~\cite{mpf-ref,dalberto2026cppsim}.
-Our work extends these in two directions: replacing the scalar autocorrelation
-with the full space-time Pauli weight field $n(v,t)$, and replacing squared
-error with cross-entropy loss as the MPF objective.
+The multi-product formula for error mitigation was first applied to the
+scalar autocorrelation $C(t)$ in tensor network simulations of the heavy-hex
+lattice~\cite{mpf-ref}, and recently extended to operator inner products
+$\langle\psi_{\gamma_i}|\psi_{\gamma_j}\rangle$ on IBM quantum
+hardware~\cite{robertson2026lindbladmultiproductformulas,dalberto2026cppsim}.
+Our work takes a different direction: rather than autocorrelations or inner
+products, we use the non-identity Pauli weight field $n(v,t)$ — the diagonal
+of the operator's Pauli density matrix — as a site-resolved space-time
+observable, with cross-entropy loss as the MPF objective.
 
 We show via PTM eigenvalue analysis that the noise models studied here are
 pure amplitude damping, leaving the spatial propagation pattern determined
@@ -433,12 +436,15 @@ recovery on the uniform-noise topology.
 \toprule
 Topology & $v_{\rm nl}$ & $v_{\gamma=1}$ & $v_{\gamma=2}$ & $v_{\gamma=3}$ \\
 \midrule
-Heavy-hex $3\times3$ ($\chi=70$)  & 0.376 & 0.145 & 0.152 & 0.152 \\
+Heavy-hex $3\times3$ ($\chi=200$) & 0.376 & 0.224 & 0.127 & 0.127 \\
 Rect $7\times7$      ($\chi=50$)  & 0.448 & 0.382 & 0.248 & 0.097 \\
 \bottomrule
 \end{tabular}
-\caption{Frontier velocity $v_{\rm hop}$ (hops/cycle), cutoff $\delta=10^{-3}$, 10 cycles.
-Wavefront definition: newly-reached sites (first crossing of $\varepsilon_{\rm th}=10^{-4}$).}
+\caption{Frontier velocity $v_{\rm hop}$ (hops/cycle), cutoff $\delta=10^{-3}$, 10 cycles,
+uniform synthetic depolarizing noise on both topologies.
+Rect $7\times7$: strictly monotone $v_{\rm nl}>v_1>v_2>v_3$.
+Heavy-hex: near-degeneracy $v_{\gamma=2}\approx v_{\gamma=3}$, a topological signature
+of the degree-2/3 heavy-hex graph structure independent of noise model.}
 \label{tab:vhop}
 \end{table}
 
@@ -448,10 +454,11 @@ For rect $7\times7$, $v_{\rm hop}$ decreases monotonically with $\gamma$,
 consistent with pure amplitude damping: heavier noise keeps amplitudes below
 threshold longer, delaying the wavefront proportionally to $(1-p\gamma)^N$.
 
-For heavy-hex, $v_{\gamma=2} \approx v_{\gamma=3}$, a near-degeneracy.
-As the eigenvalue analysis shows (Table~\ref{tab:eig}), $\gamma=2$ and $\gamma=3$ differ
-only by $\Delta\lambda \sim 10^{-3}$ in eigenvalue magnitudes.
-The near-equal velocities reflect near-equal PTM spectra.
+For heavy-hex, $v_{\gamma=2} \approx v_{\gamma=3}$, a near-degeneracy that
+persists under uniform synthetic noise and is therefore a topological signature
+of the degree-2/3 heavy-hex graph structure: the graph geometry constrains how
+quickly additional noise can further slow the frontier beyond a characteristic
+propagation limit set by the minimum-degree bonds.
 
 \begin{figure}[H]
 \centering
@@ -654,8 +661,12 @@ This regime is a property of noise heterogeneity, not of the lattice topology
 or lightcone sparsity — as the uniform noise result (49\% recovery on the same
 topology) demonstrates.
 Any sufficiently heterogeneous noise model, synthetic or real, would produce
-the same saturation; hardware validation of this prediction is a natural next
-step.
+the same saturation.
+Real devices, with their specific per-bond coupling and gate characteristics,
+naturally produce non-uniform wavefront propagation that is nonetheless fully
+simulatable with the PTM framework~\cite{robertson2026lindbladmultiproductformulas};
+characterizing and mitigating the resulting information-starved regime on
+hardware is a natural next step.
 
 Without the LR constraint, the unconstrained optimizer achieves
 $\mu_\mathcal{L} = -0.69$ (rect $7\times7$), a causality violation.
