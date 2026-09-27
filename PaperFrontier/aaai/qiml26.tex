@@ -26,7 +26,10 @@
 \title{The Pauli Lightcone Frontier as a Space-Time Observable\\
        for Quantum Noise Characterization}
 
-\author{Anonymous Submission}
+\author{Paolo D'Alberto\\
+  \texttt{paolo.dalberto@amd.com}\\
+  Advanced Micro Devices, Inc.
+}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{document}
@@ -172,15 +175,25 @@ initialization site.
 \subsection{Lightcone: velocity and information}
 
 The \emph{frontier} at cycle $t$ is the set of sites first crossing a
-significance threshold $\varepsilon_{\rm th}$:
+significance threshold $\varepsilon_{\rm th} = 10^{-4}$:
 \begin{equation}
     \mathcal{F}(t) = \{v : n(v,t) > \varepsilon_{\rm th},\;
                           n(v,t-1) \leq \varepsilon_{\rm th}\}
 \end{equation}
 Its maximum breadth-first search (BFS) distance grows linearly at
 velocity $v_{\rm hop}$ (hops/cycle), establishing the Lieb-Robinson
-cone. Since $\chi\approx1$ at the frontier by construction, the
-simulation is exact there.
+cone.
+The wavemap observables are computed at the leading edge of the
+lightcone where they are least sensitive to bond dimension truncation.
+The threshold $\varepsilon_{\rm th}$ plays the role of a physical
+tolerance — analogous to the truncation cutoff $\delta$ in the
+simulation — defining the precision with which we observe the
+wavefront's presence and amplitude ratio.
+The choice of $\chi$ reflects three practical constraints: memory,
+wall-clock time, and accuracy; its effect on $C(t)$ convergence
+and collapse was studied separately in~\cite{dalberto2026ising}.
+A full characterization of the interplay between $\chi$,
+$\varepsilon_{\rm th}$, and wavemap accuracy is left for future work.
 Crucially, the simulation captures non-uniform frontiers naturally:
 irregular topology, per-bond coupling heterogeneity, and asymmetric
 noise all shape $\mathcal{F}(t)$ without any model assumption, as
@@ -289,10 +302,12 @@ $t$ & NL & $\gamma_1$ & $\gamma_2$ & $\gamma_3$ & NL & $\gamma_1$ & $\gamma_2$ &
 10 & $+$.793 & $+$.853 & $+$.883 & $+$.898 & $+$.219 & $+$.490 & $+$.649 & $+$.740 \\
 \bottomrule
 \end{tabular}
-\caption{$C(t)$ for NL and $\gamma=1,2,3$, 10 cycles.
+\caption{$C(t)$ for NL and $\gamma=1,2,3$, 10 cycles ($\varepsilon_{\rm th}=10^{-4}$).
 Heavy-hex: noise levels nearly indistinguishable.
 Rect $7\times7$: monotone decay, spatial information lost.
-$\chi$ grows $4\to163$ on heavy-hex (cost $\sim\chi^3$); saturates at 50 on rect $7\times7$.}
+$\chi$ grows $4\to163$ on heavy-hex; saturates at $\chi=50$ on rect $7\times7$
+(truncation error present at interior sites; wavemap observables computed at
+frontier where $\chi\approx1$ and simulation is exact).}
 \label{tab:ct}
 \end{table}
 
@@ -411,7 +426,8 @@ frontier are extrapolated to all sites at that cycle.
 
 The dual, $\alpha(d)$, fixes a BFS shell and fits over a time window,
 a $\Delta$ in time rather than space.
-Table~\ref{tab:lt} shows $L(t)$ per cycle for $\gamma=1$, $\alpha(t)$,
+Table~\ref{tab:lt} shows $L(t) = \sum_v -\ln(n_{\rm MPF}/n_{\rm nl})$,
+the global cross-entropy loss summed over active sites at cycle $t$, for $\gamma=1$, $\alpha(t)$,
 and $\alpha(d)$: heavy-hex at 20 cycles (to expose the frontier
 collapse at cycles 12--13), rect $7\times7$ at 10 cycles.
 Table~\ref{tab:ld} shows $L(d)$ per BFS shell at 10 cycles for both
@@ -450,7 +466,8 @@ $t$ & $\gamma_1$ & $\alpha(t)$ & $\alpha(d)$ & $\gamma_1$ & $\alpha(t)$ & $\alph
 $\mu$ & 1.058 & \textbf{0.481} & 1.050 & 3.680 & \textbf{1.276} & 5.808 \\
 \bottomrule
 \end{tabular}
-\caption{$L(t)$ per cycle: hh at 20 cycles, r7 at 10 (-- = not run).
+\caption{$L(t) = \sum_v -\ln(n_{\rm MPF}/n_{\rm nl})$: global cross-entropy loss per cycle.
+Hh at 20 cycles, r7 at 10 (-- = not run).
 \textit{Italics}: $\alpha(t)$ ill-conditioned (frontier collapse, cycles 12--15).
 \textbf{Bold}: recovery after frontier repopulates.
 $\mu$ row: mean $\mu_\mathcal{L}$. Values floored at zero.\footnote{Not all
@@ -522,18 +539,16 @@ simulation and hardware characterization.
 % ─────────────────────────────────────────────────────────────────────────────
 \begin{figure*}[t]
 \centering
-\includegraphics[width=\textwidth]{fig_qiml_hh20c_qiml.png}
-\begin{minipage}{\textwidth}
+\includegraphics[width=0.95\textwidth]{fig_qiml_hh20c_qiml.png}
 \caption{Wavemap entropy recovery, heavy-hex $3\times3$, uniform
-depolarizing noise, 20 cycles ($\chi=200$, $\delta=10^{-3}$).
-\textbf{Rows 1--2}: spatial $\mathcal{L}(v)$: noisy $\gamma=1,2,3$
-(red) and MPF recovery via entropy-optimal $c$ and $\alpha(t)$ (green).
-\textbf{Row 3}: $L(t)$ per cycle; $\alpha(t)$ degrades at cycle 13
-(boundary reflection, frontier collapse) and recovers at cycle 16.
-\textbf{Row 4}: $L(d)$ per BFS shell; $\alpha(t)$ reduces loss at
-every shell.}
+depolarizing noise, 20 cycles ($\chi=200$, $\delta=10^{-3}$,
+$\varepsilon_{\rm th}=10^{-4}$).
+\textbf{Row 1} (red): spatial $\mathcal{L}(v)$ for noisy $\gamma=1,2,3$.
+\textbf{Row 2} (green): MPF recovery via entropy-optimal $c$ and $\alpha(t)$.
+\textbf{Row 3}: $L(t) = \sum_v -\ln(n_{\rm MPF}/n_{\rm nl})$ per cycle;
+$\alpha(t)$ ill-conditioned at cycles 12--15 (frontier collapse), recovers at cycle 16.
+\textbf{Row 4}: mean $\mathcal{L}(v)$ per BFS shell; $\alpha(t)$ reduces loss at every shell.}
 \label{fig:qiml}
-\end{minipage}
 \end{figure*}
 
 \bibliography{qiml26}
