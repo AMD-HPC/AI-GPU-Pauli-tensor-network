@@ -66,8 +66,9 @@ def parse_log(path):
         r"[0-9.eE+\-]+\s+"      # gate_err
         r"([0-9.eE+\-]+)\s+"    # Se/logX
         r"[0-9.eE+\-]+\s+"      # gap
-        r"([0-9.eE+\-]+)\s+"    # norm
-        r"([0-9.eE+\-]+)",      # n_off
+        r"([0-9.eE+\-]+|inf)\s+"    # norm (may be inf)
+        r"([0-9.eE+\-]+)"           # n_off
+        r".*$",                  # ignore any extra columns (OSEE/Smax etc)
         re.MULTILINE,
     )
 
@@ -123,14 +124,13 @@ def make_gif(log_files, output, fps=3, vmax=None, suptitle=None, dpi=120):
     n_panels = len(datasets)
     n_frames  = min(len(d[3]) for d in datasets)
 
-    # Global vmax across all datasets and frames for a consistent colorbar
-    if vmax is None:
-        vmax = max(
-            d[3][t]["grid"].max()
-            for d in datasets
-            for t in range(n_frames)
-        )
-        vmax = max(vmax, 1e-6)   # avoid zero
+    # Per-panel vmax so each grid uses its own color scale
+    vmaxes = []
+    for d in datasets:
+        v = max(d[3][t]["grid"].max() for t in range(n_frames))
+        vmaxes.append(max(v, 1e-6))
+    if vmax is not None:
+        vmaxes = [vmax] * len(datasets)  # override with user value
 
     fig_w = 4.0 * n_panels
     fig_h = 4.0
@@ -142,11 +142,11 @@ def make_gif(log_files, output, fps=3, vmax=None, suptitle=None, dpi=120):
 
     ims   = []
     texts = []
-    for ax, (label, nrows, ncols, _) in zip(axes, datasets):
+    for ax, (label, nrows, ncols, _), vm in zip(axes, datasets, vmaxes):
         ax.set_facecolor("#1a1a2e")
         im = ax.imshow(
             np.zeros((nrows, ncols)),
-            vmin=0, vmax=vmax,
+            vmin=0, vmax=vm,
             cmap="inferno",
             interpolation="nearest",
             origin="upper",
