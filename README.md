@@ -7,12 +7,23 @@ on the Bethe lattice, designed on the philosophy of Physics to Compute.
 
 *Formerly known as CppSim.*
 
+![Pauli weight n(v,t) spreading — 4×4 to 11×11](logs/wavefront_scaling.gif)
+
+*Non-identity Pauli weight n(v,t) spreading outward from the center site across
+four lattice sizes (4×4 → 7×7 → 10×10 → 11×11), simulated on AMD MI100 and MI355X GPUs.
+Color encodes log₁₀ n(v,t); white = below threshold. The wavefront is the leading
+edge of quantum entanglement propagation.*
+
 ## Papers
 
 - **2D Ising lightcone** (`Paper/`): first χ=100 TN simulation of 10×10 and 11×11
   grids on AMD MI355X. arXiv:2606.30985
 - **Heavy-hex MPF** (`PaperHeavyHex/`): Heisenberg model on heavy-hex lattice,
   gamma-MPF extrapolation to zero noise. arXiv:2607.22827
+- **Pauli Lightcone Frontier** (`PaperFrontier/`): n(v,t) as a space-time observable
+  for quantum noise characterization, wavemap, and α(t) MPF recovery. arXiv:2608.25254
+- **AAAI QIML 2026** (`PaperFrontier/aaai/`): accepted short paper at the AAAI Symposium
+  on Quantum Information and Machine Learning.
 
 ## Repository Structure
 
