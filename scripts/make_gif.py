@@ -25,6 +25,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import matplotlib.colors as mcolors
 from pathlib import Path
 
 
@@ -140,20 +141,23 @@ def make_gif(log_files, output, fps=3, vmax=None, suptitle=None, dpi=120):
 
     fig.patch.set_facecolor("#1a1a2e")
 
+    vmin_log = 1e-5   # log scale floor — anything below this is black
+
     ims   = []
     texts = []
     for ax, (label, nrows, ncols, _), vm in zip(axes, datasets, vmaxes):
         ax.set_facecolor("#1a1a2e")
+        norm = mcolors.LogNorm(vmin=vmin_log, vmax=max(vm, vmin_log*10))
         im = ax.imshow(
-            np.zeros((nrows, ncols)),
-            vmin=0, vmax=vm,
+            np.full((nrows, ncols), vmin_log),
+            norm=norm,
             cmap="inferno",
             interpolation="nearest",
             origin="upper",
         )
         # Colorbar
         cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        cbar.set_label("n(r,t)", color="white", fontsize=9)
+        cbar.set_label("log n(r,t)", color="white", fontsize=9)
         cbar.ax.yaxis.set_tick_params(color="white")
         plt.setp(cbar.ax.yaxis.get_ticklabels(), color="white")
 
@@ -185,7 +189,7 @@ def make_gif(log_files, output, fps=3, vmax=None, suptitle=None, dpi=120):
             if frame_idx >= len(layers):
                 continue
             rec = layers[frame_idx]
-            im.set_data(rec["grid"])
+            im.set_data(np.clip(rec["grid"], vmin_log, None))
             txt.set_text(
                 f"L={rec['layer']}  C(t)={rec['ct']:.4f}  "
                 f"χ={rec['chi_min']}–{rec['chi_max']}\n"
