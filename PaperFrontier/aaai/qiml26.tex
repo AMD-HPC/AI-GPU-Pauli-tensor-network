@@ -75,8 +75,11 @@ uniform depolarizing noise.
 We use a GPU-accelerated belief propagation tensor network simulator~\cite{dalberto2026ising}
 with Trotter step $\varepsilon=0.10$, bond dimension $\chi$, and
 truncation cutoff $\delta=10^{-3}$ ($\chi=200$ heavy-hex, $\chi=50$
-rect $7\times7$). The Julia reference implementation used in~\cite{robertson2026lindbladmultiproductformulas}
-is based on ITensor~\cite{ITensor} and TensorNetworkQuantumSimulator~\cite{tindall2023gauging_bp,rudolph2025simulating2d}.
+rect $7\times7$). The simulator is a GPU-first implementation of the
+belief propagation tensor network methodology; the Julia reference
+implementation used in~\cite{robertson2026lindbladmultiproductformulas}
+is based on ITensor~\cite{ITensor} and
+TensorNetworkQuantumSimulator~\cite{tindall2023gauging_bp,rudolph2025simulating2d}.
 
 Noise enters via Pauli transfer matrices
 (PTM)~\cite{rudolph2025simulating}: each bond PTM composes the ideal
@@ -105,8 +108,7 @@ full spatial structure of how noise deforms the lightcone.
 The non-identity Pauli weight $n(v,t) = \sum_{P:\,P_v\neq I} c_P(t)^2$
 is extracted from the same simulation at no additional cost.
 By normalization $\sum_P c_P^2=1$, it is a probability~\cite{nahum2018operator}
-(not an approximation) and retains the full spatial field at every
-cycle.
+and retains the full spatial field at every cycle.
 At the lightcone frontier where $\chi\approx1$ and the simulation is
 exact, $n(v,t)$ is the most reliable observable the simulation
 produces, provided the interior has sufficient $\chi$ to propagate
@@ -204,8 +206,8 @@ the heavy-hex results demonstrate (near-degenerate $v_{\gamma_2}
 \subsection{Noiseless and noisy waves}
 
 We simulate four variants: noiseless (NL) and three noise amplification
-levels $\gamma=1,2,3$, where $\gamma$ rescales the noise channel
-$M_\gamma = \gamma M_{\rm hw} + (1-\gamma)I$.
+levels $\gamma=1,2,3$ (chosen from the ZNE literature~\cite{giurgica2020digital}),
+where $\gamma$ rescales the noise channel $M_\gamma = \gamma M_{\rm hw} + (1-\gamma)I$.
 Each variant produces its own wavefront advancing at velocity
 $v_{\gamma} \leq v_{\rm nl}$: noise suppresses amplitudes below
 threshold, delaying the frontier crossing.
@@ -510,6 +512,11 @@ $\gamma=1,2,3$ multiplies the effective noise per gate by $\gamma$,
 exactly the $M_\gamma$ model above.
 The Pauli weight $n(v,t)$ is accessible per qubit per cycle via local
 Pauli measurements.
+On real quantum hardware there is no bond dimension: the full quantum
+state is available exactly, and $n(v,t)$ is measured directly without
+truncation artifact. The frontier is then the leading edge of the
+measured operator support, defined by the same threshold
+$\varepsilon_{\rm th}$ but exact at every site.
 The wavemap observables and $\alpha(t)$ fitting then follow from the
 same computation applied to experimental data, no simulation required.
 The present work provides the ground truth and the methodology;
