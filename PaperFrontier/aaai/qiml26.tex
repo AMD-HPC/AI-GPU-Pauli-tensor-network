@@ -3,7 +3,7 @@
 %% Deadline: 2026-09-01 | 6-8 pages excluding references | two-column
 
 \documentclass[letterpaper]{article}
-\usepackage[submission]{aaai24}
+\usepackage[]{aaai2026}
 \usepackage{times}
 \usepackage{helvet}
 \usepackage{courier}
@@ -19,7 +19,7 @@
 \setlength{\pdfpagewidth}{8.5in}
 \setlength{\pdfpageheight}{11in}
 
-\pdfinfo{/TemplateVersion (2024.1)}
+\pdfinfo{/TemplateVersion (2026.1)}
 
 % ─────────────────────────────────────────────────────────────────────────────
 
@@ -72,10 +72,11 @@ on two topologies: a heavy-hex $3\times3$ lattice (68 sites,
 heavy-hex device noise (uniform $J=1$ couplings),
 and a rectangular $7\times7$ lattice (49 sites, 84 bonds) with synthetic
 uniform depolarizing noise.
-We use a GPU-accelerated belief propagation tensor network simulator
+We use a GPU-accelerated belief propagation tensor network simulator~\cite{dalberto2026ising}
 with Trotter step $\varepsilon=0.10$, bond dimension $\chi$, and
 truncation cutoff $\delta=10^{-3}$ ($\chi=200$ heavy-hex, $\chi=50$
-rect $7\times7$).
+rect $7\times7$). The Julia reference implementation used in~\cite{robertson2026lindbladmultiproductformulas}
+is based on ITensor~\cite{ITensor} and TensorNetworkQuantumSimulator~\cite{tindall2023gauging_bp,rudolph2025simulating2d}.
 
 Noise enters via Pauli transfer matrices
 (PTM)~\cite{rudolph2025simulating}: each bond PTM composes the ideal
@@ -265,7 +266,7 @@ velocity $v_{\rm hop}$ from $n(v,t)$, and the MPF entropy recovery.
 Existing MPF methods operate at two levels of the same scalar observable.
 The first fits $C(t)$ directly: $\sum_i c_i C_{\gamma_i}(t) \approx C_{\rm nl}(t)$,
 one equation per cycle.
-The second solves the bilinear system $A\alpha = B$~\cite{mpf-ref}, where
+The second solves the bilinear system $A\alpha = B$~\cite{mpf-ref,robertson2026lindbladmultiproductformulas}, where
 $A_{ij} = \langle\psi_{\gamma_i}|\psi_{\gamma_j}\rangle$ are noisy-noisy
 inner products and $B_i = \langle\psi_{\gamma_i}|\psi_{\rm nl}\rangle$
 are noisy-noiseless inner products: a richer fit, but still a global
@@ -536,8 +537,18 @@ that diagnose noise type and severity directly from measured $n(v,t)$
 on real quantum processors, closing the loop between classical
 simulation and hardware characterization.
 
-% ─────────────────────────────────────────────────────────────────────────────
-\begin{figure*}[t]
+\bibliography{qiml26}
+\bibliographystyle{aaai2026}
+
+\appendix
+\section{Wavemap Entropy Recovery}
+
+The paper is self-sufficient: all results are reported numerically in Tables 1--5.
+This appendix provides a single full-page figure for visualization purposes,
+showing the spatial structure of the wavemap and the MPF recovery across
+time and space simultaneously — a view that tables alone cannot convey.
+
+\begin{figure*}[!ht]
 \centering
 \includegraphics[width=0.95\textwidth]{fig_qiml_hh20c_qiml.png}
 \caption{Wavemap entropy recovery, heavy-hex $3\times3$, uniform
@@ -548,10 +559,7 @@ $\varepsilon_{\rm th}=10^{-4}$).
 \textbf{Row 3}: $L(t) = \sum_v -\ln(n_{\rm MPF}/n_{\rm nl})$ per cycle;
 $\alpha(t)$ ill-conditioned at cycles 12--15 (frontier collapse), recovers at cycle 16.
 \textbf{Row 4}: mean $\mathcal{L}(v)$ per BFS shell; $\alpha(t)$ reduces loss at every shell.}
-\label{fig:qiml}
+\label{fig:qiml_app}
 \end{figure*}
-
-\bibliography{qiml26}
-\bibliographystyle{aaai24}
 
 \end{document}
