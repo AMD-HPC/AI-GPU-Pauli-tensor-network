@@ -16,14 +16,12 @@ edge of quantum entanglement propagation.*
 
 ## Papers
 
-- **2D Ising lightcone** (`papers/ising_lightcone/`): first χ=100 TN simulation of 10×10 and 11×11
-  grids on AMD MI355X. arXiv:2606.30985
-- **Heavy-hex MPF** (`papers/heavyhex/`): Heisenberg model on heavy-hex lattice,
-  gamma-MPF extrapolation to zero noise. arXiv:2607.22827
-- **Pauli Lightcone Frontier** (`papers/frontier/`): n(v,t) as a space-time observable
-  for quantum noise characterization, wavemap, and α(t) MPF recovery. arXiv:2608.25254
-- **AAAI QIML 2026** (`papers/frontier/aaai/`): accepted short paper at the AAAI Symposium
-  on Quantum Information and Machine Learning.
+| Paper | Directory | arXiv |
+|-------|-----------|-------|
+| GPU-First Heisenberg-Picture TN Dynamics | `papers/ising_lightcone/` | [![arXiv](https://img.shields.io/badge/arXiv-2606.30985-b31b1b.svg)](https://arxiv.org/abs/2606.30985) |
+| TN Simulation on Heavy-Hex Lattices | `papers/heavyhex/` | [![arXiv](https://img.shields.io/badge/arXiv-2607.22827-b31b1b.svg)](https://arxiv.org/abs/2607.22827) |
+| The Pauli Lightcone: Information-Theoretic Error Mitigation | `papers/frontier/` | [![arXiv](https://img.shields.io/badge/arXiv-2608.25254-b31b1b.svg)](https://arxiv.org/abs/2608.25254) |
+| QIML 2026: The Pauli Lightcone Frontier as a Space-Time Observable | `papers/frontier/aaai/` | AAAI QIML 2026 (accepted) |
 
 ## Repository Structure
 
