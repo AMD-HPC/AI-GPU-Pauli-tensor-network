@@ -139,10 +139,10 @@ python3 scripts/make_gif.py logs/mi355x_20260519/11x11_chi100_n70_all.log \
 
 | Directory | Title | arXiv |
 |-----------|-------|-------|
-| `Paper/` | GPU-First Heisenberg-Picture TN Dynamics | 2606.30985 |
-| `PaperHeavyHex/` | TN Simulation on Heavy-Hex Lattices | 2607.22827 |
-| `PaperFrontier/` | The Pauli Lightcone (long version) | 2608.25254 |
-| `PaperFrontier/aaai/` | QIML 2026 short paper | accepted |
+| `papers/ising_lightcone/` | GPU-First Heisenberg-Picture TN Dynamics | 2606.30985 |
+| `papers/heavyhex/` | TN Simulation on Heavy-Hex Lattices | 2607.22827 |
+| `papers/frontier/` | The Pauli Lightcone (long version) | 2608.25254 |
+| `papers/frontier/aaai/` | QIML 2026 short paper | accepted |
 
 ## Known implementation gaps (fix before production)
 

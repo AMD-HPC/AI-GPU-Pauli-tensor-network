@@ -16,13 +16,13 @@ edge of quantum entanglement propagation.*
 
 ## Papers
 
-- **2D Ising lightcone** (`Paper/`): first χ=100 TN simulation of 10×10 and 11×11
+- **2D Ising lightcone** (`papers/ising_lightcone/`): first χ=100 TN simulation of 10×10 and 11×11
   grids on AMD MI355X. arXiv:2606.30985
-- **Heavy-hex MPF** (`PaperHeavyHex/`): Heisenberg model on heavy-hex lattice,
+- **Heavy-hex MPF** (`papers/heavyhex/`): Heisenberg model on heavy-hex lattice,
   gamma-MPF extrapolation to zero noise. arXiv:2607.22827
-- **Pauli Lightcone Frontier** (`PaperFrontier/`): n(v,t) as a space-time observable
+- **Pauli Lightcone Frontier** (`papers/frontier/`): n(v,t) as a space-time observable
   for quantum noise characterization, wavemap, and α(t) MPF recovery. arXiv:2608.25254
-- **AAAI QIML 2026** (`PaperFrontier/aaai/`): accepted short paper at the AAAI Symposium
+- **AAAI QIML 2026** (`papers/frontier/aaai/`): accepted short paper at the AAAI Symposium
   on Quantum Information and Machine Learning.
 
 ## Repository Structure
@@ -60,9 +60,10 @@ CppSim/
 ├── data/graphs/      # Graph topologies (heavy_hex_3x3, rect_7x7, rect_8x8)
 ├── logs/             # Simulation output logs
 ├── archive/          # Legacy code and checkpoints
-├── Paper/            # 2D Ising lightcone paper (arXiv:2606.30985)
-├── PaperAnonymous/   # Anonymous submission version
-└── PaperHeavyHex/   # Heavy-hex MPF paper (arXiv:2607.22827)
+└── papers/
+    ├── ising_lightcone/  # 2D Ising lightcone (arXiv:2606.30985)
+    ├── heavyhex/         # Heavy-hex MPF (arXiv:2607.22827)
+    └── frontier/         # Pauli lightcone frontier (arXiv:2608.25254) + AAAI QIML
 ```
 
 ## Build
