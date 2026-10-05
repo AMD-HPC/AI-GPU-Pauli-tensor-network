@@ -11,12 +11,21 @@ The trigger site is immediately downstream of the broken bond. The broken bond
 is on the shortest path from any center to the trigger site.
 
 Usage:
+  # Single run:
   python3 scripts/searcher.py \\
       --baseline logs/seismic_baseline_NL_r7.log \\
       --perturbed logs/seismic_broken_bond12_NL_r7.log \\
       --graph data/graphs/rect_7x7.json \\
       --centers 25,10,34,30,6,32 \\
       --out logs/search_result.json
+
+  # Ensemble (sum L across multiple center runs):
+  python3 scripts/searcher.py \\
+      --baseline  logs/tomo_6c/base_c10.log,logs/tomo_6c/base_c25.log,... \\
+      --perturbed logs/tomo_6c/pert_c10.log,logs/tomo_6c/pert_c25.log,... \\
+      --graph data/graphs/rect_7x7.json \\
+      --centers 10,25,... \\
+      --broken logs/tomo_6c/broken.json
 
   # With known answer (for scoring):
   python3 scripts/searcher.py ... --broken logs/broken_bond12.json
@@ -126,55 +135,76 @@ def main():
     g = load_graph(args.graph)
     adj, bond_map, all_sites = build_adj(g)
 
+    # Support ensemble mode: comma-separated log file lists
+    baseline_logs  = args.baseline.split(',')
+    perturbed_logs = args.perturbed.split(',')
+    ensemble = len(baseline_logs) > 1 or len(perturbed_logs) > 1
+    if len(baseline_logs) != len(perturbed_logs):
+        print("ERROR: number of baseline and perturbed logs must match")
+        return
+
     print(f"\nSearcher: Hamiltonian Tomography Game")
-    print(f"  Baseline:  {args.baseline}")
-    print(f"  Perturbed: {args.perturbed}")
+    if ensemble:
+        print(f"  Mode: ENSEMBLE ({len(baseline_logs)} runs, sum L fields)")
+        for i, (b, p) in enumerate(zip(baseline_logs, perturbed_logs)):
+            print(f"  Run {i+1}: {Path(b).name} | {Path(p).name}")
+    else:
+        print(f"  Baseline:  {args.baseline}")
+        print(f"  Perturbed: {args.perturbed}")
     print(f"  Centers:   {centers}")
     print(f"  Threshold: {args.thr}")
 
-    # Parse logs
-    nc_b, ns, data_base = parse_pauli_log(args.baseline,  'NL')
-    nc_p, ns, data_pert = parse_pauli_log(args.perturbed, 'NL')
-    nc = min(nc_b, nc_p)
+    # Parse all log pairs and compute ensemble L field
+    FLOOR = 1e-7
+    nc = None
+    ns = None
+    L_ensemble = None  # accumulated sum of L fields across all runs
+
+    for b_log, p_log in zip(baseline_logs, perturbed_logs):
+        try:
+            nc_b, ns_i, data_base = parse_pauli_log(b_log.strip(), 'NL')
+            nc_p, ns_i, data_pert = parse_pauli_log(p_log.strip(), 'NL')
+        except ValueError as e:
+            print(f"  WARNING: skipping {b_log} — {e}")
+            continue
+        nc_i = min(nc_b, nc_p)
+        if nc is None:
+            nc = nc_i; ns = ns_i
+            L_ensemble = np.zeros(ns)
+        else:
+            nc = min(nc, nc_i)
+
+        # Arrival time for this run's baseline
+        t_arr = arrival_time(data_base[:nc_i], args.thr)
+
+        # L at first arrival for this run
+        L_run = np.zeros(ns_i)
+        for v in range(ns_i):
+            t = t_arr[v] - 1
+            if t < 0 or t >= nc_i: continue
+            nb = max(data_base[t, v], FLOOR)
+            np_ = max(data_pert[t, v], FLOOR)
+            L_run[v] = -np.log(np_ / nb)
+
+        L_ensemble += L_run  # sum in log space = multiply likelihoods
+
+    if L_ensemble is None or ns is None:
+        print("ERROR: no valid log pairs found")
+        return
+
+    # Use single-run variables for compatibility
+    data_base = None  # not needed anymore
+    data_pert = None
     print(f"  Sites: {ns}  Cycles: {nc}")
 
-    # ── Signed cross-entropy at first baseline arrival ────────────────────────
-    # L(v, t) = -ln(n_pert(v,t) / n_base(v,t))
-    #   L > 0 : perturbed weaker (red)
-    #   L < 0 : perturbed stronger (blue)
-    #
-    # Evaluate at t_first(v) = first cycle where n_base(v,t) > thr.
-    # At that moment the NL wave has just arrived but the perturbed wave
-    # may be blocked — peak signal, minimum chi-saturation noise.
-    #
-    # Bond score: S(b) = L(v_a, t_first(v_a)) * L(v_b, t_first(v_b))
-    #   S < 0 : sign flip across bond → broken bond candidate
-    #   S > 0 : same sign, not the boundary
+    # ── Use ensemble L field (already computed above) ─────────────────────────
+    # L_ensemble[v] = sum over runs of -ln(n_pert/n_base) at t_first(v)
+    # In ensemble mode: reinforces signal from centers on same side,
+    # partially cancels noise from centers on opposite sides.
 
-    FLOOR = 1e-7
-    t_first = arrival_time(data_base[:nc], args.thr)  # first baseline arrival
+    L_first = L_ensemble
 
-    # Signed cross-entropy at first arrival
-    L_first = np.zeros(ns)
-    for v in range(ns):
-        t = t_first[v] - 1  # 0-indexed
-        if t < 0 or t >= nc:
-            continue
-        nb = max(data_base[t, v], FLOOR)
-        np_ = max(data_pert[t, v], FLOOR)
-        L_first[v] = -np.log(np_ / nb)
-
-    # Also compute summed L over early cycles (backup)
-    L_sum = np.zeros(ns)
-    for v in range(ns):
-        for t in range(min(3, nc)):
-            nb = data_base[t, v]
-            if nb > args.thr:
-                nb_c = max(nb, FLOOR)
-                np_c = max(data_pert[t, v], FLOOR)
-                L_sum[v] += -np.log(np_c / nb_c)
-
-    print(f"\nSigned cross-entropy L(v, t_first(v)):")
+    print(f"\n{'Ensemble' if ensemble else 'Single-run'} signed cross-entropy L(v):")
     nonzero = np.abs(L_first) > 1e-6
     print(f"  Sites with signal: {nonzero.sum()}")
     if nonzero.sum() > 0:
@@ -182,15 +212,10 @@ def main():
         print(f"  min L (blue): {L_first.min():.4f} at site {L_first.argmin()+1}")
 
     if nonzero.sum() == 0:
-        # Fallback: use summed L
-        L_first = L_sum
-        nonzero = np.abs(L_first) > 1e-6
-        print(f"  No t_first signal — using summed early cycles")
-        if nonzero.sum() == 0:
-            print("\n  No detectable perturbation.")
-            return
+        print("\n  No detectable perturbation.")
+        return
 
-    # Trigger sites: largest |L_first|
+    # Trigger sites: largest |L|
     abs_L = np.abs(L_first)
     max_L = abs_L.max()
     trigger_mask = abs_L >= max_L * 0.8
@@ -199,7 +224,7 @@ def main():
     print(f"\nTrigger sites ({direction}): {[v+1 for v in trigger_sites]}")
     print(f"  L values: {[float(f'{L_first[v]:.4f}') for v in trigger_sites]}")
 
-    # Compatibility: set abs_delta for downstream code
+    # Compatibility
     abs_delta = abs_L
     delta_l   = L_first
 
