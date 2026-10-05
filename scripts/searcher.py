@@ -138,102 +138,96 @@ def main():
     nc = min(nc_b, nc_p)
     print(f"  Sites: {ns}  Cycles: {nc}")
 
-    # ── Method 1: integer arrival time difference ─────────────────────────────
-    t_base = arrival_time(data_base[:nc], args.thr)
-    t_pert = arrival_time(data_pert[:nc], args.thr)
-    delta_l = np.zeros(ns)
-    for v in range(ns):
-        if t_base[v] > 0 and t_pert[v] > 0:
-            delta_l[v] = t_pert[v] - t_base[v]
-        elif t_base[v] > 0 and t_pert[v] < 0:
-            delta_l[v] = nc
-        elif t_base[v] < 0 and t_pert[v] > 0:
-            delta_l[v] = -nc
+    # ── Signed cross-entropy at first baseline arrival ────────────────────────
+    # L(v, t) = -ln(n_pert(v,t) / n_base(v,t))
+    #   L > 0 : perturbed weaker (red)
+    #   L < 0 : perturbed stronger (blue)
+    #
+    # Evaluate at t_first(v) = first cycle where n_base(v,t) > thr.
+    # At that moment the NL wave has just arrived but the perturbed wave
+    # may be blocked — peak signal, minimum chi-saturation noise.
+    #
+    # Bond score: S(b) = L(v_a, t_first(v_a)) * L(v_b, t_first(v_b))
+    #   S < 0 : sign flip across bond → broken bond candidate
+    #   S > 0 : same sign, not the boundary
 
-    # ── Method 2: earliest-cycle amplitude difference ─────────────────────────
-    # For each site, find the FIRST cycle where |Δn| > threshold
-    # and use that cycle's raw difference — this finds the trigger site
-    # before the perturbation has propagated and mixed with other signals.
-    delta_n = np.zeros(ns)
-    trigger_cycle = np.full(ns, nc+1)
+    FLOOR = 1e-7
+    t_first = arrival_time(data_base[:nc], args.thr)  # first baseline arrival
+
+    # Signed cross-entropy at first arrival
+    L_first = np.zeros(ns)
     for v in range(ns):
-        for t in range(min(4, nc)):  # look only at early cycles
+        t = t_first[v] - 1  # 0-indexed
+        if t < 0 or t >= nc:
+            continue
+        nb = max(data_base[t, v], FLOOR)
+        np_ = max(data_pert[t, v], FLOOR)
+        L_first[v] = -np.log(np_ / nb)
+
+    # Also compute summed L over early cycles (backup)
+    L_sum = np.zeros(ns)
+    for v in range(ns):
+        for t in range(min(3, nc)):
             nb = data_base[t, v]
-            np_ = data_pert[t, v]
-            if nb > args.thr and np_ > args.thr:
-                diff = abs(np_ - nb) / (nb + 1e-9)
-                if diff > delta_n[v]:
-                    delta_n[v] = diff
-                    trigger_cycle[v] = t + 1
+            if nb > args.thr:
+                nb_c = max(nb, FLOOR)
+                np_c = max(data_pert[t, v], FLOOR)
+                L_sum[v] += -np.log(np_c / nb_c)
 
-    abs_delta_l = np.abs(delta_l)
-    max_delta_l = abs_delta_l.max()
+    print(f"\nSigned cross-entropy L(v, t_first(v)):")
+    nonzero = np.abs(L_first) > 1e-6
+    print(f"  Sites with signal: {nonzero.sum()}")
+    if nonzero.sum() > 0:
+        print(f"  max L (red):  {L_first.max():.4f} at site {L_first.argmax()+1}")
+        print(f"  min L (blue): {L_first.min():.4f} at site {L_first.argmin()+1}")
 
-    print(f"\nΔl(v) [integer cycle arrival difference]:")
-    print(f"  max |Δl| = {max_delta_l:.1f} cycles")
-    print(f"  Sites with |Δl| > 0: {(abs_delta_l > 0).sum()}")
+    if nonzero.sum() == 0:
+        # Fallback: use summed L
+        L_first = L_sum
+        nonzero = np.abs(L_first) > 1e-6
+        print(f"  No t_first signal — using summed early cycles")
+        if nonzero.sum() == 0:
+            print("\n  No detectable perturbation.")
+            return
 
-    print(f"\nΔn(v) [relative amplitude difference, sub-cycle]:")
-    print(f"  max |Δn| = {delta_n.max():.4f}")
-    print(f"  Sites with |Δn| > 0.001: {(delta_n > 0.001).sum()}")
-    print(f"  Sites with |Δn| > 0.01:  {(delta_n > 0.01).sum()}")
-
-    # Use amplitude difference if arrival times are identical
-    if max_delta_l == 0:
-        print("\n  Arrival times identical — using amplitude difference (sub-cycle signal)")
-        abs_delta = delta_n
-        delta_l   = delta_n  # use for direction/ranking
-    else:
-        abs_delta = abs_delta_l
-
-    max_delta = abs_delta.max()
-    if max_delta == 0:
-        print("\n  No detectable perturbation.")
-        return
-
-    # Trigger sites: those with maximum signal
-    trigger_mask = abs_delta >= max_delta * 0.8
+    # Trigger sites: largest |L_first|
+    abs_L = np.abs(L_first)
+    max_L = abs_L.max()
+    trigger_mask = abs_L >= max_L * 0.8
     trigger_sites = np.where(trigger_mask)[0].tolist()
-    direction = "accelerated" if delta_l[trigger_sites[0]] < 0 else "perturbed"
-    print(f"\nTrigger sites ({direction}): {trigger_sites}")
-    print(f"  |Δ| values: {[float(f'{abs_delta[v]:.4f}') for v in trigger_sites]}")
+    direction = "red (weaker)" if L_first[trigger_sites[0]] > 0 else "blue (stronger)"
+    print(f"\nTrigger sites ({direction}): {[v+1 for v in trigger_sites]}")
+    print(f"  L values: {[float(f'{L_first[v]:.4f}') for v in trigger_sites]}")
 
-    # For each trigger site, look at its neighbors — the broken bond connects
-    # the trigger site to its neighbor with the most correlated perturbation signal.
-    candidate_bonds = {}
+    # Compatibility: set abs_delta for downstream code
+    abs_delta = abs_L
+    delta_l   = L_first
+
+    # Bond scoring: S(b) = L(v_a, t_first) * L(v_b, t_first)
+    # Negative product = sign flip = broken bond
+    # Rank by most negative score.
     site_idx = {s: i for i, s in enumerate(all_sites)}
-    for v_site in trigger_sites:
-        v_idx = site_idx.get(v_site, -1)
-        if v_idx < 0: continue
-        # Check all bonds adjacent to trigger site
-        for neighbor, bond_idx in adj.get(v_site, []):
-            n_idx = site_idx.get(neighbor, -1)
-            if n_idx < 0: continue
-            # Score: sum of perturbation at both endpoints
-            score = abs_delta[v_idx] + abs_delta[n_idx]
-            candidate_bonds[bond_idx] = candidate_bonds.get(bond_idx, 0) + score
+    candidate_bonds = {}
 
-    # Also walk paths from centers as backup
-    for center in centers:
-        dist, parent, parent_bond = bfs_from(adj, center)
-        for v_site in trigger_sites:
-            v_idx = site_idx.get(v_site, -1)
-            if v_idx < 0 or dist.get(v_site, -1) < 0: continue
-            curr = v_site
-            steps = 0
-            while parent[curr] >= 0 and steps < 2:  # only 2 hops back
-                b_idx = parent_bond[curr]
-                if b_idx >= 0:
-                    candidate_bonds[b_idx] = candidate_bonds.get(b_idx, 0) + abs_delta[v_idx] * 0.5
-                curr = parent[curr]
-                steps += 1
+    for bond_idx, e in enumerate(g['edges']):
+        a, b = get_bond_sites(e)
+        a_idx = site_idx.get(a, -1)
+        b_idx_s = site_idx.get(b, -1)
+        if a_idx < 0 or b_idx_s < 0: continue
+        La = L_first[a_idx]
+        Lb = L_first[b_idx_s]
+        # Only score bonds where at least one endpoint has a signal
+        if abs(La) < 1e-6 and abs(Lb) < 1e-6: continue
+        # Sign product: negative = sign flip across bond
+        score = La * Lb
+        candidate_bonds[bond_idx] = score
 
     if not candidate_bonds:
         print("\n  No candidate bonds found.")
         return
 
-    # Rank bonds by accumulated signal
-    ranked = sorted(candidate_bonds.items(), key=lambda x: -x[1])
+    # Rank by most negative score (sign flip = broken bond)
+    ranked = sorted(candidate_bonds.items(), key=lambda x: x[1])  # ascending: most negative first
     print(f"\nCandidate bonds (ranked by signal):")
     for bond_idx, score in ranked[:5]:
         a, b = get_bond_sites(g['edges'][bond_idx])
@@ -248,7 +242,7 @@ def main():
         'predicted_bond': predicted_bond,
         'predicted_sites': [a_pred, b_pred],
         'trigger_sites': trigger_sites,
-        'max_delta_l': float(max_delta),
+        'max_delta_l': float(abs_delta.max()),
         'direction': direction,
         'candidate_bonds': ranked[:10],
         'delta_l': delta_l.tolist()
