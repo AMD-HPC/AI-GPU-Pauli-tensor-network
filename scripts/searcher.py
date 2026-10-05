@@ -150,15 +150,21 @@ def main():
         elif t_base[v] < 0 and t_pert[v] > 0:
             delta_l[v] = -nc
 
-    # ── Method 2: amplitude difference (sub-cycle sensitivity) ────────────────
-    # Δn(v) = max over cycles of |n_perturbed(v,t) - n_baseline(v,t)|
-    # Normalized by baseline amplitude to get relative change
+    # ── Method 2: earliest-cycle amplitude difference ─────────────────────────
+    # For each site, find the FIRST cycle where |Δn| > threshold
+    # and use that cycle's raw difference — this finds the trigger site
+    # before the perturbation has propagated and mixed with other signals.
     delta_n = np.zeros(ns)
+    trigger_cycle = np.full(ns, nc+1)
     for v in range(ns):
-        diffs = np.abs(data_pert[:nc, v] - data_base[:nc, v])
-        base_max = data_base[:nc, v].max()
-        if base_max > args.thr:
-            delta_n[v] = diffs.max() / base_max  # relative amplitude change
+        for t in range(min(4, nc)):  # look only at early cycles
+            nb = data_base[t, v]
+            np_ = data_pert[t, v]
+            if nb > args.thr and np_ > args.thr:
+                diff = abs(np_ - nb) / (nb + 1e-9)
+                if diff > delta_n[v]:
+                    delta_n[v] = diff
+                    trigger_cycle[v] = t + 1
 
     abs_delta_l = np.abs(delta_l)
     max_delta_l = abs_delta_l.max()
@@ -192,20 +198,35 @@ def main():
     print(f"\nTrigger sites ({direction}): {trigger_sites}")
     print(f"  |Δ| values: {[float(f'{abs_delta[v]:.4f}') for v in trigger_sites]}")
 
-    # For each trigger site, find which bond on the path from nearest center
-    # is the likely perturbed bond
+    # For each trigger site, look at its neighbors — the broken bond connects
+    # the trigger site to its neighbor with the most correlated perturbation signal.
     candidate_bonds = {}
+    site_idx = {s: i for i, s in enumerate(all_sites)}
+    for v_site in trigger_sites:
+        v_idx = site_idx.get(v_site, -1)
+        if v_idx < 0: continue
+        # Check all bonds adjacent to trigger site
+        for neighbor, bond_idx in adj.get(v_site, []):
+            n_idx = site_idx.get(neighbor, -1)
+            if n_idx < 0: continue
+            # Score: sum of perturbation at both endpoints
+            score = abs_delta[v_idx] + abs_delta[n_idx]
+            candidate_bonds[bond_idx] = candidate_bonds.get(bond_idx, 0) + score
+
+    # Also walk paths from centers as backup
     for center in centers:
         dist, parent, parent_bond = bfs_from(adj, center)
-        for v in trigger_sites:
-            if dist.get(v, -1) < 0: continue
-            # Walk path from v back to center, collect bonds
-            curr = v
-            while parent[curr] >= 0:
+        for v_site in trigger_sites:
+            v_idx = site_idx.get(v_site, -1)
+            if v_idx < 0 or dist.get(v_site, -1) < 0: continue
+            curr = v_site
+            steps = 0
+            while parent[curr] >= 0 and steps < 2:  # only 2 hops back
                 b_idx = parent_bond[curr]
                 if b_idx >= 0:
-                    candidate_bonds[b_idx] = candidate_bonds.get(b_idx, 0) + abs_delta[v]
+                    candidate_bonds[b_idx] = candidate_bonds.get(b_idx, 0) + abs_delta[v_idx] * 0.5
                 curr = parent[curr]
+                steps += 1
 
     if not candidate_bonds:
         print("\n  No candidate bonds found.")
