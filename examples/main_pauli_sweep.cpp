@@ -295,27 +295,13 @@ int main(int argc, char** argv) {
         const float c4n = cosf(4.0f*th_new), s4n = sinf(4.0f*th_new);
         const float c4o = cosf(4.0f*th_old), s4o = sinf(4.0f*th_old);
 
-        // Copy base PTM and patch the angular components
+        // SANITY CHECK: set perturbed PTM to identity (II block only).
+        // This removes all gate action on bond perturb_bond.
+        // If sites connected by this bond show zero propagation, the hook works.
+        // Replace with physically correct PTM once hook is verified.
         const float* base_ptm = s_ptm_nl(perturb_bond);
-        for (int k=0; k<256; k++) g_perturbed_ptm[k] = base_ptm[k];
-
-        // Replace each non-trivial PTM element by swapping old trig for new trig.
-        // Elements containing cos(4*th): scale by c4n/c4o
-        // Elements containing sin(4*th): scale by s4n/s4o (if s4o != 0)
-        // Elements containing cos(2*th) or sin(2*th): scale accordingly
-        // Since all elements are linear combinations, we find elements by magnitude:
-        for (int i=0; i<16; i++) for (int j=0; j<16; j++) {
-            float v = base_ptm[i*16+j];
-            if (i==j && i==0) continue;  // II->II = 1 always
-            float av = fabsf(v);
-            if (av < 1e-6f) continue;    // zero elements unchanged
-            // Match to known trig values
-            if      (fabsf(av - fabsf(c4o)) < 1e-4f) g_perturbed_ptm[i*16+j] = copysignf(c4n, v);
-            else if (fabsf(av - fabsf(s4o)) < 1e-4f) g_perturbed_ptm[i*16+j] = copysignf(s4n, v);
-            else if (fabsf(av - fabsf(c2o)) < 1e-4f) g_perturbed_ptm[i*16+j] = copysignf(c2n, v);
-            else if (fabsf(av - fabsf(s2o)) < 1e-4f) g_perturbed_ptm[i*16+j] = copysignf(s2n, v);
-            // elements = 1.0 are kept as-is (identity blocks)
-        }
+        for (int k=0; k<256; k++) g_perturbed_ptm[k] = 0.0f;
+        for (int i=0; i<16; i++) g_perturbed_ptm[i*16+i] = 1.0f; // identity
         g_perturb_bond    = perturb_bond;
         g_original_ptm_nl = s_ptm_nl;
         s_ptm_nl          = perturbed_ptm_fn;
