@@ -43,7 +43,7 @@ BROKEN_JSON=$LOGDIR/broken_bond${BOND}.json
 # ── Determine parameters ───────────────────────────────────────────────────────
 if [[ $MODE == A_center* ]]; then
     CENTER=${MODE#A_center}
-    CHI=200
+    CHI=50
     STEPS=3
     CENTER_ARG="--center=$CENTER"
     VHOP_ARG="--v_hop=0.5"
