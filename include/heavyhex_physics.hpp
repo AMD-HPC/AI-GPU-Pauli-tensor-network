@@ -190,7 +190,7 @@ struct HeavyHexState {
                 sizeof(Scalar), hipMemcpyHostToDevice));
             bond.chi = 1;
         }
-        printf("[HeavyHexState] D=%d center=%d all chi=1\n", D, center_site);
+        printf("[HeavyHexState] D=%d centers=%zu all chi=1\n", D, center_sites.size());
     }
 };
 
