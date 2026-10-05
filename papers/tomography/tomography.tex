@@ -9,7 +9,7 @@
 \usepackage{hyperref}
 \usepackage{xcolor}
 
-\title{\textbf{Hamiltonian Tomography via the Operator Lightcone Wavemap}}
+\title{\textbf{Red-Blue Hamiltonian Tomography via the Operator Lightcone Wavemap}}
 
 \author{Paolo D'Alberto\\
   \texttt{paolo.dalberto@amd.com}\\
@@ -57,6 +57,13 @@ the wavefront sign changes.
 The method is inspired by seismic tomography: place sensors (observation
 centers) at strategic positions, emit a wave (initialize a local operator),
 and read the arrival pattern. The perturbed bond is the anomaly in the medium.
+
+The red-blue color scheme is a deliberate reference to the red-blue pebble
+game of Hong and Kung~\cite{hong1981pebble}, which characterizes I/O
+complexity as a bottleneck in computational graphs. Here the roles are
+analogous: red sites (upstream, wave blocked) and blue sites (downstream,
+wave starved) identify the bond that limits operator propagation, exactly
+as red and blue pebbles identify the I/O bottleneck in a computation.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Setup}
