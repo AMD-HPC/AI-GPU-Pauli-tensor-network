@@ -90,6 +90,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <string>
+#include <sstream>
 #include <vector>
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -105,7 +106,8 @@ int main(int argc, char** argv) {
     int   chi_max = (argc>1)?atoi(argv[1]):70;
     int   n_steps = (argc>2)?atoi(argv[2]):20;
     float cutoff  = (argc>3)?atof(argv[3]):1e-3f;
-    int   center  = -1;     // auto
+    int   center  = -1;     // auto (single center, legacy)
+    std::vector<int> centers;  // multi-center seismic mode
     float v_hop   = -1.0f;  // shared frontier (for inner products, or single state)
     float v_hops[4] = {-1.f,-1.f,-1.f,-1.f};  // per-state: NL,N1,N2,N3
     bool  per_state = false;
@@ -122,7 +124,14 @@ int main(int argc, char** argv) {
     for (int i=1; i<argc; i++) {
         std::string a(argv[i]);
         if (a.substr(0,11)=="--diagnose=") diagnose_step = atoi(argv[i]+11);
-        if (a.substr(0,9) =="--center=") center = atoi(argv[i]+9);
+        if (a.substr(0,9) =="--center=") {
+            // Parse comma-separated list: --center=13 or --center=13,24,10
+            std::string val = a.substr(9);
+            std::stringstream ss(val);
+            std::string tok;
+            while (std::getline(ss, tok, ',')) centers.push_back(atoi(tok.c_str()));
+            center = centers[0];  // legacy single center = first
+        }
         if (a.substr(0,8) =="--v_hop=") v_hop  = atof(argv[i]+8);
         if (a=="--qr=cholesky")    qr_mode = QrMode::Cholesky;
         if (a=="--qr=householder") qr_mode = QrMode::Householder;
@@ -199,6 +208,10 @@ int main(int argc, char** argv) {
     }
 
     printf("# main_pauli_sweep — %s\n", GRID_TAG);
+    // Print all centers
+    printf("# centers=");
+    for (size_t ci=0; ci<centers.size(); ci++) printf("%s%d", ci?",":"", centers[ci]);
+    printf("\n");
     printf("# chi=%d  n_steps=%d  cutoff=%.0e  center=%d  Scalar=%s (%zu bytes/elem)  qr=%s  chol_reg=%.0e\n",
            chi_max, n_steps, (double)cutoff, center,
            (sizeof(Scalar)==8?"double":"float"), sizeof(Scalar),
@@ -223,7 +236,10 @@ int main(int argc, char** argv) {
     for (int g=0; g<4; g++) {
         if (!active[g]) continue;
         states[g] = new HeavyHexState(static_cast<Grid&>(*grids[g]));
-        states[g]->init_heisenberg(static_cast<Grid&>(*grids[g]), center);
+        if (centers.size() > 1)
+            states[g]->init_heisenberg(static_cast<Grid&>(*grids[g]), centers);
+        else
+            states[g]->init_heisenberg(static_cast<Grid&>(*grids[g]), center);
     }
 
     PtmFn ptms[4] = {s_ptm_nl, s_ptm_n1, s_ptm_n2, s_ptm_n3};

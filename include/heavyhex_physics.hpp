@@ -18,6 +18,8 @@
 #include "gate.hpp"
 #include "measures.hpp"
 #include "workspace.hpp"
+#include <set>
+#include <vector>
 #include <cmath>
 #include <vector>
 #include <cstdio>
@@ -164,13 +166,18 @@ struct HeavyHexState {
     HeavyHexState& operator=(const HeavyHexState&) = delete;
 
     void init_heisenberg(Grid& g, int center_site) {
-        // Heisenberg picture: evolve Z operator at center, I everywhere else
-        // Initial state ρ enters at measurement time, not here
+        init_heisenberg(g, std::vector<int>{center_site});
+    }
+
+    void init_heisenberg(Grid& g, const std::vector<int>& center_sites) {
+        // Heisenberg picture: evolve Z operator at center sites, I everywhere else
+        // Multi-center: Z at each center (seismic simultaneous source)
         std::vector<Scalar> h_I = {1.f, 0.f, 0.f, 0.f};  // I operator
         std::vector<Scalar> h_Z = {0.f, 0.f, 0.f, 1.f};  // Z operator
 
+        std::set<int> centers(center_sites.begin(), center_sites.end());
         for (auto& site : g.sites) {
-            Scalar* data = (site.id == center_site) ? h_Z.data() : h_I.data();
+            Scalar* data = (centers.count(site.id)) ? h_Z.data() : h_I.data();
             HIP_CHECK(hipMemcpy(psi[site.id], data,
                 D*sizeof(Scalar), hipMemcpyHostToDevice));
         }
