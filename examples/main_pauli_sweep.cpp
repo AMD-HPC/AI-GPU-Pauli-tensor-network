@@ -137,9 +137,9 @@ int main(int argc, char** argv) {
     for (int i=1; i<argc; i++) {
         std::string a(argv[i]);
         if (a.substr(0,11)=="--diagnose=") diagnose_step = atoi(argv[i]+11);
-        if (a.substr(0,16)=="--perturb-bond=") {
+        if (a.substr(0,15)=="--perturb-bond=") {
             // --perturb-bond=12,1.2  (bond index, new J value)
-            std::string val = a.substr(16);
+            std::string val = a.substr(15);
             auto comma = val.find(',');
             perturb_bond = atoi(val.substr(0,comma).c_str());
             perturb_J    = (comma!=std::string::npos) ? atof(val.substr(comma+1).c_str()) : 1.2f;
