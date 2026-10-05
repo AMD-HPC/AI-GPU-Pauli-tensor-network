@@ -97,6 +97,17 @@
 
 static constexpr int BP_SWEEPS = 100;
 
+// ── Hamiltonian tomography: perturbed bond PTM ────────────────────────────────
+static int    g_perturb_bond    = -1;
+static float  g_perturbed_ptm[256];
+static PtmFn  g_original_ptm_nl = nullptr;
+
+static const float* perturbed_ptm_fn(int b) {
+    if (b == g_perturb_bond) return g_perturbed_ptm;
+    return g_original_ptm_nl(b);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 static double now_ms() {
     using namespace std::chrono;
     return duration<double,std::milli>(high_resolution_clock::now().time_since_epoch()).count();
@@ -110,7 +121,6 @@ int main(int argc, char** argv) {
     std::vector<int> centers;  // multi-center seismic mode
     int   perturb_bond = -1;   // --perturb-bond=B,J: bond index to perturb
     float perturb_J    = 1.0f; // perturbed coupling (default: uniform J=1)
-    static std::vector<float> perturbed_ptm_storage; // storage for perturbed PTM
     float v_hop   = -1.0f;  // shared frontier (for inner products, or single state)
     float v_hops[4] = {-1.f,-1.f,-1.f,-1.f};  // per-state: NL,N1,N2,N3
     bool  per_state = false;
@@ -264,24 +274,17 @@ int main(int argc, char** argv) {
     // We compute it from the base PTM by replacing the rotation angle.
     if (perturb_bond >= 0) {
         const float eps    = 0.10f;
-        const float th_old = 1.0f * eps;   // J=1, eps=0.10
+        const float th_old = 1.0f * eps;
         const float th_new = perturb_J * eps;
-        // Get base PTM (J=1) for this bond type
         const float* base_ptm = s_ptm_nl(perturb_bond);
-        perturbed_ptm_storage.assign(base_ptm, base_ptm + 256);
-        // The Heisenberg PTM eigenvalues are {1, cos(4J*eps), -cos(4J*eps), ...}
-        // Rescale by replacing cos/sin at old angle with new angle
-        // For the full Heisenberg gate the rotation factor is cos(4*theta):
         float scale = cosf(4.0f*th_new) / (cosf(4.0f*th_old) + 1e-9f);
         for (int i=0;i<16;i++) for (int j=0;j<16;j++) {
-            if (i!=0 || j!=0)  // leave II→II component = 1
-                perturbed_ptm_storage[i*16+j] *= scale;
+            float v = base_ptm[i*16+j];
+            g_perturbed_ptm[i*16+j] = (i==0 && j==0) ? v : v * scale;
         }
-        auto base_fn = s_ptm_nl;
-        s_ptm_nl = [base_fn, &perturbed_ptm_storage](int b) -> const float* {
-            if (b == perturb_bond) return perturbed_ptm_storage.data();
-            return base_fn(b);
-        };
+        g_perturb_bond    = perturb_bond;
+        g_original_ptm_nl = s_ptm_nl;
+        s_ptm_nl          = perturbed_ptm_fn;
         printf("# perturb-bond=%d  J_new=%.4f  eps=%.2f  theta_new=%.4f\n",
                perturb_bond, perturb_J, eps, th_new);
     }
