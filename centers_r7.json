@@ -1,0 +1,18 @@
+{
+  "graph": "data/graphs/rect_7x7.json",
+  "d_max": 2,
+  "v_hop": 0.448,
+  "t_clean_cycles": 4.464285714285714,
+  "t_loop_cycles": 4.464285714285714,
+  "centers": [
+    25,
+    10,
+    34,
+    30,
+    6,
+    32
+  ],
+  "n_centers": 6,
+  "max_bond_dist": 2,
+  "coverage_complete": true
+}
