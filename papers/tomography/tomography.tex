@@ -240,11 +240,35 @@ anomaly — the wavefront on one side cannot inform the other. This is
 detectable without knowing $v_{\rm hop}$ explicitly; the first-arrival
 time $t_{\rm first}(v)$ is observed directly.
 
+\paragraph{Complexity and timing.}
+The two methods have different computational costs:
+\begin{itemize}
+    \item \textbf{Aperture synthesis}: $2p$ simulations (p baselines + p perturbed),
+          each independent. Wall-clock time = one simulation (parallelized over $p$ GPUs).
+    \item \textbf{Seismic}: 2 simulations total, but with multi-center initialization
+          that saturates $\chi$ faster due to simultaneous wavefront propagation.
+\end{itemize}
+Concrete timing on both the $7\times7$ and heavy-hex topologies is needed to
+quantify this tradeoff.
+
+\paragraph{Failure taxonomy.}
+We characterize five failure modes of increasing complexity:
+\begin{enumerate}
+    \item \textbf{Single bond} (demonstrated): clean sign flip, 82× margin
+    \item \textbf{Multiple random bonds}: shadows may overlap, L field becomes ambiguous
+    \item \textbf{Collinear bonds}: line of failures looks like a thick wall — bond resolution fails
+    \item \textbf{Hexagonal cluster}: faulty qubit touches 2-3 bonds — RED cluster with BLUE halo
+    \item \textbf{Graduated failure} ($\delta J$ smooth variation): dimmer switch — sensitivity limit
+\end{enumerate}
+Cases 2-5 represent the primary open experimental questions.
+
 \paragraph{Limitations.}
 The current experiment uses the identity PTM — a maximally disruptive
-perturbation. Realistic coupling deviations ($\delta J \sim 10\%$) will
-produce smaller signals. The sensitivity threshold and the extension to
-multiple simultaneous bond perturbations are open questions.
+perturbation that is deliberately clean. Cases 2-5 above are designed to
+stress-test the method: case 2 tests whether overlapping shadows can be
+resolved, case 3 tests spatial resolution limits, case 4 tests cluster
+detection on irregular topologies, and case 5 tests the sensitivity
+threshold for realistic coupling deviations.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
