@@ -51,8 +51,8 @@ if [[ $MODE == A_center* ]]; then
 elif [[ $MODE == "B" ]]; then
     CENTER_ARG="--center=$CENTERS_STR"
     CHI=80
-    STEPS=3
-    VHOP_ARG="--v_hop=0.5"
+    STEPS=5
+    VHOP_ARG=""   # no v_hop — all bonds must be reachable
     TAG="B_bond${BOND}"
 elif [[ $MODE == "C" ]]; then
     CENTER_ARG="--center=$CENTERS_STR"
