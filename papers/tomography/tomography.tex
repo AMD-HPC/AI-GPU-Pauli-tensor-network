@@ -174,6 +174,40 @@ site 16 as a bond endpoint; their error is only in declaring the wrong
 adjacent bond. The ensemble product cancels these partial errors.
 
 % ─────────────────────────────────────────────────────────────────────────────
+\section{Aperture Synthesis Tomography}
+
+The $p$ independent center runs can be understood as an \emph{aperture synthesis}
+in direct analogy with radio interferometry. In aperture synthesis imaging, a
+physical aperture (lens or dish) is replaced by an array of smaller sensors at
+different baseline positions, each capturing visibility data — complex amplitude
+and phase — that are combined in Fourier space to reconstruct the source image.
+The phase encodes location; the amplitude encodes brightness.
+
+In our setting:
+\begin{itemize}
+    \item Each center $k$ at a different graph position plays the role of one
+          antenna at a different baseline.
+    \item The signed cross-entropy $\mathcal{L}_k(v)$ plays the role of
+          visibility: its sign (positive/negative) encodes which side of the
+          broken bond site $v$ is on, and its magnitude encodes signal strength.
+    \item Combination in log space, $\mathcal{L}_{\rm ens}(v) = \sum_k \mathcal{L}_k(v)$,
+          plays the role of Fourier reconstruction: the sign information from
+          different baselines localizes the broken bond, exactly as phase
+          information from different baselines localizes a radio source.
+\end{itemize}
+
+Without the sign (using absolute amplitude only), localization fails — the
+broken bond cannot be distinguished from its neighbors. This is the analog of
+incoherent averaging in radio astronomy, which destroys phase and loses
+angular resolution. The p-center placement problem — choosing positions that
+guarantee every bond is observable — is the analog of baseline design.
+
+Centers adjacent to the broken bond (short baseline) provide strong but
+ambiguous signals (WRONG individual answers). Centers straddling the bond
+from opposite sides (long baseline) provide the phase contrast that resolves
+the ambiguity. The ensemble combines both, suppressing the ambiguity while
+retaining the signal.
+
 \section{The Seismic Approach}
 
 Running all $p$ centers simultaneously (seismic initialization
