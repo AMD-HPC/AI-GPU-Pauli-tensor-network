@@ -2,41 +2,43 @@
 """
 test_perturbation.py — Verify that --perturb-bond actually changes n(v,t).
 
-Runs baseline and perturbed simulations from a single center,
-then shows which sites differ and whether the broken bond endpoints
-are correctly identified.
+Runs baseline and perturbed simulations, then shows which sites differ
+and whether the broken bond endpoints are correctly identified.
+Supports multi-center seismic mode (comma-separated --centers).
 
 Usage:
+  # Single center test (quick sanity check):
   python3 scripts/test_perturbation.py \
-      --bond 12 --J 2.0 --center 25 \
-      --graph data/graphs/rect_7x7.json \
-      --binary ./main_pauli_sweep_rect7x7
+      --bond 12 --J 2.0 --centers 15 \
+      --graph data/graphs/rect_7x7.json
 
-Output:
-  - Which sites show Δn(v,t) > 0 at each cycle
-  - Whether sites 15,16 (bond 12 endpoints) show the signal
-  - PTM_elements_changed from the log
+  # Seismic multi-center test (proper coverage):
+  python3 scripts/test_perturbation.py \
+      --bond 12 --J 2.0 --centers 25,10,34,30,6,32 \
+      --graph data/graphs/rect_7x7.json
+
+  # Use existing baseline log (skip re-running baseline):
+  python3 scripts/test_perturbation.py \
+      --bond 12 --J 2.0 --centers 25,10,34,30,6,32 \
+      --baseline logs/seismic_baseline_NL_r7.log
 """
 
 import argparse
-import subprocess
-import tempfile
 import os
-import re
 import numpy as np
 import sys
 sys.path.insert(0, 'scripts')
 
-def run_sim(binary, chi, steps, cutoff, center, perturb_bond=None, J=None,
+def run_sim(binary, chi, steps, cutoff, centers, perturb_bond=None, J=None,
             logfile=None, gpu=0):
-    cmd = [f'ROCR_VISIBLE_DEVICES={gpu}', binary,
-           str(chi), str(steps), str(cutoff),
-           f'--center={center}', '--state=NL']
+    center_str = ','.join(str(c) for c in centers)
+    cmd = f'ROCR_VISIBLE_DEVICES={gpu} {binary} {chi} {steps} {cutoff} ' \
+          f'--center={center_str} --state=NL'
     if perturb_bond is not None:
-        cmd.append(f'--perturb-bond={perturb_bond},{J:.4f}')
-    full_cmd = ' '.join(cmd) + f' > {logfile} 2>&1'
-    print(f"  Running: {full_cmd}")
-    ret = os.system(full_cmd)
+        cmd += f' --perturb-bond={perturb_bond},{J:.4f}'
+    cmd += f' > {logfile} 2>&1'
+    print(f"  Running: {cmd}")
+    ret = os.system(cmd)
     if ret != 0:
         print(f"  ERROR: simulation failed (exit {ret})")
         return False
@@ -74,36 +76,44 @@ def get_bond_endpoints(graph_path, bond_idx):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--bond',   type=int,   default=12,    help='Bond index to perturb')
-    ap.add_argument('--J',      type=float, default=2.0,   help='New coupling J (default: 2.0 = double)')
-    ap.add_argument('--center', type=int,   default=25,    help='Center site')
-    ap.add_argument('--chi',    type=int,   default=50)
-    ap.add_argument('--steps',  type=int,   default=5)
-    ap.add_argument('--cutoff', type=float, default=1e-3)
-    ap.add_argument('--gpu',    type=int,   default=0)
-    ap.add_argument('--graph',  default='data/graphs/rect_7x7.json')
-    ap.add_argument('--binary', default='./main_pauli_sweep_rect7x7')
-    ap.add_argument('--thr',    type=float, default=1e-5,  help='Diff threshold to report')
+    ap.add_argument('--bond',     type=int,   default=12,   help='Bond index to perturb')
+    ap.add_argument('--J',        type=float, default=2.0,  help='New coupling J (default: 2.0)')
+    ap.add_argument('--centers',  default='25,10,34,30,6,32',
+                                                            help='Comma-separated center sites')
+    ap.add_argument('--chi',      type=int,   default=50)
+    ap.add_argument('--steps',    type=int,   default=5)
+    ap.add_argument('--cutoff',   type=float, default=1e-3)
+    ap.add_argument('--gpu',      type=int,   default=0)
+    ap.add_argument('--graph',    default='data/graphs/rect_7x7.json')
+    ap.add_argument('--binary',   default='./main_pauli_sweep_rect7x7')
+    ap.add_argument('--baseline', default=None,
+                                                            help='Existing baseline log (skip re-running)')
+    ap.add_argument('--thr',      type=float, default=1e-6, help='Diff threshold to report')
     args = ap.parse_args()
+
+    centers = [int(c) for c in args.centers.split(',')]
 
     # Bond endpoints from graph
     site_a, site_b = get_bond_endpoints(args.graph, args.bond)
     print(f"\nTest: perturb bond {args.bond} ({site_a}↔{site_b}) with J={args.J}")
-    print(f"  Center: {args.center}  Chi: {args.chi}  Steps: {args.steps}")
+    print(f"  Centers: {centers}  Chi: {args.chi}  Steps: {args.steps}")
     print(f"  Binary: {args.binary}")
 
-    # Run baseline
-    base_log = '/tmp/test_baseline.log'
+    # Run simulations
+    base_log = args.baseline or '/tmp/test_baseline.log'
     pert_log = '/tmp/test_perturbed.log'
 
-    print(f"\n[1/2] Baseline simulation...")
-    if not run_sim(args.binary, args.chi, args.steps, args.cutoff,
-                   args.center, logfile=base_log, gpu=args.gpu):
-        return
+    if args.baseline:
+        print(f"\n[1/2] Using existing baseline: {args.baseline}")
+    else:
+        print(f"\n[1/2] Baseline simulation...")
+        if not run_sim(args.binary, args.chi, args.steps, args.cutoff,
+                       centers, logfile=base_log, gpu=args.gpu):
+            return
 
     print(f"\n[2/2] Perturbed simulation (bond={args.bond}, J={args.J})...")
     if not run_sim(args.binary, args.chi, args.steps, args.cutoff,
-                   args.center, perturb_bond=args.bond, J=args.J,
+                   centers, perturb_bond=args.bond, J=args.J,
                    logfile=pert_log, gpu=args.gpu):
         return
 
