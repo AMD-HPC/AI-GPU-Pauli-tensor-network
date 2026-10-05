@@ -1,0 +1,224 @@
+%% tomography.tex — Hamiltonian Tomography via the Operator Lightcone Wavemap
+%% Build: pdflatex tomography.tex && bibtex tomography && pdflatex tomography.tex
+
+\documentclass[11pt,twocolumn]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\title{\textbf{Hamiltonian Tomography via the Operator Lightcone Wavemap}}
+
+\author{Paolo D'Alberto\\
+  \texttt{paolo.dalberto@amd.com}\\
+  Advanced Micro Devices, Inc.
+}
+\date{}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We introduce a model-free method for Hamiltonian tomography based on the
+operator spreading wavefront. Given two tensor network simulations of the
+same quantum lattice — one with the nominal Hamiltonian and one with a
+single perturbed bond — the signed cross-entropy of the non-identity Pauli
+weight field $\mathcal{L}(v,t) = -\ln(n_{\rm pert}/n_{\rm base})$ identifies
+the perturbed bond by its causal signature: a red-blue sign flip at the two
+endpoints, visible from the first wavefront crossing.
+Combining measurements from $p$ strategically placed observation centers via
+an ensemble log-likelihood sum, the broken bond is identified with an 82-fold
+margin over the next candidate on a $7\times7$ lattice, even though individual
+centers give only 2/6 correct answers.
+The method requires no model assumptions, no device calibration access, and
+maps directly to hardware via zero-noise extrapolation and local Pauli
+measurements.
+\end{abstract}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Introduction}
+
+Identifying miscalibrated or anomalous couplings in a quantum processor is
+a central challenge in quantum hardware characterization. Standard approaches
+require explicit Hamiltonian learning — fitting a parameterized noise or
+coupling model to measurement data — which scales poorly with system size and
+depends on model assumptions.
+
+We propose a different approach: measure the operator spreading wavefront
+$n(v,t)$, the non-identity Pauli weight at site $v$ and cycle $t$, from
+multiple initialization sites. A perturbed bond creates a causal signature
+in the wavefront — a sign flip in the cross-entropy field between the two
+endpoints — that propagates no further. The broken bond is exactly where
+the wavefront sign changes.
+
+The method is inspired by seismic tomography: place sensors (observation
+centers) at strategic positions, emit a wave (initialize a local operator),
+and read the arrival pattern. The perturbed bond is the anomaly in the medium.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Setup}
+
+\paragraph{Observable.}
+We simulate the kicked isotropic Heisenberg model on a $7\times7$ rectangular
+lattice (49 sites, 84 bonds) using a GPU-accelerated belief propagation tensor
+network simulator with Trotter step $\varepsilon=0.10$, bond dimension
+$\chi=50$, and truncation cutoff $\delta=10^{-3}$.
+
+The non-identity Pauli weight at site $v$ and cycle $t$ is:
+\begin{equation}
+    n(v,t) = \sum_{P:\,P_v \neq I} c_P(t)^2
+\end{equation}
+where $O_c(t) = \sum_P c_P(t) P$ is the evolved operator initialized at
+center $c$. By normalization $\sum_P c_P^2 = 1$, $n(v,t) \in [0,1]$ is
+a probability.
+
+\paragraph{Perturbation.}
+C\_breaker selects one bond $b^*$ and replaces its Pauli transfer matrix
+(PTM) with the identity, blocking all operator propagation across that bond.
+This is the maximally disruptive perturbation — a perfect switch.
+
+\paragraph{p-center placement.}
+We place $p=6$ observation centers using a greedy geodesic bond cover: the
+minimum set of sites such that every bond is within $d_{\rm max}=2$ hops of
+at least one center. For the $7\times7$ lattice: centers at sites
+$\{6, 10, 25, 30, 32, 34\}$, covering all 84 bonds.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{The Cross-Entropy Wavemap Observable}
+
+\paragraph{Signed cross-entropy.}
+For each center $k$, run two simulations (baseline and perturbed) and
+compute the signed cross-entropy at first baseline arrival:
+\begin{equation}
+    \mathcal{L}_k(v) = -\ln \frac{n^k_{\rm pert}(v,\, t^k_{\rm first}(v))}
+                                  {n^k_{\rm base}(v,\, t^k_{\rm first}(v))}
+\end{equation}
+where $t^k_{\rm first}(v) = \min\{t : n^k_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
+is the first cycle at which the baseline wave reaches site $v$ from center $k$.
+
+At $t^k_{\rm first}(v)$, the baseline wave has just arrived while the perturbed
+wave may be blocked or delayed — this is the moment of maximum signal and
+minimum chi-saturation noise.
+
+\paragraph{Sign interpretation.}
+\begin{itemize}
+    \item $\mathcal{L}_k(v) > 0$: perturbed weaker (red) — upstream of broken bond; wave cannot cross
+    \item $\mathcal{L}_k(v) < 0$: perturbed stronger (blue) — downstream shadow; wave never arrives
+    \item $\mathcal{L}_k(v) = 0$: no perturbation
+\end{itemize}
+
+The broken bond is exactly where the sign changes — between the red and
+blue endpoints (Figure~\ref{fig:ce}).
+
+\paragraph{Ensemble log-likelihood.}
+Sum the signed cross-entropy fields across all $p$ centers:
+\begin{equation}
+    \mathcal{L}_{\rm ens}(v) = \sum_{k=1}^{p} \mathcal{L}_k(v)
+\end{equation}
+This is a log-likelihood ensemble: centers on the same side of the broken
+bond reinforce each other; centers on opposite sides partially cancel noise.
+Silent centers (wave never reaches) contribute zero and do not corrupt the sum.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Bond Detection}
+
+\paragraph{Bond score.}
+For each bond $b$ connecting sites $v_a$ and $v_b$:
+\begin{equation}
+    S(b) = \mathcal{L}_{\rm ens}(v_a) \times \mathcal{L}_{\rm ens}(v_b)
+\end{equation}
+A negative product indicates a sign flip across the bond — the causal
+signature of the broken bond. Rank bonds by most negative $S(b)$.
+
+\paragraph{Results.}
+Table~\ref{tab:results} shows the individual and ensemble results for
+bond 12 (sites $15\\leftrightarrow16$, identity PTM perturbation, $7\times7$ lattice,
+$\chi=50$, 5 cycles).
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcrrl}
+\toprule
+Center & Side & $\mathcal{L}(15)$ & $\mathcal{L}(16)$ & Result \\
+\midrule
+10 & upstream   & $+0.87$ & $-0.02$ & \checkmark CORRECT \\
+30 & upstream   & $+0.37$ & $-0.04$ & \checkmark CORRECT \\
+25 & downstream & $+0.03$ & $-0.04$ & $\times$ WRONG \\
+32 & downstream & $+0.00$ & $-0.03$ & $\times$ WRONG \\
+6  & too far    & $0$     & $0$     & silent \\
+34 & too far    & $0$     & $0$     & silent \\
+\midrule
+Ensemble & — & $+1.23$ & $-0.13$ & \checkmark CORRECT \\
+\bottomrule
+\end{tabular}
+\caption{Signed cross-entropy at bond 12 endpoints (sites 15,16).
+Ensemble score: $S(12) = -0.164$, next bond $= -0.002$ (82× margin).}
+\label{tab:results}
+\end{table}
+
+The ensemble identifies bond 12 with an 82-fold margin over the next
+candidate, despite only 2 of 6 individual centers giving the correct answer.
+The wrong individual answers — centers 25 and 32 — both correctly identify
+site 16 as a bond endpoint; their error is only in declaring the wrong
+adjacent bond. The ensemble product cancels these partial errors.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{The Seismic Approach}
+
+Running all $p$ centers simultaneously (seismic initialization
+$O(0) = \sum_k Z_{c_k}$) produces the same ensemble field in a single
+simulation. At each site $v$, the first-arrival signal is dominated by the
+nearest center — automatically selecting the strongest directional component.
+The sign flip at the broken bond endpoints emerges without any explicit
+path tracing or center-by-center analysis.
+
+The seismic approach reduces $2p$ simulations (p baselines + p perturbed)
+to 2 simulations at the cost of mixing center contributions. For the
+purpose of bond detection the mixing is benign: the sign flip at the
+broken bond is preserved since the nearest center to each endpoint
+dominates at $t_{\rm first}$.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Discussion}
+
+\paragraph{Connection to hardware.}
+The observable $n(v,t)$ is accessible on real quantum hardware via local
+Pauli measurements after ZNE gate-folding circuits~\cite{giurgica2020digital}.
+The cross-entropy $\mathcal{L}(v)$ requires only the ratio of two measurements
+— no absolute calibration. The p-center placement is determined by the graph
+topology alone, independent of the Hamiltonian.
+
+\paragraph{Causal structure.}
+The method exploits the Lieb-Robinson bound: information cannot propagate
+faster than $v_{\rm hop}$ hops/cycle. A broken bond creates a causal
+anomaly — the wavefront on one side cannot inform the other. This is
+detectable without knowing $v_{\rm hop}$ explicitly; the first-arrival
+time $t_{\rm first}(v)$ is observed directly.
+
+\paragraph{Limitations.}
+The current experiment uses the identity PTM — a maximally disruptive
+perturbation. Realistic coupling deviations ($\delta J \sim 10\%$) will
+produce smaller signals. The sensitivity threshold and the extension to
+multiple simultaneous bond perturbations are open questions.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Conclusion}
+
+We have demonstrated that the operator lightcone wavemap enables
+model-free Hamiltonian tomography via a simple signed cross-entropy
+observable. The broken bond is identified by its causal signature —
+a sign flip in $\mathcal{L}(v)$ at its two endpoints — with an 82-fold
+margin using an ensemble of 6 observation centers on a $7\times7$ lattice.
+The seismic multi-center initialization achieves the same result in a
+single simulation. The method requires no model assumptions and connects
+directly to hardware via ZNE and local Pauli measurements.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\bibliographystyle{plain}
+\bibliography{tomography}
+
+\end{document}
