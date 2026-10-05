@@ -138,40 +138,59 @@ def main():
     nc = min(nc_b, nc_p)
     print(f"  Sites: {ns}  Cycles: {nc}")
 
-    # Arrival times
+    # ── Method 1: integer arrival time difference ─────────────────────────────
     t_base = arrival_time(data_base[:nc], args.thr)
     t_pert = arrival_time(data_pert[:nc], args.thr)
-
-    # Δl(v) = t_perturbed - t_baseline (positive = delayed, negative = accelerated)
     delta_l = np.zeros(ns)
     for v in range(ns):
         if t_base[v] > 0 and t_pert[v] > 0:
             delta_l[v] = t_pert[v] - t_base[v]
         elif t_base[v] > 0 and t_pert[v] < 0:
-            delta_l[v] = nc  # never arrived in perturbed — maximum delay
+            delta_l[v] = nc
         elif t_base[v] < 0 and t_pert[v] > 0:
-            delta_l[v] = -nc  # arrived in perturbed but not baseline — acceleration
-        # else: both never arrived — no signal
+            delta_l[v] = -nc
 
-    # Find trigger sites: largest |Δl| > 0
-    abs_delta = np.abs(delta_l)
+    # ── Method 2: amplitude difference (sub-cycle sensitivity) ────────────────
+    # Δn(v) = max over cycles of |n_perturbed(v,t) - n_baseline(v,t)|
+    # Normalized by baseline amplitude to get relative change
+    delta_n = np.zeros(ns)
+    for v in range(ns):
+        diffs = np.abs(data_pert[:nc, v] - data_base[:nc, v])
+        base_max = data_base[:nc, v].max()
+        if base_max > args.thr:
+            delta_n[v] = diffs.max() / base_max  # relative amplitude change
+
+    abs_delta_l = np.abs(delta_l)
+    max_delta_l = abs_delta_l.max()
+
+    print(f"\nΔl(v) [integer cycle arrival difference]:")
+    print(f"  max |Δl| = {max_delta_l:.1f} cycles")
+    print(f"  Sites with |Δl| > 0: {(abs_delta_l > 0).sum()}")
+
+    print(f"\nΔn(v) [relative amplitude difference, sub-cycle]:")
+    print(f"  max |Δn| = {delta_n.max():.4f}")
+    print(f"  Sites with |Δn| > 0.001: {(delta_n > 0.001).sum()}")
+    print(f"  Sites with |Δn| > 0.01:  {(delta_n > 0.01).sum()}")
+
+    # Use amplitude difference if arrival times are identical
+    if max_delta_l == 0:
+        print("\n  Arrival times identical — using amplitude difference (sub-cycle signal)")
+        abs_delta = delta_n
+        delta_l   = delta_n  # use for direction/ranking
+    else:
+        abs_delta = abs_delta_l
+
     max_delta = abs_delta.max()
-
-    print(f"\nΔl(v) statistics:")
-    print(f"  max |Δl| = {max_delta:.1f} cycles")
-    print(f"  Sites with |Δl| > 0: {(abs_delta > 0).sum()}")
-    print(f"  Sites with |Δl| > 1: {(abs_delta > 1).sum()}")
-
     if max_delta == 0:
-        print("\n  No detectable perturbation — perturbation too small or below threshold.")
+        print("\n  No detectable perturbation.")
         return
 
-    # Trigger sites: those with maximum |Δl|
-    trigger_mask = abs_delta >= max_delta * 0.8  # within 80% of max
+    # Trigger sites: those with maximum signal
+    trigger_mask = abs_delta >= max_delta * 0.8
     trigger_sites = np.where(trigger_mask)[0].tolist()
-    direction = "accelerated" if delta_l[trigger_sites[0]] < 0 else "delayed"
+    direction = "accelerated" if delta_l[trigger_sites[0]] < 0 else "perturbed"
     print(f"\nTrigger sites ({direction}): {trigger_sites}")
-    print(f"  Δl values: {[delta_l[v] for v in trigger_sites]}")
+    print(f"  |Δ| values: {[float(f'{abs_delta[v]:.4f}') for v in trigger_sites]}")
 
     # For each trigger site, find which bond on the path from nearest center
     # is the likely perturbed bond
