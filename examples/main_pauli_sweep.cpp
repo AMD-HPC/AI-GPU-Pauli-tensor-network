@@ -98,12 +98,14 @@
 static constexpr int BP_SWEEPS = 100;
 
 // ── Hamiltonian tomography: perturbed bond PTM ────────────────────────────────
-static int    g_perturb_bond    = -1;
+// Supports multiple perturbed bonds (all get the same perturbed PTM)
+static std::vector<int> g_perturb_bonds;  // list of perturbed bond indices
 static float  g_perturbed_ptm[256];
 static PtmFn  g_original_ptm_nl = nullptr;
 
 static const float* perturbed_ptm_fn(int b) {
-    if (b == g_perturb_bond) return g_perturbed_ptm;
+    for (int pb : g_perturb_bonds)
+        if (b == pb) return g_perturbed_ptm;
     return g_original_ptm_nl(b);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -119,8 +121,9 @@ int main(int argc, char** argv) {
     float cutoff  = (argc>3)?atof(argv[3]):1e-3f;
     int   center  = -1;     // auto (single center, legacy)
     std::vector<int> centers;  // multi-center seismic mode
-    int   perturb_bond = -1;   // --perturb-bond=B,J: bond index to perturb
+    int   perturb_bond = -1;   // --perturb-bond=B,J: primary bond (legacy)
     float perturb_J    = 1.0f; // perturbed coupling (default: uniform J=1)
+    std::vector<int> g_perturb_bonds_list;  // all perturbed bonds
     float v_hop   = -1.0f;  // shared frontier (for inner products, or single state)
     float v_hops[4] = {-1.f,-1.f,-1.f,-1.f};  // per-state: NL,N1,N2,N3
     bool  per_state = false;
@@ -138,11 +141,23 @@ int main(int argc, char** argv) {
         std::string a(argv[i]);
         if (a.substr(0,11)=="--diagnose=") diagnose_step = atoi(argv[i]+11);
         if (a.substr(0,15)=="--perturb-bond=") {
-            // --perturb-bond=12,1.2  (bond index, new J value)
+            // --perturb-bond=12,1.2       (single bond)
+            // --perturb-bond=12;13,1.2   (multiple bonds, semicolon-separated)
             std::string val = a.substr(15);
-            auto comma = val.find(',');
-            perturb_bond = atoi(val.substr(0,comma).c_str());
-            perturb_J    = (comma!=std::string::npos) ? atof(val.substr(comma+1).c_str()) : 1.2f;
+            auto comma = val.rfind(',');  // last comma separates bonds from J
+            std::string bonds_str = val.substr(0, comma);
+            perturb_J = (comma!=std::string::npos) ? atof(val.substr(comma+1).c_str()) : 1.2f;
+            // Parse semicolon-separated bond indices
+            std::stringstream ss(bonds_str);
+            std::string tok;
+            while (std::getline(ss, tok, ';')) {
+                int bi = atoi(tok.c_str());
+                if (bi >= 0) { perturb_bond = bi; } // keep first for legacy
+            }
+            // Store all bonds for the multi-bond perturb_bonds_list
+            std::stringstream ss2(bonds_str);
+            while (std::getline(ss2, tok, ';'))
+                if (!tok.empty()) g_perturb_bonds_list.push_back(atoi(tok.c_str()));
         }
         if (a.substr(0,9) =="--center=") {
             // Parse comma-separated list: --center=13 or --center=13,24,10
@@ -302,15 +317,21 @@ int main(int argc, char** argv) {
         const float* base_ptm = s_ptm_nl(perturb_bond);
         for (int k=0; k<256; k++) g_perturbed_ptm[k] = 0.0f;
         for (int i=0; i<16; i++) g_perturbed_ptm[i*16+i] = 1.0f; // identity
-        g_perturb_bond    = perturb_bond;
+        // Set the global bond list (use list if populated, else single bond)
+        if (g_perturb_bonds_list.empty()) g_perturb_bonds_list.push_back(perturb_bond);
+        g_perturb_bonds   = g_perturb_bonds_list;
+        g_perturb_bond    = perturb_bond;  // legacy
         g_original_ptm_nl = s_ptm_nl;
         s_ptm_nl          = perturbed_ptm_fn;
 
         // Verification: print first few changed elements
         int n_changed = 0;
         for (int k=0; k<256; k++) if (fabsf(g_perturbed_ptm[k]-base_ptm[k])>1e-6f) n_changed++;
-        printf("# perturb-bond=%d  J_new=%.4f  th_new=%.4f  PTM_elements_changed=%d\n",
-               perturb_bond, perturb_J, th_new, n_changed);
+        printf("# perturb-bonds=");
+        for (size_t bi=0; bi<g_perturb_bonds.size(); bi++)
+            printf("%s%d", bi?";":"", g_perturb_bonds[bi]);
+        printf("  J_new=%.4f  th_new=%.4f  PTM_elements_changed=%d\n",
+               perturb_J, th_new, n_changed);
     }
 
     PtmFn ptms[4] = {s_ptm_nl, s_ptm_n1, s_ptm_n2, s_ptm_n3};

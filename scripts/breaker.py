@@ -23,6 +23,12 @@ Usage:
       --bond 12 --coupling 0.2 \\
       --out logs/broken_r7_bond12_dJ02.json
 
+  # Perturb multiple bonds simultaneously (comma-separated):
+  python3 scripts/breaker.py \\
+      --graph data/graphs/rect_7x7.json \\
+      --bond 12,13 --coupling 0.2 \\
+      --out logs/broken_r7_bonds12_13.json
+
   # Perturb bond 12 by +5% depolarizing noise:
   python3 scripts/breaker.py \\
       --graph data/graphs/rect_7x7.json \\
@@ -107,7 +113,7 @@ def list_bonds(g, graph_path=''):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--graph',    required=True, help='Graph JSON file')
-    ap.add_argument('--bond',     type=int,      help='Bond index to perturb')
+    ap.add_argument('--bond',     type=str,      help='Bond index (or comma-separated list) to perturb')
     ap.add_argument('--coupling', type=float,    help='δJ: coupling perturbation fraction (e.g. 0.2 = +20%%)')
     ap.add_argument('--depol',    type=float,    help='δp: depolarizing noise increase (e.g. 0.05)')
     ap.add_argument('--J',        type=float, default=1.0,   help='Base coupling J (default: 1.0)')
@@ -131,29 +137,46 @@ def main():
         print("ERROR: specify --coupling or --depol")
         return
 
+    # Parse bond list (single or comma-separated)
+    bond_indices = [int(b.strip()) for b in args.bond.split(',')]
     n_bonds = len(g['edges'])
-    if args.bond >= n_bonds:
-        print(f"ERROR: bond {args.bond} out of range (0..{n_bonds-1})")
-        return
+    for bi in bond_indices:
+        if bi >= n_bonds:
+            print(f"ERROR: bond {bi} out of range (0..{n_bonds-1})")
+            return
 
-    bond = g['edges'][args.bond]
-    site_a, site_b = get_bond_sites(bond)
-    base_coupling = bond.get('coupling', args.J) if isinstance(bond, dict) else args.J
+    # Collect all endpoints
+    bonds_info = []
+    for bi in bond_indices:
+        bond = g['edges'][bi]
+        sa, sb = get_bond_sites(bond)
+        bonds_info.append({'bond': bi, 'site_a': sa, 'site_b': sb})
 
     print(f"\nBreaker configuration:")
     print(f"  Graph:  {args.graph}")
-    print(f"  Bond:   {args.bond} ({site_a} ↔ {site_b})")
+    for bi_info in bonds_info:
+        print(f"  Bond:   {bi_info['bond']} ({bi_info['site_a']} ↔ {bi_info['site_b']})")
+
+    # For backward compatibility: use first bond as primary
+    site_a = bonds_info[0]['site_a']
+    site_b = bonds_info[0]['site_b']
 
     result = {
-        'graph':  args.graph,
-        'bond':   args.bond,
-        'site_a': site_a,
-        'site_b': site_b,
+        'graph':   args.graph,
+        'bond':    bond_indices[0],       # primary bond (first)
+        'bonds':   bond_indices,          # all perturbed bonds
+        'site_a':  site_a,
+        'site_b':  site_b,
+        'bonds_info': bonds_info,
         'J':      args.J,
         'eps':    args.eps,
         'p0':     args.p0,
         'perturbation': {}
     }
+
+    # Use first bond for PTM computation (all bonds get same perturbation)
+    bond = g['edges'][bond_indices[0]]
+    base_coupling = bond.get('coupling', args.J) if isinstance(bond, dict) else args.J
 
     # ── Baseline PTM ──────────────────────────────────────────────────────────
     M_gate_base = heisenberg_gate(args.J, args.eps)
