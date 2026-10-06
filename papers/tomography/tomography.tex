@@ -47,12 +47,20 @@ require explicit Hamiltonian learning — fitting a parameterized noise or
 coupling model to measurement data — which scales poorly with system size and
 depends on model assumptions.
 
-We propose a different approach: measure the operator spreading wavefront
-$n(v,t)$, the non-identity Pauli weight at site $v$ and cycle $t$, from
-multiple initialization sites. A perturbed bond creates a causal signature
-in the wavefront — a sign flip in the cross-entropy field between the two
-endpoints — that propagates no further. The broken bond is exactly where
-the wavefront sign changes.
+We propose a different approach based on a clear separation of roles.
+The \emph{simulator} knows the nominal Hamiltonian and produces two Pauli
+weight fields: $n_{\rm base}(v,t)$ from the nominal evolution, and
+$n_{\rm pert}(v,t)$ from an evolution where one bond has been silently
+modified. The \emph{detection algorithm} (C\_searcher) receives only these
+two arrays of numbers and must identify the modified bond from their ratio
+alone — with no knowledge of the Hamiltonian, the perturbation type, or
+its magnitude. The detection is deliberately blind.
+
+A perturbed bond creates a causal signature in the wavefront: a sign flip
+in the cross-entropy field $\mathcal{L}(v) = -\ln(n_{\rm pert}/n_{\rm base})$
+between its two endpoints that propagates no further. The broken bond is
+exactly where the wavefront sign changes — identifiable from the observables
+alone.
 
 The method is inspired by seismic tomography: place sensors (observation
 centers) at strategic positions, emit a wave (initialize a local operator),
