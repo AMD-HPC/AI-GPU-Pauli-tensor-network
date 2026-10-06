@@ -228,24 +228,46 @@ def main():
     abs_delta = abs_L
     delta_l   = L_first
 
-    # Bond scoring: S(b) = L(v_a, t_first) * L(v_b, t_first)
-    # Negative product = sign flip = broken bond
-    # Rank by most negative score.
+    # Bond scoring: S(b,t) = L(v_a,t) * L(v_b,t) at each cycle
+    # Find the most negative score across ALL cycles — catches sign flips
+    # that may only appear at specific cycles (e.g. before interference builds).
     site_idx = {s: i for i, s in enumerate(all_sites)}
     candidate_bonds = {}
+
+    # Rebuild full L(v,t) matrix for per-cycle scoring
+    # Use L_ensemble if ensemble mode, else single-run L
+    # We need raw L per cycle — recompute from parsed data
+    # (L_first is already at t_first; for per-cycle we need all cycles)
+    L_cycle = np.zeros((nc, ns))  # L(v,t) for all cycles
+    FLOOR_loc = 1e-7
+    for b_log, p_log in zip(baseline_logs, perturbed_logs):
+        try:
+            nc_b2, ns2, db2 = parse_pauli_log(b_log.strip(), 'NL')
+            nc_p2, ns2, dp2 = parse_pauli_log(p_log.strip(), 'NL')
+        except ValueError:
+            continue
+        nc2 = min(nc_b2, nc_p2, nc)
+        for t in range(nc2):
+            for v in range(ns2):
+                if db2[t,v] > args.thr:
+                    L_cycle[t,v] += -np.log(max(dp2[t,v],FLOOR_loc)/max(db2[t,v],FLOOR_loc))
 
     for bond_idx, e in enumerate(g['edges']):
         a, b = get_bond_sites(e)
         a_idx = site_idx.get(a, -1)
         b_idx_s = site_idx.get(b, -1)
         if a_idx < 0 or b_idx_s < 0: continue
-        La = L_first[a_idx]
-        Lb = L_first[b_idx_s]
-        # Only score bonds where at least one endpoint has a signal
-        if abs(La) < 1e-6 and abs(Lb) < 1e-6: continue
-        # Sign product: negative = sign flip across bond
-        score = La * Lb
-        candidate_bonds[bond_idx] = score
+        # Score this bond at each cycle, keep most negative
+        best_score = 0.0
+        for t in range(nc):
+            La = L_cycle[t, a_idx]
+            Lb = L_cycle[t, b_idx_s]
+            if abs(La) < 1e-6 and abs(Lb) < 1e-6: continue
+            s = La * Lb
+            if s < best_score:
+                best_score = s
+        if best_score < 0:
+            candidate_bonds[bond_idx] = best_score
 
     if not candidate_bonds:
         print("\n  No candidate bonds found.")
