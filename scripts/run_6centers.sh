@@ -11,9 +11,11 @@
 # Results: logs/tomo_6c/
 # Summary: logs/tomo_6c/summary.txt
 
-BOND=${1:-12}
+BOND=${1:-12}           # single (12) or multiple (12;13) — semicolon-separated
 DJ=${2:-0.20}
 J_NEW=$(python3 -c "print(f'{1.0 + $DJ:.3f}')")
+BOND_TAG="${BOND//;/_}"   # filename-safe
+BOND_PY="${BOND//;/,}"    # Python breaker.py uses commas
 STEPS=5
 CHI=50
 
@@ -35,7 +37,7 @@ echo "" | tee -a $LOGDIR/summary.txt
 
 # C_breaker config
 python3 scripts/breaker.py \
-    --graph $GRAPH --bond $BOND --coupling $DJ \
+    --graph $GRAPH --bond "$BOND_PY" --coupling $DJ \
     --out $LOGDIR/broken.json > /dev/null 2>&1
 
 # ── Run one center ─────────────────────────────────────────────────────────────
@@ -56,6 +58,7 @@ run_center() {
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
         --center=$C --state=NL \
         "--perturb-bond=${BOND},${J_NEW}" \
+
         > $LOGDIR/pert_c${C}.log 2>&1 || { echo "  [GPU$GPU] Center $C perturbed FAILED"; return; }
 
     RESULT=$(cd /scratch/MPF/CppSim && python3 scripts/searcher.py \
