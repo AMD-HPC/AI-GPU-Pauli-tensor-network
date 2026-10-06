@@ -54,7 +54,7 @@ if [[ $MODE == A_center* ]]; then
     TAG="${MODE}_bond${BOND_TAG}"
 elif [[ $MODE == "B" ]]; then
     CENTER_ARG="--center=$CENTERS_STR"
-    CHI=80
+    CHI=50   # chi=80 OOMs with 2 parallel runs on 32GB GPU; chi=50 safe
     STEPS=5
     VHOP_ARG=""   # no v_hop — all bonds must be reachable
     TAG="B_bond${BOND_TAG}"
