@@ -128,6 +128,20 @@ minimum chi-saturation noise.
 The broken bond is exactly where the sign changes — between the red and
 blue endpoints (Figure~\ref{fig:ce}).
 
+\begin{figure}[h]
+\centering
+\includegraphics[width=\columnwidth]{fig_ce_bond12.png}
+\caption{Signed cross-entropy $\mathcal{L}(v,t)$ for a single broken bond
+(bond 12, sites 15↔16, identity PTM), seismic initialization,
+rect $7\times7$, $\chi=50$.
+\textbf{Cycle 1}: no signal.
+\textbf{Cycle 2}: site 16 red ($\mathcal{L}>0$, blocked), site 17 blue
+($\mathcal{L}<0$, shadow) — bond 12 identified by sign flip.
+\textbf{Cycle 3}: signal strengthens before chi saturation.
+Gold circles: bond endpoints. Stars: seismic centers.}
+\label{fig:ce}
+\end{figure}
+
 \paragraph{Ensemble log-likelihood.}
 Sum the signed cross-entropy fields across all $p$ centers:
 \begin{equation}
