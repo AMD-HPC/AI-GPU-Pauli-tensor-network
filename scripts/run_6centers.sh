@@ -55,9 +55,10 @@ run_center() {
         --center=$C --state=NL \
         > $LOGDIR/base_c${C}.log 2>&1 || { echo "  [GPU$GPU] Center $C baseline FAILED"; return; }
 
+    local PERTURB_ARG="--perturb-bond=${BOND},${J_NEW}"
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
         --center=$C --state=NL \
-        "--perturb-bond=${BOND},${J_NEW}" \
+        "$PERTURB_ARG" \
 
         > $LOGDIR/pert_c${C}.log 2>&1 || { echo "  [GPU$GPU] Center $C perturbed FAILED"; return; }
 
