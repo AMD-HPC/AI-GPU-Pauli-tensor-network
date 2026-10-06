@@ -320,7 +320,6 @@ int main(int argc, char** argv) {
         // Set the global bond list (use list if populated, else single bond)
         if (g_perturb_bonds_list.empty()) g_perturb_bonds_list.push_back(perturb_bond);
         g_perturb_bonds   = g_perturb_bonds_list;
-        g_perturb_bond    = perturb_bond;  // legacy
         g_original_ptm_nl = s_ptm_nl;
         s_ptm_nl          = perturbed_ptm_fn;
 
