@@ -285,6 +285,32 @@ identify candidate bonds, then re-run only the adjacent centers with larger
 $\chi$ for high-accuracy confirmation — each targeted run remains
 memory-bounded by the lightcone allocation.
 
+\paragraph{Grid-size independence.}
+The most significant property of aperture synthesis with lightcone allocation
+is that the cost per center is \emph{independent of grid size}. With
+$v_{\rm hop}=0.5$ and $n_{\rm steps}$ cycles, each center sees a local ball
+of radius $r = n_{\rm steps} \times v_{\rm hop} \approx 2.5$ hops, containing
+$\sim$13 sites on a $7\times7$ lattice. The same ball contains the same
+$\sim$13 sites on a $100\times100$ lattice. The computation per center scales
+as $O(r^2 \chi^3)$, where $r$ is the BFS radius — independent of $N_{\rm sites}$.
+
+Total aperture cost:
+\begin{equation}
+    T_{\rm aperture} = p \times T_{\rm local}(\chi, r)
+\end{equation}
+where $p$ grows with the number of bonds (more centers needed for coverage)
+but each center cost $T_{\rm local}$ is constant. For a single bond
+perturbation, most centers contribute zero signal — their $\mathcal{L}_k(v)
+\approx 0$ everywhere. Their wall-clock is short (center 6: 3.5\,s) and
+their ensemble contribution is zero. They are neither harmful nor expensive.
+
+Seismic pays $O(N_{\rm sites} \chi^3)$ per simulation regardless. As the
+lattice grows, aperture synthesis becomes increasingly favored over seismic.
+The crossover occurs when $p \times T_{\rm local} > T_{\rm seismic}$, which
+for fixed $r$ and $\chi$ requires $p \gtrsim N_{\rm sites}/r^2$ centers —
+a condition that is rarely satisfied in practice since the geodesic bond
+cover grows much slower than the grid area.
+
 \paragraph{Failure taxonomy.}
 We characterize five failure modes of increasing complexity:
 \begin{enumerate}
