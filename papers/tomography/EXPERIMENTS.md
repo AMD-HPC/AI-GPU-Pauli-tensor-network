@@ -140,6 +140,49 @@
 - The 82× margin is the headline number — protect it with careful experiment design
 - Hong-Kung nod: the paper title is "Red-Blue Hamiltonian Tomography via the Operator Lightcone Wavemap"
 
+## Future Direction: Phased Seismic Array
+
+**Idea (2026-10-06)**: Instead of firing all p-centers simultaneously, introduce
+a one-cycle delay between successive centers:
+
+  Center c_1 fires at t=0 → wave reaches bond by t=d/v_hop
+  Center c_2 fires at t=1 → wave reaches bond one cycle later
+  ...
+
+The time-staggered initialization preserves the directional information that
+simultaneous firing loses — the red and blue signals from opposite sides
+arrive at different times and do NOT cancel at the shared endpoint.
+
+**Connection to physics**:
+- Radio astronomy: phased array antennas introduce delays to steer the beam
+- Acoustics: time-reversal focusing uses delayed firing to focus on a target
+- Here: delayed centers create a "beam" that focuses detection on specific bonds
+
+**Implementation challenge**: in the Heisenberg picture, the operator is
+initialized once at t=0. Injecting Z_k at mid-evolution changes the simulation
+structure fundamentally.
+
+**Workaround A — time-shifted aperture**:
+Run p separate simulations, center k starts at cycle offset t_k.
+Align L fields on a common absolute time axis before summing.
+Essentially aperture synthesis with time-shifted comparisons.
+Cost: same as aperture (2p simulations), gain: directional phase information.
+
+**Workaround B — weighted initialization**:
+Initialize all centers at t=0 but with different weights w_k (e.g. w_k = e^{iφ_k}).
+Algebraically clean but n(v,t) = sum |c_P|^2 loses phase information.
+May not achieve the desired directional effect.
+
+**Key benefit**: in the interference case (two adjacent bonds, shared endpoint),
+the phased approach would separate the red and blue signals in TIME rather than
+needing the ensemble to separate them spatially. Site 16 sees red at t=t_first(16)
+from center 10, and blue at t=t_first(16)+1 from center 25 — the sign flip is
+time-resolved rather than spatially resolved.
+
+**Status**: theoretical proposal, not yet implemented.
+Connection: time-reversal focusing in acoustics / phased array radar.
+Paper note: "Phased seismic initialization — future direction."
+
 ## Open Theoretical Questions
 
 **Seismic blind spot:**
