@@ -30,9 +30,13 @@ def main():
     ap.add_argument('--results', required=True, help='Glob pattern or list of result JSONs')
     ap.add_argument('--broken',  required=True, help='breaker.py JSON (ground truth)')
     ap.add_argument('--graph',   required=True, help='Graph JSON')
+    ap.add_argument('--min-signal', type=float, default=0.05,
+                    help='Minimum |L_max| for a vote to count (default: 0.05)')
     args = ap.parse_args()
 
     result_files = sorted(glob.glob(args.results))
+    # Exclude combined result file
+    result_files = [f for f in result_files if 'combined' not in f]
     if not result_files:
         print(f"ERROR: no files matching {args.results}")
         return
@@ -56,7 +60,9 @@ def main():
             r = json.load(f)
         center = rf.replace('logs/tomo_6c/result_c', '').replace('.json', '')
         b = r.get('predicted_bond', -1)
-        if b >= 0:
+        max_signal = r.get('max_delta_l', 0.0)
+        # Only count vote if signal is above threshold
+        if b >= 0 and max_signal >= args.min_signal:
             if b not in declarations:
                 declarations[b] = []
             declarations[b].append(center)
