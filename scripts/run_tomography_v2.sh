@@ -75,22 +75,25 @@ PERT_LOG=$LOGDIR/pert_${TAG}.log
 RESULT_JSON=$LOGDIR/result_${TAG}.json
 CE_PNG=$LOGDIR/ce_${TAG}.png
 
-# ── Baseline ──────────────────────────────────────────────────────────────────
+# ── Baseline + Perturbed in parallel on GPU and GPU+1 ─────────────────────────
+GPU2=$(( GPU + 1 ))
 echo ""
-echo "[1/3] Baseline: chi=$CHI steps=$STEPS $CENTER_ARG $VHOP_ARG"
+echo "[1-2/3] Baseline (GPU$GPU) + Perturbed (GPU$GPU2) in parallel"
+
 ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
     $CENTER_ARG --state=NL $VHOP_ARG \
-    > $BASE_LOG 2>&1
-echo "  Done. $(grep '^STEP' $BASE_LOG | tail -1 | cut -c1-60)"
+    > $BASE_LOG 2>&1 &
+PID_BASE=$!
 
-# ── Perturbed ─────────────────────────────────────────────────────────────────
-echo ""
-echo "[2/3] Perturbed: --perturb-bond=${BOND},${J_NEW}"
-ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
+ROCR_VISIBLE_DEVICES=$GPU2 $BINARY $CHI $STEPS $CUTOFF \
     $CENTER_ARG --state=NL $VHOP_ARG \
     "--perturb-bond=${BOND},${J_NEW}" \
-    > $PERT_LOG 2>&1
-echo "  Done. $(grep 'PTM_elements_changed\|perturb-bond' $PERT_LOG | head -1)"
+    > $PERT_LOG 2>&1 &
+PID_PERT=$!
+
+wait $PID_BASE $PID_PERT
+echo "  Baseline done.  $(grep '^STEP' $BASE_LOG | tail -1 | cut -c1-60)"
+echo "  Perturbed done. $(grep 'perturb-bonds\|PTM_elements' $PERT_LOG | head -1)"
 
 # ── Search ────────────────────────────────────────────────────────────────────
 echo ""
