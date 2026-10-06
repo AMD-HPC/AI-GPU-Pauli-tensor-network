@@ -241,15 +241,41 @@ detectable without knowing $v_{\rm hop}$ explicitly; the first-arrival
 time $t_{\rm first}(v)$ is observed directly.
 
 \paragraph{Complexity and timing.}
-The two methods have different computational costs:
-\begin{itemize}
-    \item \textbf{Aperture synthesis}: $2p$ simulations (p baselines + p perturbed),
-          each independent. Wall-clock time = one simulation (parallelized over $p$ GPUs).
-    \item \textbf{Seismic}: 2 simulations total, but with multi-center initialization
-          that saturates $\chi$ faster due to simultaneous wavefront propagation.
-\end{itemize}
-Concrete timing on both the $7\times7$ and heavy-hex topologies is needed to
-quantify this tradeoff.
+The two methods have different computational costs on the $7\times7$ lattice
+($\chi=50$, 5 cycles, AMD MI100 32\,GB GPU):
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lrrl}
+\toprule
+Method & Wall-clock & VRAM & Notes \\
+\midrule
+Seismic                & 272\,s & 11\% & 2 GPUs parallel, no $v_{\rm hop}$ \\
+Aperture (no $v_{\rm hop}$) & 300\,s & 11\% & 3 GPUs, $2\times$ sequential \\
+Aperture ($v_{\rm hop}=0.5$) & \textbf{191\,s} & \textbf{5--7\%} & 3 GPUs, $2\times$ sequential \\
+\bottomrule
+\end{tabular}
+\caption{Wall-clock timing comparison on rect $7\times7$, bond 12, $\chi=50$,
+5 cycles. Both methods produce ✓ CORRECT results.
+$v_{\rm hop}=0.5$ is set by topology (d$_{\rm max}=2$ coverage), not by
+knowledge of the fault location.}
+\label{tab:timing}
+\end{table}
+
+Aperture synthesis with lightcone allocation ($v_{\rm hop}=0.5$) is 30\%
+faster than seismic and uses half the VRAM per GPU. The speedup comes from
+two effects: (1) single-center simulations have smaller active lightcones
+($\chi$ grows slower), and (2) far centers contribute negligible computation
+(center 6: 3.5\,s, center 34: 9.5\,s) while contributing zero to the
+ensemble — self-filtering at no cost. The bottleneck is the GPU pair
+running the two nearest centers (25 and 10, $\sim$20\,s each sequential).
+
+Aperture also enables a \emph{coarse-to-fine} strategy unavailable to
+seismic: run a fast aperture sweep (small $\chi$, $v_{\rm hop}=0.5$) to
+identify candidate bonds, then re-run only the adjacent centers with larger
+$\chi$ for high-accuracy confirmation — each targeted run remains
+memory-bounded by the lightcone allocation.
 
 \paragraph{Failure taxonomy.}
 We characterize five failure modes of increasing complexity:
