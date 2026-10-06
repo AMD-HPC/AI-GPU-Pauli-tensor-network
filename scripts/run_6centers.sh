@@ -46,13 +46,16 @@ run_center() {
 
     echo "  [GPU$GPU] Center $C starting..."
 
+    # Sequential: baseline then perturbed on same GPU
+    # (two simultaneous runs would OOM on 32GB GPU at chi=50)
+    # Optimization: with 6 GPUs, baseline+perturbed could run in parallel.
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
         --center=$C --state=NL \
         > $LOGDIR/base_c${C}.log 2>&1 || { echo "  [GPU$GPU] Center $C baseline FAILED"; return; }
 
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
         --center=$C --state=NL \
-        --perturb-bond=${BOND},${J_NEW} \
+        "--perturb-bond=${BOND},${J_NEW}" \
         > $LOGDIR/pert_c${C}.log 2>&1 || { echo "  [GPU$GPU] Center $C perturbed FAILED"; return; }
 
     RESULT=$(cd /scratch/MPF/CppSim && python3 scripts/searcher.py \
