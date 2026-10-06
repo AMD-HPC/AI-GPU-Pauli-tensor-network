@@ -1,0 +1,25 @@
+=== Timing Benchmark: Aperture vs Seismic ===
+Topology: rect 7x7  Bond=12  dJ=0.20  J_new=1.200
+Chi=50  Steps=5  Cutoff=1e-3
+Tue Oct  6 00:02:42 UTC 2026
+
+=== SEISMIC ===
+  Baseline wall: 107.53s  Perturbed wall: 105.52s
+  Total wall (parallel): 271572ms
+
+=== APERTURE ===
+  Total wall (3 GPU pool, 2 centers per GPU sequential): 190998ms
+  Per-center simulation times:
+    Center 25: 21.23s
+    Center 10: 18.51s
+    Center 34: 9.45s
+    Center 30: 21.40s
+    Center 6: 3.51s
+    Center 32: 21.10s
+
+=== SUMMARY ===
+  Seismic  wall: 271572ms   (2 GPUs parallel)
+  Aperture wall: 190998ms  (3 GPUs, 2 centers/GPU sequential)
+  Aperture/Seismic ratio: 0.70x
+
+=== DONE Tue Oct  6 00:10:25 UTC 2026 ===
