@@ -220,6 +220,53 @@ directional tomogram. They are complementary, not competing.
 synthesis detects bond positions through temporal directionality. Together they
 form a complete Hamiltonian tomography toolkit."
 
+## Future Direction: Statistical Confidence P(v,t) for Hardware Measurements (2026-10-06)
+
+**The fundamental difference between simulation and hardware:**
+
+In simulation: $n(v,t)$ is exact — computed from the wavefunction coefficients.
+$\mathcal{L}(v,t) = -\ln(n_{\rm pert}/n_{\rm base})$ is a deterministic number.
+
+On hardware: $n(v,t)$ is estimated from $N$ measurement shots:
+$$\hat{n}(v,t) = \frac{k}{N}, \quad k \sim \text{Binomial}(N, n(v,t))$$
+
+This makes $\mathcal{L}(v,t)$ a **random variable** — the "cloudy L field."
+The sign flip detection becomes a hypothesis test:
+
+$$P(v,t) = P\left(\mathcal{L}(v,t) > 0 \;\middle|\; \hat{n}_{\rm pert}, \hat{n}_{\rm base}, N\right)$$
+
+**The confidence problem:**
+- Small $n(v,t)$ (frontier, early cycles): high relative variance $\sigma^2/n^2 = (1-n)/(nN)$
+  → low confidence even with correct sign
+- Large $n(v,t)$ (interior, late cycles): lower relative variance but chi saturation corrupts
+- The sweet spot: $t_{\rm first}$ where $n$ just crossed threshold — most sensitive ratio,
+  minimum saturation noise
+
+**What changes in the detection algorithm:**
+- $\mathcal{L}(v,t) > \varepsilon$ → replace with $P(\mathcal{L}(v,t) > 0) > 1-\alpha$
+  for significance level $\alpha$
+- Bond score $S(b) = L(v_a) \times L(v_b)$ → replace with joint significance
+  $P(v_a \text{ red AND } v_b \text{ blue}) = P(v_a) \times P(v_b)$
+- The 82× margin becomes a signal-to-noise ratio that degrades with fewer shots
+
+**Key insight**: the statistical threshold $\varepsilon_{\rm th}$ for $n(v,t)$ arrival detection
+and the statistical confidence $\alpha$ for sign detection are BOTH set by the shot budget $N$.
+More shots → sharper threshold → cleaner L field → higher confidence → better resolution.
+
+**The shot budget tradeoff:**
+$$N_{\rm min} \sim \frac{1}{\varepsilon_{\rm th} \cdot \delta J^2}$$
+
+where $\delta J$ is the coupling perturbation size. For $\varepsilon_{\rm th}=10^{-4}$ and
+$\delta J=0.2$: $N_{\rm min} \sim 250\,000$ shots per circuit.
+
+**Future work:**
+1. Add Clopper-Pearson confidence intervals to $\hat{n}(v,t)$
+2. Define $P(v,t)$ using the Beta distribution posterior
+3. Replace bond score with joint confidence: $P_{\rm bond}(b) = -P(v_a)\times P(v_b)$ 
+   (product of confidences, signed by L values)
+4. Study how detection margin degrades with $N$ — find minimum shot budget for
+   reliable bond identification on hardware
+
 ## Future Direction: Phased Seismic Array
 
 **Idea (2026-10-06)**: Instead of firing all p-centers simultaneously, introduce
