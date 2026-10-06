@@ -14,10 +14,14 @@
 #     bash scripts/run_tomography_v2.sh C 12 0.20 0
 
 MODE=${1:-A_center10}
-BOND=${2:-12}
+BOND=${2:-12}           # single bond (12) or multiple (12;13) — semicolon-separated
 DJ=${3:-0.20}
 GPU=${4:-0}
 J_NEW=$(python3 -c "print(f'{1.0 + $DJ:.3f}')")
+# Tag-safe bond name (replace semicolons with underscores for filenames)
+BOND_TAG="${BOND//;/_}"
+# breaker.py uses commas; convert semicolons to commas for Python
+BOND_PY="${BOND//;/,}"
 
 cd /scratch/MPF/CppSim
 source /scratch/.venv/bin/activate
@@ -32,13 +36,13 @@ CENTERS_STR="25,10,34,30,6,32"
 
 echo "=== Tomography v2: mode=$MODE bond=$BOND dJ=$DJ J_new=$J_NEW GPU=$GPU ==="
 
-# Generate breaker config
+# Generate breaker config (use comma-separated for Python)
 python3 scripts/breaker.py \
     --graph $GRAPH \
-    --bond $BOND --coupling $DJ \
-    --out $LOGDIR/broken_bond${BOND}.json > /dev/null 2>&1
+    --bond "$BOND_PY" --coupling $DJ \
+    --out $LOGDIR/broken_bond${BOND_TAG}.json > /dev/null 2>&1
 
-BROKEN_JSON=$LOGDIR/broken_bond${BOND}.json
+BROKEN_JSON=$LOGDIR/broken_bond${BOND_TAG}.json
 
 # ── Determine parameters ───────────────────────────────────────────────────────
 if [[ $MODE == A_center* ]]; then
@@ -47,19 +51,19 @@ if [[ $MODE == A_center* ]]; then
     STEPS=3
     CENTER_ARG="--center=$CENTER"
     VHOP_ARG="--v_hop=0.5"
-    TAG="${MODE}_bond${BOND}"
+    TAG="${MODE}_bond${BOND_TAG}"
 elif [[ $MODE == "B" ]]; then
     CENTER_ARG="--center=$CENTERS_STR"
     CHI=80
     STEPS=5
     VHOP_ARG=""   # no v_hop — all bonds must be reachable
-    TAG="B_bond${BOND}"
+    TAG="B_bond${BOND_TAG}"
 elif [[ $MODE == "C" ]]; then
     CENTER_ARG="--center=$CENTERS_STR"
     CHI=80
     STEPS=3
     VHOP_ARG=""
-    TAG="C_bond${BOND}"
+    TAG="C_bond${BOND_TAG}"
 else
     echo "Unknown mode: $MODE"
     echo "Use: A_center<N>, B, or C"
@@ -84,7 +88,7 @@ echo ""
 echo "[2/3] Perturbed: --perturb-bond=${BOND},${J_NEW}"
 ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
     $CENTER_ARG --state=NL $VHOP_ARG \
-    --perturb-bond=${BOND},${J_NEW} \
+    "--perturb-bond=${BOND},${J_NEW}" \
     > $PERT_LOG 2>&1
 echo "  Done. $(grep 'PTM_elements_changed\|perturb-bond' $PERT_LOG | head -1)"
 
