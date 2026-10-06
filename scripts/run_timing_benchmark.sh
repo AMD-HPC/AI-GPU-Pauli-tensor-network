@@ -83,21 +83,21 @@ run_aperture_pair() {
     local C1=$1 C2=$2 GPU=$3
     cd /scratch/MPF/CppSim
 
-    # Center 1
+    # Center 1 (--v_hop=0.5: lightcone covers d_max=2 hops, topology-driven not fault-aware)
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
-        --center=$C1 --state=NL \
+        --center=$C1 --state=NL --v_hop=0.5 \
         > $LOGDIR/aperture_base_c${C1}.log 2>&1
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
-        --center=$C1 --state=NL \
+        --center=$C1 --state=NL --v_hop=0.5 \
         --perturb-bond=${BOND},${J_NEW} \
         > $LOGDIR/aperture_pert_c${C1}.log 2>&1
 
     # Center 2
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
-        --center=$C2 --state=NL \
+        --center=$C2 --state=NL --v_hop=0.5 \
         > $LOGDIR/aperture_base_c${C2}.log 2>&1
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
-        --center=$C2 --state=NL \
+        --center=$C2 --state=NL --v_hop=0.5 \
         --perturb-bond=${BOND},${J_NEW} \
         > $LOGDIR/aperture_pert_c${C2}.log 2>&1
 }
