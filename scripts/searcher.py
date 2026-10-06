@@ -259,6 +259,7 @@ def main():
         if a_idx < 0 or b_idx_s < 0: continue
         # Score this bond at each cycle, keep most negative
         best_score = 0.0
+        best_cycle = -1
         for t in range(nc):
             La = L_cycle[t, a_idx]
             Lb = L_cycle[t, b_idx_s]
@@ -266,19 +267,20 @@ def main():
             s = La * Lb
             if s < best_score:
                 best_score = s
+                best_cycle = t + 1
         if best_score < 0:
-            candidate_bonds[bond_idx] = best_score
+            candidate_bonds[bond_idx] = (best_score, best_cycle)
 
     if not candidate_bonds:
         print("\n  No candidate bonds found.")
         return
 
     # Rank by most negative score (sign flip = broken bond)
-    ranked = sorted(candidate_bonds.items(), key=lambda x: x[1])  # ascending: most negative first
-    print(f"\nCandidate bonds (ranked by signal):")
-    for bond_idx, score in ranked[:5]:
+    ranked = sorted(candidate_bonds.items(), key=lambda x: x[1][0])  # ascending: most negative first
+    print(f"\nCandidate bonds (ranked by signal, per-cycle scoring):")
+    for bond_idx, (score, cyc) in ranked[:5]:
         a, b = get_bond_sites(g['edges'][bond_idx])
-        print(f"  Bond {bond_idx:3d}: {a:3d} ↔ {b:3d}  score={score:.3f}")
+        print(f"  Bond {bond_idx:3d}: {a:3d} ↔ {b:3d}  score={score:.3f}  best_cycle={cyc}")
 
     predicted_bond = ranked[0][0]
     a_pred, b_pred = get_bond_sites(g['edges'][predicted_bond])
@@ -291,7 +293,7 @@ def main():
         'trigger_sites': trigger_sites,
         'max_delta_l': float(abs_delta.max()),
         'direction': direction,
-        'candidate_bonds': ranked[:10],
+        'candidate_bonds': [(b, sc, cy) for b, (sc, cy) in ranked[:10]],
         'delta_l': delta_l.tolist()
     }
 
@@ -309,8 +311,11 @@ def main():
         print(f"Result: {'✓ CORRECT' if correct else '✗ WRONG'}")
         if not correct:
             rank = next((i for i, (b,_) in enumerate(ranked) if b in true_bonds_set), -1)
-            print(f"  A true bond ranked #{rank+1} in candidates" if rank>=0 else
-                  "  No true bond in candidates")
+            if rank >= 0:
+                sc, cy = ranked[rank][1]
+                print(f"  A true bond ranked #{rank+1} in candidates (score={sc:.3f} at cycle {cy})")
+            else:
+                print("  No true bond in candidates")
         result['true_bonds'] = true_bonds
         result['correct'] = correct
 
