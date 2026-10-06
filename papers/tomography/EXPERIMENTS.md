@@ -51,11 +51,22 @@
   - `--bond 12,13` in breaker.py; `--perturb-bond=12;13,1.2` in C++
   - Commit: 4913a9a
 
-- [ ] **2a. Two adjacent bonds: 7×7, bonds 12+13**
+- [x] **2a. Two adjacent bonds: 7×7, bonds 12+13**
   - Break bond 12 (15↔16) AND bond 13 (16↔17) simultaneously
-  - Their blue shadows both hit site 16 — maximum overlap
-  - Question: does ensemble resolve them as two bonds or merge into one?
-  - Script: `bash scripts/run_tomography_v2.sh B 12;13 0.20`
+  - Result (3 cycles, chi=50): **red → white → blue** triplet pattern
+    - Site 15: red (+0.55) — upstream of bond 12
+    - Site 16: white (0.00) — shared endpoint, destructive interference
+    - Site 17: blue — downstream of bond 13
+  - **Key result**: the white site IS the interference node, not a detection failure
+  - Analog: thin-film interference dark fringe — tells you path length difference
+  - Searcher WRONG (looking for red-blue pair); needs triplet detection
+  - Logs: `logs/tomo_v2/*bond12_13*`
+  - GIF: `logs/tomo_v2/ce_B_bond12_13_3c.gif`
+
+  **New signal vocabulary:**
+  - Single broken bond: **red — blue** (two sites, sign flip)
+  - Two adjacent broken bonds: **red — white — blue** (three sites, interference node)
+  - The number of white sites between red and blue = number of broken bonds in the wall
 
 - [ ] **2b. Two non-adjacent bonds: 7×7, bonds 12+35**
   - Break bond 12 (15↔16) AND bond 35 (41↔42) — far apart

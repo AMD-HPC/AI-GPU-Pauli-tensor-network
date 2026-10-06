@@ -311,6 +311,26 @@ for fixed $r$ and $\chi$ requires $p \gtrsim N_{\rm sites}/r^2$ centers —
 a condition that is rarely satisfied in practice since the geodesic bond
 cover grows much slower than the grid area.
 
+\paragraph{Interference signatures.}
+When two adjacent bonds are perturbed simultaneously (bonds 12 and 13, sharing
+endpoint site 16), the cross-entropy field shows a three-site pattern at 3 cycles:
+site 15 (red, $\mathcal{L}=+0.55$), site 16 (white, $\mathcal{L}\approx 0$),
+site 17 (blue). The shared endpoint is the \emph{interference node} — the red
+signal from bond 12 and the blue signal from bond 13 cancel destructively, exactly
+as in thin-film interference. The white fringe is not a detection failure; it is
+the interference pattern. The number of white sites between the red and blue
+boundaries counts the number of broken bonds in the wall.
+
+This extends the signal vocabulary:
+\begin{itemize}
+    \item Single broken bond: \textbf{red — blue} (two sites, sign flip)
+    \item Two adjacent broken bonds: \textbf{red — white — blue} (three sites, interference node)
+    \item $n$ adjacent broken bonds: \textbf{red —} $n-1$ \textbf{whites — blue}
+\end{itemize}
+The current searcher detects pairs; detecting walls requires a triplet scorer
+$S_{\rm wall}(b_1, b_2) = \mathcal{L}(v_a) \times \mathcal{L}(v_c)$ where $v_b$
+is the shared endpoint (white site) and $v_a$, $v_c$ are the outer endpoints.
+
 \paragraph{Failure taxonomy.}
 We characterize five failure modes of increasing complexity:
 \begin{enumerate}
