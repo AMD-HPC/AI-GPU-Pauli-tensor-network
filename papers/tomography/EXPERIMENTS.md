@@ -133,6 +133,33 @@
 ## Notes
 
 - All identity PTM experiments use `--perturb-bond=N,J` with identity in C++
+- Multi-bond: `--perturb-bond=12;13,1.2` — semicolons separate bonds, comma before J
+- All perturbed bonds currently receive the SAME identity PTM (symmetric perturbation)
+  - Future: vector of independent PTMs for heterogeneous multi-bond perturbations
 - Physically correct PTM needs fixing before sensitivity experiments
 - The 82× margin is the headline number — protect it with careful experiment design
 - Hong-Kung nod: the paper title is "Red-Blue Hamiltonian Tomography via the Operator Lightcone Wavemap"
+
+## Open Theoretical Questions
+
+**Seismic blind spot:**
+If p-centers are placed symmetrically around the broken bond, waves arrive from
+opposite sides with equal amplitude. The seismic L field cancels:
+L_seismic(v) = L_red + L_blue ≈ 0. The bond becomes invisible.
+Aperture synthesis is immune — each center's L computed independently before summing.
+Implication: p-center placement must be asymmetric relative to any bond to guarantee
+seismic detection. The geodesic bond cover (d_max=2) does not guarantee this.
+
+**Perturbation symmetry:**
+The identity PTM is symmetric — blocks propagation equally in both directions.
+The wavemap signal is asymmetric because the measurement is directional (wave
+travels from center outward). Different centers see different sides of the bond.
+The same symmetric perturbation produces antisymmetric L signals at the two
+endpoints — this is the detection mechanism.
+
+**Interference (experiment 2a):**
+Two adjacent bonds 12+13 share endpoint site 16. The seismic L at site 16 receives:
+- Red signal from upstream (bond 12 blocks wave coming from center 10)
+- Blue signal from downstream (bond 13 blocks wave going further right)
+Net effect at site 16: partial cancellation. The interference pattern at site 16
+is the key diagnostic for the resolution limit of the method.
