@@ -57,9 +57,7 @@ run_center() {
 
     local PERTURB_ARG="--perturb-bond=${BOND},${J_NEW}"
     ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
-        --center=$C --state=NL \
-        "$PERTURB_ARG" \
-
+        --center=$C --state=NL "$PERTURB_ARG" \
         > $LOGDIR/pert_c${C}.log 2>&1 || { echo "  [GPU$GPU] Center $C perturbed FAILED"; return; }
 
     RESULT=$(cd /scratch/MPF/CppSim && python3 scripts/searcher.py \
