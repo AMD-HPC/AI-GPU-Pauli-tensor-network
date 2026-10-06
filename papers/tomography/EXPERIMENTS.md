@@ -27,7 +27,11 @@
 
 ## Part 1: Complexity and Timing
 
-- [ ] **1a. Timing benchmark: Aperture vs Seismic on 7×7**
+- [x] **1a. Timing benchmark: Aperture vs Seismic on 7×7**
+  - Seismic: 272s (2 GPUs parallel, no v_hop)
+  - Aperture no v_hop: 300s (3 GPUs, 1.10× seismic)
+  - Aperture v_hop=0.5: **191s (3 GPUs, 0.70× seismic — 30% faster)**
+  - Both ✓ CORRECT. Logs: `logs/timing_benchmark/`
   - Run both methods, measure wall-clock and VRAM
   - Aperture: 6 independent runs (parallelizable)
   - Seismic: 1 multi-center run (chi saturates faster)
