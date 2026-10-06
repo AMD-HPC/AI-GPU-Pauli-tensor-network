@@ -47,12 +47,15 @@
 
 ## Part 2: Overlapping Shadows (Resolution Test)
 
+- [x] **breaker.py + C++ multi-bond support**
+  - `--bond 12,13` in breaker.py; `--perturb-bond=12;13,1.2` in C++
+  - Commit: 4913a9a
+
 - [ ] **2a. Two adjacent bonds: 7×7, bonds 12+13**
   - Break bond 12 (15↔16) AND bond 13 (16↔17) simultaneously
   - Their blue shadows both hit site 16 — maximum overlap
   - Question: does ensemble resolve them as two bonds or merge into one?
-  - Script: `bash scripts/run_tomography_v2.sh B 12,13 0.20`
-  - Need: update breaker.py for multi-bond perturbation
+  - Script: `bash scripts/run_tomography_v2.sh B 12;13 0.20`
 
 - [ ] **2b. Two non-adjacent bonds: 7×7, bonds 12+35**
   - Break bond 12 (15↔16) AND bond 35 (41↔42) — far apart
