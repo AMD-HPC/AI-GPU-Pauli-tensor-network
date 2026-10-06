@@ -151,6 +151,75 @@
 - The 82× margin is the headline number — protect it with careful experiment design
 - Hong-Kung nod: the paper title is "Red-Blue Hamiltonian Tomography via the Operator Lightcone Wavemap"
 
+## Seismic vs Aperture: Different Information (2026-10-06)
+
+*What we learned this morning — radar and sonar analogy.*
+
+### The temporal patterns
+
+**Seismic (simultaneous multi-center):**
+- C1: W  W  W  — wave not yet arrived
+- C2: W  R  B  — bond 13 crossed first (site 16 red, 17 blue)
+- C3: R  W  B  — bond 12 crossed (site 15 red), site 16 WHITES (interference node)
+
+**Aperture (independent centers, sum L fields):**
+- C1: W  W  W  — nothing
+- C2: W  R  b  — right-side centers (25,32) hit site 16 first
+- C3: W  R  B  — shadow deepens at site 17
+- C4: R  R  B  — left-side centers (10,30) finally reach site 15
+
+### The key difference
+
+**Seismic**: interference IS cancellation. Site 16 whites because it is simultaneously
+upstream of bond 13 (should be red) AND downstream of bond 12 (should be blue).
+The two effects cancel → white node = shared endpoint signature.
+Information: the WHITE SITE identifies the wall between two bonds.
+
+**Aperture**: interference WITHOUT cancellation. Each center's L computed independently,
+then summed. No cancellation because the signs are preserved per center:
+- Right centers (25,32): positive L at site 16 (blocked by bond 13)
+- Left centers (10,30): positive L at site 15 (blocked by bond 12)
+Sum = both positive → red-red-blue, not red-white-blue.
+Information: the TEMPORAL SEQUENCE reveals which centers are upstream of which bonds.
+
+### The radar/sonar analogy
+
+**Seismic = active sonar (ping)**: all sources fire simultaneously, interference pattern
+in the received signal encodes the geometry. The white node (destructive interference)
+is the spatial signature of a wall.
+
+**Aperture = passive radar (ELINT)**: each receiver independently tracks the signal
+from its direction. The temporal ordering of arrivals encodes directionality.
+Signal appears at site 16 before site 15 because right-side centers are closer to
+bond 13 than left-side centers are to bond 12.
+
+### What each method knows
+
+| Property | Seismic | Aperture |
+|----------|---------|---------|
+| Single bond detection | ✓ (sign flip) | ✓ (sign flip) |
+| Wall detection (n bonds) | ✓ (white node count) | ✗ (no cancellation) |
+| Directional information | ✗ (simultaneous) | ✓ (temporal sequence) |
+| Bond ordering in wall | ✗ | ✓ (arrival time order) |
+| Computation cost | 2 simulations | 2p simulations |
+| Chi saturation onset | Earlier (multi-center) | Later (single-center) |
+
+### The temporal pattern IS the measurement
+
+Seismic: spatial pattern (red-white-blue) at a given cycle identifies wall structure.
+Aperture: temporal pattern (order of signal arrival) identifies bond positions and
+which centers are on which side.
+
+For single broken bond: both methods equivalent.
+For multiple adjacent bonds: seismic sees the wall structure; aperture sees the
+directional tomogram. They are complementary, not competing.
+
+### Paper framing
+
+"Seismic tomography detects wall structure through spatial interference; aperture
+synthesis detects bond positions through temporal directionality. Together they
+form a complete Hamiltonian tomography toolkit."
+
 ## Future Direction: Phased Seismic Array
 
 **Idea (2026-10-06)**: Instead of firing all p-centers simultaneously, introduce
