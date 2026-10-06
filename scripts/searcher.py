@@ -276,17 +276,20 @@ def main():
     if args.broken:
         with open(args.broken) as f:
             broken = json.load(f)
-        true_bond = broken['bond']
+        # Support both single bond ('bond') and multiple bonds ('bonds')
+        true_bonds = broken.get('bonds', [broken.get('bond', -1)])
+        true_bonds_set = set(true_bonds)
         true_a, true_b = broken['site_a'], broken['site_b']
-        correct = (predicted_bond == true_bond)
-        print(f"\nGround truth: Bond {true_bond} ({true_a} ↔ {true_b})")
+
+        correct = (predicted_bond in true_bonds_set)
+        print(f"\nGround truth: Bonds {true_bonds}")
+        print(f"C_searcher declares: Bond {predicted_bond} ({a_pred} ↔ {b_pred})")
         print(f"Result: {'✓ CORRECT' if correct else '✗ WRONG'}")
         if not correct:
-            # Check if true bond is in top candidates
-            rank = next((i for i, (b,_) in enumerate(ranked) if b==true_bond), -1)
-            print(f"  True bond ranked #{rank+1} in candidates" if rank>=0 else
-                  "  True bond not in candidates")
-        result['true_bond'] = true_bond
+            rank = next((i for i, (b,_) in enumerate(ranked) if b in true_bonds_set), -1)
+            print(f"  A true bond ranked #{rank+1} in candidates" if rank>=0 else
+                  "  No true bond in candidates")
+        result['true_bonds'] = true_bonds
         result['correct'] = correct
 
     if args.verbose:

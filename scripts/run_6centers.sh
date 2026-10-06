@@ -115,6 +115,39 @@ python3 scripts/searcher.py \
     --broken $LOGDIR/broken.json \
     --out $LOGDIR/result_combined.json 2>&1 | grep -E "declares|Result|max L|min L|Trigger"
 
+# ── Declaration voting: collect all declared bonds across centers ──────────────
+echo ""
+echo "=== Declaration Voting ==="
+python3 -c "
+import json, glob, sys
+sys.path.insert(0,'scripts')
+from searcher import load_graph, build_adj, get_bond_sites
+
+results = sorted(glob.glob('$LOGDIR/result_c*.json'))
+declarations = {}  # bond_idx -> count
+with open('$LOGDIR/broken.json') as f: broken = json.load(f)
+true_bonds = set(broken.get('bonds', [broken.get('bond',-1)]))
+g = load_graph('$GRAPH')
+
+for rf in results:
+    with open(rf) as f: r = json.load(f)
+    b = r.get('predicted_bond', -1)
+    if b >= 0:
+        declarations[b] = declarations.get(b, 0) + 1
+
+print('  Bond declarations:')
+for b, count in sorted(declarations.items(), key=lambda x: -x[1]):
+    a, sb = get_bond_sites(g['edges'][b])
+    tag = '← TRUE' if b in true_bonds else ''
+    print(f'    Bond {b:3d} ({a}↔{sb}): {count} vote(s) {tag}')
+
+declared_set = set(declarations.keys())
+found = declared_set & true_bonds
+print(f'  True bonds found by voting: {sorted(found)} / {sorted(true_bonds)}')
+correct = (found == true_bonds)
+print(f'  Voting result: {\"✓ ALL CORRECT\" if correct else \"✗ PARTIAL\" if found else \"✗ NONE FOUND\"}')
+" 2>/dev/null
+
 echo ""
 echo "=== DONE $(date) ==="
 echo "Results: $LOGDIR/"
