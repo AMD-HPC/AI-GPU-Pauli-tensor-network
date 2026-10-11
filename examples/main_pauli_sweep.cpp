@@ -161,10 +161,13 @@ int main(int argc, char** argv) {
         }
         if (a.substr(0,9) =="--center=") {
             // Parse comma-separated list: --center=13 or --center=13,24,10
+            // Input is 1-based site numbers (from find_scanning_centers.py:
+            //   rowcol_to_site = row*ncols + col + 1).
+            // Convert to 0-based site_id used internally: site_id = N - 1.
             std::string val = a.substr(9);
             std::stringstream ss(val);
             std::string tok;
-            while (std::getline(ss, tok, ',')) centers.push_back(atoi(tok.c_str()));
+            while (std::getline(ss, tok, ',')) centers.push_back(atoi(tok.c_str()) - 1);
             center = centers[0];  // legacy single center = first
         }
         if (a.substr(0,8) =="--v_hop=") v_hop  = atof(argv[i]+8);
@@ -310,13 +313,48 @@ int main(int argc, char** argv) {
         const float c4n = cosf(4.0f*th_new), s4n = sinf(4.0f*th_new);
         const float c4o = cosf(4.0f*th_old), s4o = sinf(4.0f*th_old);
 
-        // SANITY CHECK: set perturbed PTM to identity (II block only).
-        // This removes all gate action on bond perturb_bond.
-        // If sites connected by this bond show zero propagation, the hook works.
-        // Replace with physically correct PTM once hook is verified.
-        const float* base_ptm = s_ptm_nl(perturb_bond);
+        // Physically correct Heisenberg PTM for exp(-i*theta*(XX+YY+ZZ)), theta=J*eps.
+        // Structure verified against build_ptm.py for all J. Key identities (th=theta):
+        //   Group A (indices 1,2,4,8,11,13,14): diagonal=cos(th), off-diag=±sin(th)
+        //   Group B (indices 3,6,9,12):         diagonal=cos²(th), cross=±sin(2th)/2, corner=(1-cos(2th))/2
+        //   Fixed (indices 0,5,10,15):           diagonal=1
+        const float* base_ptm = s_ptm_nl(perturb_bond);  // unused but keep for n_changed check
+        const float cn  = cosf(th_new),  sn  = sinf(th_new);
+        const float cn2 = cn*cn,         sn2 = sinf(2.0f*th_new);
+        const float hv  = (1.0f - cn2 - cn2 + 1.0f) * 0.5f; // (1-cos(2th))/2 = sin²(th)
+
         for (int k=0; k<256; k++) g_perturbed_ptm[k] = 0.0f;
-        for (int i=0; i<16; i++) g_perturbed_ptm[i*16+i] = 1.0f; // identity
+
+        // Fixed diagonal (II, YY, ZI, ZZ blocks)
+        g_perturbed_ptm[ 0*16+ 0] =  1.0f;
+        g_perturbed_ptm[ 5*16+ 5] =  1.0f;
+        g_perturbed_ptm[10*16+10] =  1.0f;
+        g_perturbed_ptm[15*16+15] =  1.0f;
+
+        // Group A: cos(th) diagonal, ±sin(th) off-diagonal pairs
+        // (1,11), (2,7), (4,14), (8,13)
+        g_perturbed_ptm[ 1*16+ 1] =  cn;  g_perturbed_ptm[ 1*16+11] =  sn;
+        g_perturbed_ptm[11*16+11] =  cn;  g_perturbed_ptm[11*16+ 1] = -sn;
+        g_perturbed_ptm[ 2*16+ 2] =  cn;  g_perturbed_ptm[ 2*16+ 7] = -sn;
+        g_perturbed_ptm[ 7*16+ 7] =  cn;  g_perturbed_ptm[ 7*16+ 2] =  sn;
+        g_perturbed_ptm[ 4*16+ 4] =  cn;  g_perturbed_ptm[ 4*16+14] =  sn;
+        g_perturbed_ptm[14*16+14] =  cn;  g_perturbed_ptm[14*16+ 4] = -sn;
+        g_perturbed_ptm[ 8*16+ 8] =  cn;  g_perturbed_ptm[ 8*16+13] = -sn;
+        g_perturbed_ptm[13*16+13] =  cn;  g_perturbed_ptm[13*16+ 8] =  sn;
+
+        // Group B: 4×4 block {3,6,9,12} — cos²(th) diagonal, sin(2th)/2 cross, sin²(th) corner
+        const float hs = 0.5f * sn2;
+        int gb[4] = {3, 6, 9, 12};
+        // diagonal
+        for (int i=0; i<4; i++) g_perturbed_ptm[gb[i]*16+gb[i]] = cn2;
+        // off-diagonal: from build_ptm.py verified pattern
+        g_perturbed_ptm[ 3*16+ 6] =  hs;  g_perturbed_ptm[ 6*16+ 3] = -hs;
+        g_perturbed_ptm[ 3*16+ 9] = -hs;  g_perturbed_ptm[ 9*16+ 3] =  hs;
+        g_perturbed_ptm[ 6*16+12] =  hs;  g_perturbed_ptm[12*16+ 6] = -hs;
+        g_perturbed_ptm[ 9*16+12] = -hs;  g_perturbed_ptm[12*16+ 9] =  hs;
+        // corner (sin²(th))
+        g_perturbed_ptm[ 3*16+12] =  hv;  g_perturbed_ptm[12*16+ 3] =  hv;
+        g_perturbed_ptm[ 6*16+ 9] =  hv;  g_perturbed_ptm[ 9*16+ 6] =  hv;
         // Set the global bond list (use list if populated, else single bond)
         if (g_perturb_bonds_list.empty()) g_perturb_bonds_list.push_back(perturb_bond);
         g_perturb_bonds   = g_perturb_bonds_list;

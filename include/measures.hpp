@@ -1854,6 +1854,16 @@ struct Measures {
      * Calls bp_converge_norm internally — free if compute_norm already ran
      * this layer (messages are at fixed point, exits in 1 sweep).
      */
+    // compute_pauli_profile: n(v,t) = normalized non-identity Pauli weight per site.
+    //
+    // Uses bond.chi (runtime, updated by SVD during Trotter) not chi_alloc.
+    // Sites outside the lightcone have all bonds at chi=1 (identity tensors)
+    // → total=D → pauli weight = 0 exactly, enforcing causal locality.
+    //
+    // Detection threshold note: sites at the lightcone boundary may have chi>1
+    // due to the OR rule in apply_lightcone (one endpoint inside, one outside).
+    // Their n(v,t) may be tiny but nonzero (Trotter artifact, not physics).
+    // Set detection threshold >= Trotter cutoff (default 1e-3) to suppress these.
     void compute_pauli_profile(
         const Grid& grid,
         const std::vector<Scalar*>& psi,

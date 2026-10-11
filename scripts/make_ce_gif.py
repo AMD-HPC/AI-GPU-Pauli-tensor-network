@@ -71,6 +71,7 @@ def main():
         centers = [int(c) for c in args.centers.split(',')]
 
     FLOOR = 1e-7
+    THR   = 1e-4   # n_base must exceed this to compute L; else white
     norm = mcolors.TwoSlopeNorm(vmin=-args.vmax, vcenter=0, vmax=args.vmax)
 
     fig, ax = plt.subplots(figsize=(args.size, args.size))
@@ -105,6 +106,7 @@ def main():
     def update(t):
         ce = np.array([
             -np.log(max(data_pert[t, vi], FLOOR) / max(data_base[t, vi], FLOOR))
+            if data_base[t, vi] > THR else 0.0
             for vi in range(ns)
         ])
         sc.set_array(ce)

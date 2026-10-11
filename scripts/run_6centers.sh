@@ -16,13 +16,13 @@ DJ=${2:-0.20}
 J_NEW=$(python3 -c "print(f'{1.0 + $DJ:.3f}')")
 BOND_TAG="${BOND//;/_}"   # filename-safe
 BOND_PY="${BOND//;/,}"    # Python breaker.py uses commas
-STEPS=5
+STEPS=7
 CHI=50
 
 cd /scratch/MPF/CppSim
 source /scratch/.venv/bin/activate
 
-LOGDIR="logs/tomo_6c"
+LOGDIR="logs/tomo_7c_7step"
 mkdir -p $LOGDIR
 
 GRAPH="data/graphs/rect_7x7.json"

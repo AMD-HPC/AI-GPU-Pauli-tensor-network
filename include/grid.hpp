@@ -344,6 +344,16 @@ public:
             // OR rule: chi_alloc=chi_max if either endpoint is inside lightcone.
             // Ensures no site has mixed chi_alloc bonds (consistent tensor shapes).
             // chi_alloc=1 only when BOTH endpoints are outside (bond never active).
+            //
+            // Implication: bonds at the lightcone boundary (one endpoint inside,
+            // one outside) DO fire during Trotter. The outside endpoint receives
+            // tiny weight from the gate. This weight is usually below the Trotter
+            // cutoff and is truncated back to chi=1 by the SVD, keeping n(v,t)=0
+            // for that site in practice. However, if the outside-endpoint weight
+            // exceeds cutoff, a small nonzero n(v,t) appears — a Trotter artifact,
+            // not physical propagation (Lieb-Robinson violation).
+            // For tomography: set detection threshold >= cutoff (1e-3) to avoid
+            // mistaking this boundary artifact for genuine wavefront signal.
             b.chi_alloc = (a_in || b_in) ? chi_max : 1;
             // chi (runtime) stays at 1 — it grows during simulation as usual.
         }

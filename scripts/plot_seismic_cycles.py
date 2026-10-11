@@ -34,6 +34,7 @@ def main():
     ap.add_argument('--out',       default='/tmp/seismic_cycles.png')
     ap.add_argument('--vmax',      type=float, default=0.6)
     ap.add_argument('--thr',       type=float, default=1e-4)
+    ap.add_argument('--lmin',      type=float, default=0.0,  help='Zero L below this magnitude (suppress background)')
     ap.add_argument('--max-cycles',type=int,   default=5)
     args = ap.parse_args()
 
@@ -52,7 +53,8 @@ def main():
     for t in range(nc):
         for v in range(ns):
             if db[t, v] > args.thr:
-                L[t, v] = -np.log(max(dp[t, v], FLOOR) / max(db[t, v], FLOOR))
+                val = -np.log(max(dp[t, v], FLOOR) / db[t, v])
+                L[t, v] = val if abs(val) >= args.lmin else 0.0
 
     broken_sites = []
     if args.broken:
@@ -80,6 +82,9 @@ def main():
         for c in centers:
             if c in pos:
                 ax.scatter([pos[c][0]], [pos[c][1]], marker='*', s=300, color='white', zorder=6)
+                ax.annotate(str(c), (pos[c][0], pos[c][1]),
+                            fontsize=6, color='white', ha='center', va='bottom',
+                            xytext=(0, 8), textcoords='offset points', zorder=7)
         plt.colorbar(sc, ax=ax, shrink=0.7)
         ax.set_title(f'Cycle {t+1}', fontsize=10)
         ax.set_aspect('equal'); ax.axis('off')

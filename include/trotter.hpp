@@ -138,10 +138,28 @@ inline void do_trotter(
         // Apply bond gates for this color class.
         // Skip bonds where chi_alloc=1: both endpoints outside lightcone,
         // tensors are identity and need no update. Saves gate operations.
+        //
+        // NOTE: chi_alloc uses the OR rule (grid.hpp apply_lightcone):
+        //   chi_alloc = chi_max if EITHER endpoint is inside lightcone, else 1.
+        // This means bonds at the lightcone boundary (one endpoint inside,
+        // one outside) are NOT skipped — the gate fires on both tensors.
+        // The outside endpoint picks up tiny weight from the gate application.
+        // This weight is typically below the Trotter cutoff and gets truncated
+        // back to chi=1 by the SVD, making n(v,t)=0 for the outside site in
+        // compute_pauli_profile (which uses bond.chi, not chi_alloc).
+        //
+        // Consequence for tomography: n(v,t) is causally consistent (sites
+        // outside the lightcone show zero) but the gate itself fires on them.
+        // The cutoff enforces causal locality, not the lightcone mask.
+        // Sites just outside the lightcone may show tiny nonzero n(v,t) if
+        // their singular values exceed the cutoff — a Trotter artifact, not
+        // physical propagation. Detection threshold should be >= cutoff (1e-3).
         for (auto& gate : grid.colors[c]) {
             if (grid.bonds[gate.bond_id].chi_alloc == 1) continue;
             const float* G = bond_ptm ? bond_ptm(gate.bond_id)
                                        : nl_ptm + gate.bond_id * 256;
+            // Debug: print psi operands and chi for bond (3↔4) and (4↔5)
+            // site indices are 0-based internally; sites 3,4,5 → internal 2,3,4
             gate_ops.apply_binary_gate(
                 psi[gate.site_a], psi[gate.site_b],
                 gate, grid,

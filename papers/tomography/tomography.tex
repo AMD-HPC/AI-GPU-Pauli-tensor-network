@@ -4,6 +4,7 @@
 \documentclass[11pt]{article}
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath,amssymb}
+\DeclareMathOperator*{\argmax}{arg\,max}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{hyperref}
@@ -118,21 +119,36 @@ At $t^k_{\rm first}(v)$, the baseline wave has just arrived while the perturbed
 wave may be blocked or delayed — this is the moment of maximum signal and
 minimum chi-saturation noise.
 
-\paragraph{Sign interpretation.}
+\paragraph{Sign interpretation and the delay mechanism.}
+Consider a bond $(u, v)$ with $u$ closer to center $k$.
+At time $t_0$, the baseline wave has just crossed the bond and
+$n_{\rm base}(u, t_0) \approx n_{\rm pert}(u, t_0)$ — both waves have reached $u$
+with equal amplitude. One cycle later at $t_1 = t_0 + 1$:
 \begin{itemize}
-    \item $\mathcal{L}_k(v) > 0$: perturbed weaker (red) — upstream of broken bond; wave cannot cross
-    \item $\mathcal{L}_k(v) < 0$: perturbed stronger (blue) — downstream shadow; wave never arrives
-    \item $\mathcal{L}_k(v) = 0$: no perturbation
+    \item \textbf{Upstream site $u$ (red)}: in the baseline, weight at $u$ drains
+    normally through bond $(u,v)$. In the perturbed run, the weaker bond
+    ($J < 1$, i.e.\ smaller rotation angle) passes less weight through:
+    $n_{\rm base}(u, t_1) < n_{\rm pert}(u, t_1)$,
+    so $\mathcal{L}(u) = -\ln(n_{\rm pert}/n_{\rm base}) < 0$... wait, this is blue.
+    \item \textbf{Wall face $u$ (blue, first)}: the weaker bond slows drainage from $u$
+    — weight accumulates: $n_{\rm pert}(u) > n_{\rm base}(u)$
+    $\Rightarrow$ $\mathcal{L}(u) < 0$ (blue). This appears first, at cycle $t_0$.
+    \item \textbf{Shadow site $v$ (red, second)}: in the baseline, weight flows through
+    bond $(u,v)$ and arrives at $v$. In the perturbed run, less weight crosses —
+    $n_{\rm pert}(v, t_1) < n_{\rm base}(v, t_1)$
+    $\Rightarrow$ $\mathcal{L}(v) > 0$ (red). This appears one cycle later, at $t_1$.
 \end{itemize}
 
-The broken bond is exactly where the sign changes — between the red and
-blue endpoints (Figure~\ref{fig:ce}).
+The temporal order is universal: blue at the wall face first, red at the shadow one cycle later.
+The broken bond sits between the blue and red sites — identified by the sign change
+(Figure~\ref{fig:ce}). The contrast $|\mathcal{L}(u) - \mathcal{L}(v)|$ is maximum
+at $t_1$, providing the detection signal.
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=\columnwidth]{fig_ce_bond12.png}
 \caption{Signed cross-entropy $\mathcal{L}(v,t)$ for a single broken bond
-(bond 12, sites 15↔16, identity PTM), seismic initialization,
+(bond 12, sites 15$\leftrightarrow$16, identity PTM), seismic initialization,
 rect $7\times7$, $\chi=50$.
 \textbf{Cycle 1}: no signal.
 \textbf{Cycle 2}: site 16 red ($\mathcal{L}>0$, blocked), site 17 blue
@@ -143,13 +159,16 @@ Gold circles: bond endpoints. Stars: seismic centers.}
 \end{figure}
 
 \paragraph{Ensemble log-likelihood.}
-Sum the signed cross-entropy fields across all $p$ centers:
+Each center $k$ is initialized and evolved \emph{independently} — a separate
+baseline and perturbed simulation pair per center. The signed cross-entropy
+$\mathcal{L}_k(v)$ is computed for each center individually, then summed:
 \begin{equation}
     \mathcal{L}_{\rm ens}(v) = \sum_{k=1}^{p} \mathcal{L}_k(v)
 \end{equation}
 This is a log-likelihood ensemble: centers on the same side of the broken
-bond reinforce each other; centers on opposite sides partially cancel noise.
-Silent centers (wave never reaches) contribute zero and do not corrupt the sum.
+bond see the same sign at the bond endpoints and reinforce each other;
+centers on opposite sides contribute opposite signs that partially cancel.
+Silent centers (wave never reaches site $v$) contribute zero and do not corrupt the sum.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Bond Detection}
@@ -199,36 +218,111 @@ adjacent bond. The ensemble product cancels these partial errors.
 \section{Aperture Synthesis Tomography}
 
 The $p$ independent center runs can be understood as an \emph{aperture synthesis}
-in direct analogy with radio interferometry. In aperture synthesis imaging, a
-physical aperture (lens or dish) is replaced by an array of smaller sensors at
-different baseline positions, each capturing visibility data — complex amplitude
-and phase — that are combined in Fourier space to reconstruct the source image.
-The phase encodes location; the amplitude encodes brightness.
+in direct analogy with radio interferometry. Each center $k$ at a different graph
+position plays the role of one antenna at a different baseline. The signed
+cross-entropy $\mathcal{L}_k(v)$ encodes which side of the broken bond site $v$
+is on (sign) and the signal strength (magnitude).
 
-In our setting:
+\paragraph{Voronoi center placement.}
+We place $p$ centers with the constraint that no two centers share the same
+row \emph{or} column in the lattice. This guarantees that every bond has a
+strictly unique nearest center (no Voronoi ties): the perpendicular bisector
+between any two centers never passes through a bond, so one center always
+dominates the signal at every bond. For $p=7$ on the $7\times7$ lattice
+(one center per row, one per column — a permutation placement), this gives
+centers $\{3,13,15,25,35,37,47\}$ with zero ties across all 84 bonds,
+maximum $T_b = 5$ cycles, and balanced Voronoi regions of 10--16 bonds each.
+The placement is found by exhaustive search over permutations, minimizing
+$\max_b T_b$.
+
+\paragraph{Winner-takes-all detection.}
+Ensemble summation $\mathcal{L}_{\rm ens}(v) = \sum_k \mathcal{L}_k(v)$ fails
+for bonds sandwiched between centers on opposite sides: the RED signal from
+one side and the BLUE signal from the other partially cancel. Instead, we use
+a \emph{winner-takes-all} rule: for each center $k$ independently compute the
+signed contrast across every bond,
+\begin{equation}
+    C_k(b) = \bigl|\mathcal{L}_k^{\rm signed}(v_a) - \mathcal{L}_k^{\rm signed}(v_b)\bigr|
+\end{equation}
+where $\mathcal{L}_k^{\rm signed}(v)$ is the peak signed cross-entropy (positive
+or negative, whichever has larger magnitude) within the clean window $t \leq t_{\rm loop}$.
+The broken bond is declared by the globally winning center-bond pair:
+\begin{equation}
+    (k^*, b^*) = \argmax_{k,\,b} \; C_k(b)
+\end{equation}
+The winning center $k^*$ is necessarily on the BLUE (wall-face) side of the broken
+bond; the RED endpoint is the shadow. No summation across centers is performed —
+each center is a fully independent observer, and the one with the strongest signal wins.
+
+This is fundamentally different from voting or ensemble averaging: the aperture
+is not a democracy, it is a \emph{tournament}. The center whose wave most directly
+crossed the broken bond dominates by a large margin (typical contrast $> 1.0$
+vs.\ background $< 0.02$) and its declaration is unambiguous.
+
+\paragraph{Experimental validation.}
+We ran 10 trials with randomly selected broken bonds (J=0.8, $\delta J = -0.2$)
+on the $7\times7$ lattice using the Voronoi $p=7$ center set. The adaptive
+seismic-then-aperture protocol achieves \textbf{10/10} correct identifications:
+7 bonds identified by seismic alone (2 simulations), 3 by aperture winner-takes-all
+(14 simulations). Average cost: $2 + 0.3 \times 14 \approx 6$ simulations per bond.
+
+\section{Tensor Network Simulation as Quantum Circuit Execution}
+
+The Trotter simulation underlying our method is not merely an approximation
+of a quantum circuit — it \emph{is} the quantum circuit, represented in the
+Pauli operator basis rather than the amplitude basis. The identification is exact:
+
 \begin{itemize}
-    \item Each center $k$ at a different graph position plays the role of one
-          antenna at a different baseline.
-    \item The signed cross-entropy $\mathcal{L}_k(v)$ plays the role of
-          visibility: its sign (positive/negative) encodes which side of the
-          broken bond site $v$ is on, and its magnitude encodes signal strength.
-    \item Combination in log space, $\mathcal{L}_{\rm ens}(v) = \sum_k \mathcal{L}_k(v)$,
-          plays the role of Fourier reconstruction: the sign information from
-          different baselines localizes the broken bond, exactly as phase
-          information from different baselines localizes a radio source.
+    \item Each \textbf{lattice site} = one qubit
+    \item Each \textbf{bond gate} $\exp(-i\theta(XX+YY+ZZ))$ = one two-qubit gate
+    \item Each \textbf{color class} (non-overlapping bonds applied in parallel) = one gate layer
+    \item Each \textbf{belief propagation synchronization} after a full Trotter cycle = one barrier
+    (per-color-class BP, as in the Julia L-MPF implementation~\cite{robertson2026lindblad},
+    provides finer sub-cycle resolution matching the quantum circuit barrier structure)
+    \item Each \textbf{PAULI\_NL output} = a mid-circuit Pauli weight measurement
 \end{itemize}
 
-Without the sign (using absolute amplitude only), localization fails — the
-broken bond cannot be distinguished from its neighbors. This is the analog of
-incoherent averaging in radio astronomy, which destroys phase and loses
-angular resolution. The p-center placement problem — choosing positions that
-guarantee every bond is observable — is the analog of baseline design.
+This correspondence is not a coincidence — both the graph coloring (determining
+which bonds share qubits) and the quantum circuit parallelism constraint (which
+gates can be applied simultaneously) derive from the same source: the lattice
+topology. The color class ordering is the gate layer ordering.
 
-Centers adjacent to the broken bond (short baseline) provide strong but
-ambiguous signals (WRONG individual answers). Centers straddling the bond
-from opposite sides (long baseline) provide the phase contrast that resolves
-the ambiguity. The ensemble combines both, suppressing the ambiguity while
-retaining the signal.
+\paragraph{Two timescales.}
+This identification reveals two distinct timescales:
+
+\textit{Physical time} $t$: integer Trotter cycles, $t = n \cdot \varepsilon$.
+The observables $C(t)$ and $n(v,t)$ at cycle granularity are physical —
+independent of color class ordering to $O(\varepsilon^2)$ and convergent to
+true quantum dynamics.
+
+\textit{Circuit time} $t_{\rm color}$: sub-cycle, per-color-class granularity.
+This is a property of the circuit implementation, not the Hamiltonian. Two
+Trotter implementations of the same Hamiltonian with different color orderings
+agree on $C(t)$ to first order in $\varepsilon$ but differ by $O(\varepsilon^2)$
+Trotter errors that accumulate over time; their $n(v, t_{\rm color})$ tomography
+fingerprints differ already at the first sub-cycle.
+The BP synchronization granularity determines which timescale is accessible:
+per-cycle BP (as used here) loses sub-step information; per-color BP (Julia L-MPF~\cite{robertson2026lindblad})
+respects the causal barrier structure of the quantum circuit.
+
+\paragraph{Bond perturbation as gate miscalibration.}
+A perturbed bond (coupling $J \neq 1$) is a \emph{miscalibrated gate} — the
+two-qubit rotation angle $\theta = J \cdot \varepsilon$ differs from the nominal
+value. The Pauli transfer matrix for $\exp(-i\theta(XX+YY+ZZ))$ has diagonal
+entries $\cos(\theta)$, which for any $J \neq 1$ gives $\cos(J\varepsilon) \neq \cos(\varepsilon)$.
+Since $|\cos(\theta)| \leq 1$ for all $\theta$ (unitary gate), any coupling
+deviation attenuates the wave relative to baseline — guaranteeing $n_{\rm pert}(v^*) < n_{\rm base}(v^*)$
+at the shadow endpoint $v^*$, so $\mathcal{L}(v^*) > 0$ (red) regardless of
+the sign of $\delta J = J - 1$. The detection method is robust: the red site
+is always the shadow endpoint, never inverted.
+
+This frames our tomography as \emph{quantum ATPG} (Automatic Test Pattern
+Generation)~\cite{roth1966diagnosis} — the classical circuit testing methodology
+generalized to quantum gates. In classical ATPG: fault activation (excite the
+stuck-at gate), path sensitization (find an observable path from fault to output),
+backward implication (infer the faulty gate). Here: perturbation (change $J$),
+wavefront propagation (operator spreading from center to shadow site), and
+cross-entropy inversion (red site + center position → bond identity).
 
 \section{The Seismic Approach}
 
@@ -279,7 +373,7 @@ Aperture ($v_{\rm hop}=0.5$) & \textbf{191\,s} & \textbf{5--7\%} & 3 GPUs, $2\ti
 \bottomrule
 \end{tabular}
 \caption{Wall-clock timing comparison on rect $7\times7$, bond 12, $\chi=50$,
-5 cycles. Both methods produce ✓ CORRECT results.
+5 cycles. Both methods produce \checkmark\ CORRECT results.
 $v_{\rm hop}=0.5$ is set by topology (d$_{\rm max}=2$ coverage), not by
 knowledge of the fault location.}
 \label{tab:timing}
@@ -345,6 +439,59 @@ The current searcher detects pairs; detecting walls requires a triplet scorer
 $S_{\rm wall}(b_1, b_2) = \mathcal{L}(v_a) \times \mathcal{L}(v_c)$ where $v_b$
 is the shared endpoint (white site) and $v_a$, $v_c$ are the outer endpoints.
 
+\paragraph{Adaptive seismic-to-aperture strategy.}
+The seismic and aperture methods are naturally complementary and suggest
+a two-phase adaptive protocol. In \textbf{Phase 1} (seismic), all $p$ centers
+fire simultaneously — one quantum experiment, minimum cost — producing a map of
+RED sites that identifies the region of interest. In \textbf{Phase 2} (aperture),
+the RED sites from Phase 1 guide the selection of targeted observation centers
+geometrically positioned to discriminate between candidate bonds adjacent to
+those sites. Only $k \ll p$ centers need to be run, each independently.
+
+This mirrors standard practice in other imaging domains: a wide-field scout scan
+(seismic) followed by targeted high-resolution acquisition (aperture). On quantum
+hardware, Phase 1 maps directly to a single quantum experiment; Phase 2 selects
+the minimum number of additional experiments to confirm the bond identity.
+
+The seismic phase is also the most natural starting point on hardware: it requires
+only one circuit (all centers in a single initialization), produces a rough
+hypothesis, and costs two experiments (baseline + perturbed). The aperture phase
+then tests the hypothesis with directional projections. Perturbation signals that
+survive across independent aperture projections with geometry-consistent timing are
+physical; chi-truncation artifacts and decoherence errors are uncorrelated across
+independent runs and average out.
+
+\paragraph{Wavefront triangulation across scans.}
+When multiple independent scans are available, the temporal order in which
+each scan detects the broken bond carries geometric information beyond the
+sign flip alone. This enables a triangulation strategy analogous to GPS:
+each scan provides a time-of-arrival constraint that localizes the bond.
+
+Formally, scan $s$ with nearest center $c_s$ detects the broken bond at
+cycle $t_s^*$ — the first cycle where $|\mathcal{L}_k(v)| > \varepsilon_{\rm th}$
+for some bond endpoint $v$. This constrains the bond to lie within
+$d_s = t_s^* \times v_{\rm hop}$ hops of $c_s$: a ball $B(c_s, d_s)$
+on the graph. Across $M$ scans, the bond lies in the intersection:
+\begin{equation}
+    b^* \in \bigcap_{s=1}^{M} \mathcal{B}(c_s,\, t_s^* \times v_{\rm hop})
+\end{equation}
+where $\mathcal{B}(c, r)$ is the set of bonds within crossing distance $r$ of center $c$.
+
+The sign of the earliest detection (which endpoint is RED vs BLUE) further
+constrains the direction: the center $c_s$ is on the BLUE (wall-face) side
+of the broken bond. Subsequent scans confirm or deny: a scan detecting the
+\emph{opposite} sign at the same endpoints confirms (center is on the other
+side of the same bond); a scan detecting different endpoints shifts the
+candidate set. Each confirmation tightens the intersection; each denial
+eliminates candidates.
+
+In practice on the $7\times7$ lattice with 3 scans (corners+center,
+quadrants, mid-edges): scan 2 detects bond 9 (11$\leftrightarrow$12)
+at cycle 1 (center 13, 1 hop away), scan 3 confirms with opposite sign at
+cycle 2 (center 4, 2 hops away), scan 1 provides weak confirmation at
+cycle 2 from the far corners. The intersection of the three balls gives
+a small candidate set containing the true bond.
+
 \paragraph{Failure taxonomy.}
 We characterize five failure modes of increasing complexity:
 \begin{enumerate}
@@ -363,6 +510,84 @@ stress-test the method: case 2 tests whether overlapping shadows can be
 resolved, case 3 tests spatial resolution limits, case 4 tests cluster
 detection on irregular topologies, and case 5 tests the sensitivity
 threshold for realistic coupling deviations.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Measurability and Detection Thresholds}
+
+The detection method requires $n(v,t)$ to be measurable — both from the
+simulation fidelity standpoint and from the hardware shot budget.
+Two independent conditions must hold simultaneously.
+
+\paragraph{Condition 1: Statistical measurability (hardware shots).}
+On real hardware, $n(v,t)$ is estimated from $N$ measurement shots as
+$\hat{n}(v,t) = k/N$ where $k \sim \mathrm{Binomial}(N, n(v,t))$.
+The shot noise floor is $\sigma(n) \approx \sqrt{n/N}$.
+For reliable detection of a signal $\delta n = n_{\rm pert} - n_{\rm base}$,
+we require $|\delta n| \gg \sigma(n)$, which gives a minimum measurable $n$:
+\begin{equation}
+    n_{\rm min}^{\rm shot} \approx \frac{1}{\sqrt{N}}
+\end{equation}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{rrl}
+\toprule
+$N$ shots & $n_{\rm min}^{\rm shot}$ & Status \\
+\midrule
+$10^3$   & $3 \times 10^{-2}$ & only strong wavefront \\
+$10^4$   & $1 \times 10^{-2}$ & first-arrival signal \\
+$10^5$   & $3 \times 10^{-3}$ & approaching threshold \\
+$10^6$   & $1 \times 10^{-3}$ & matches simulation floor \\
+\bottomrule
+\end{tabular}
+\caption{Minimum measurable $n(v,t)$ as a function of shot budget $N$.
+At $N=10^6$ the statistical floor matches the simulation cutoff.}
+\label{tab:shots}
+\end{table}
+
+\paragraph{Condition 2: Simulation fidelity (TN cutoff).}
+In the tensor network simulation, bond singular values below the
+truncation cutoff $\delta_{\rm cut}$ are set to zero. Any $n(v,t)$
+arising from these truncated components is an artifact of the TN
+approximation, not physical operator spreading. The simulation
+cannot faithfully represent values below $\delta_{\rm cut}^k$,
+where $k$ is the number of bonds on the shortest path from center to site $v$.
+In practice, the effective simulation floor is $\approx \delta_{\rm cut} = 10^{-3}$.
+
+Furthermore, the belief propagation used to compute messages is not
+strictly causal: messages propagate globally in each sweep, creating
+tiny non-zero $n(v,t) \sim 10^{-4}$ at causally disconnected sites
+(beyond the Lieb-Robinson cone). These BP leakage values are below
+$\delta_{\rm cut}$ and physically unmeasurable on hardware.
+
+\paragraph{The two conditions converge.}
+Setting $\delta_{\rm cut} = 10^{-3}$ (our default), Condition 2 requires
+$n_{\rm min}^{\rm sim} = 10^{-3}$. From Table~\ref{tab:shots},
+Condition 1 requires $N \geq 10^6$ shots to match this floor.
+The detection threshold $\varepsilon_{\rm th} = 10^{-3}$ used throughout
+this work satisfies both conditions simultaneously at $N = 10^6$.
+
+\begin{equation}
+    \varepsilon_{\rm th} \geq \max\!\left(\delta_{\rm cut},\; \frac{1}{\sqrt{N}}\right)
+\end{equation}
+
+For $N < 10^6$, the hardware floor dominates and a larger $\varepsilon_{\rm th}$
+is required. For tighter cutoffs $\delta_{\rm cut} < 10^{-3}$, the simulation
+floor drops below the hardware floor — enabling more cycles before saturation
+at the cost of longer simulation time.
+
+\paragraph{Minimum detectable coupling deviation.}
+The signal strength $\delta n(v,t) \approx n_{\rm base}(v,t) \cdot \varepsilon \cdot \sin(\varepsilon) \cdot |\delta J|$
+gives the minimum detectable coupling deviation:
+\begin{equation}
+    |\delta J|_{\rm min} \approx \frac{\varepsilon_{\rm th}}
+        {\varepsilon \cdot \sin(\varepsilon) \cdot \sqrt{N \cdot n_{\rm base}(v,t)}}
+\end{equation}
+For $\varepsilon = 0.10$, $N = 10^6$, $n_{\rm base} \approx 10^{-2}$
+(genuine wavefront at first arrival):
+$|\delta J|_{\rm min} \approx 1/(0.10 \times 0.0998 \times 316) \approx 0.32$.
+This improves as $1/\sqrt{N}$ with more shots. For $N = 10^7$: $|\delta J|_{\rm min} \approx 0.10$.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}

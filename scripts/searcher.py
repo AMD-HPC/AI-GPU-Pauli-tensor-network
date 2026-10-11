@@ -228,17 +228,61 @@ def main():
     abs_delta = abs_L
     delta_l   = L_first
 
-    # Bond scoring: S(b,t) = L(v_a,t) * L(v_b,t) at each cycle
-    # Find the most negative score across ALL cycles — catches sign flips
-    # that may only appear at specific cycles (e.g. before interference builds).
     site_idx = {s: i for i, s in enumerate(all_sites)}
-    candidate_bonds = {}
 
-    # Rebuild full L(v,t) matrix for per-cycle scoring
-    # Use L_ensemble if ensemble mode, else single-run L
-    # We need raw L per cycle — recompute from parsed data
-    # (L_first is already at t_first; for per-cycle we need all cycles)
-    L_cycle = np.zeros((nc, ns))  # L(v,t) for all cycles
+    # ── Global max-contrast bond detection ───────────────────────────────────
+    # Rule: rank ALL bonds by |L(v,t) - L(u,t)| at cycle 1 (first arrival).
+    # The broken bond has maximum contrast: one endpoint RED, other BLUE or zero.
+    # No need to find peak RED first — contrast is symmetric and global.
+
+    # Build signed L per site: track both peak positive (RED) and peak negative (BLUE).
+    # Use early cycles only (before chi saturation / self-overlap at t_loop).
+    # Contrast = L_red(v) - L_blue(u) across each bond — max when RED on one side, BLUE on other.
+    FLOOR_loc = 1e-7
+    # Ensemble mode: multiple runs per center → aperture → use longer window
+    # Single run: seismic → use shorter window to avoid t_loop interference
+    T_CLEAN = 5 if ensemble else 3
+    L_pos = np.zeros(ns)   # peak positive L per site (RED signal)
+    L_neg = np.zeros(ns)   # peak negative L per site (BLUE signal)
+    for b_log, p_log in zip(baseline_logs, perturbed_logs):
+        try:
+            _, _, db_c = parse_pauli_log(b_log.strip(), 'NL')
+            _, _, dp_c = parse_pauli_log(p_log.strip(), 'NL')
+        except ValueError:
+            continue
+        nc_c = min(db_c.shape[0], dp_c.shape[0], T_CLEAN)
+        for v in range(ns):
+            for t in range(nc_c):
+                if db_c[t, v] > args.thr:
+                    val = -np.log(max(dp_c[t, v], FLOOR_loc) / db_c[t, v])
+                    if val > L_pos[v]: L_pos[v] = val
+                    if val < L_neg[v]: L_neg[v] = val
+
+    # Signed L per site: use RED peak if strong, else BLUE peak
+    # For contrast: signed_L(v) = L_pos[v] if |L_pos|>|L_neg| else L_neg[v]
+    L_signed = np.where(np.abs(L_pos) >= np.abs(L_neg), L_pos, L_neg)
+
+    # Score all bonds by |L_signed(v) - L_signed(u)| — max for RED/BLUE pair
+    bond_contrasts = {}
+    for bond_idx, e in enumerate(g['edges']):
+        a, b = get_bond_sites(e)
+        a_idx = site_idx.get(a, -1); b_idx = site_idx.get(b, -1)
+        if a_idx < 0 or b_idx < 0: continue
+        contrast = abs(L_signed[a_idx] - L_signed[b_idx])
+        bond_contrasts[bond_idx] = (contrast, L_signed[a_idx], L_signed[b_idx])
+
+    ranked_red = sorted(bond_contrasts.items(), key=lambda x: -x[1][0])
+
+    print(f"\nGlobal max-contrast detection (top 5 bonds at cycle 1):")
+    for bond_idx, (contrast, La, Lb) in ranked_red[:5]:
+        a, b = get_bond_sites(g['edges'][bond_idx])
+        print(f"  Bond {bond_idx:3d}: {a:3d} ↔ {b:3d}  L(a)={La:+.4f}  L(b)={Lb:+.4f}  contrast={contrast:.4f}")
+
+    predicted_bond = ranked_red[0][0] if ranked_red else -1
+
+    # ── Fallback: per-cycle product scoring L(v_a,t) × L(v_b,t) ─────────────
+    # Used as secondary check and for multi-bond cases.
+    L_cycle = np.zeros((nc, ns))
     FLOOR_loc = 1e-7
     for b_log, p_log in zip(baseline_logs, perturbed_logs):
         try:
@@ -252,12 +296,12 @@ def main():
                 if db2[t,v] > args.thr:
                     L_cycle[t,v] += -np.log(max(dp2[t,v],FLOOR_loc)/max(db2[t,v],FLOOR_loc))
 
+    candidate_bonds = {}
     for bond_idx, e in enumerate(g['edges']):
         a, b = get_bond_sites(e)
         a_idx = site_idx.get(a, -1)
         b_idx_s = site_idx.get(b, -1)
         if a_idx < 0 or b_idx_s < 0: continue
-        # Score this bond at each cycle, keep most negative
         best_score = 0.0
         best_cycle = -1
         for t in range(nc):
@@ -271,18 +315,19 @@ def main():
         if best_score < 0:
             candidate_bonds[bond_idx] = (best_score, best_cycle)
 
-    if not candidate_bonds:
-        print("\n  No candidate bonds found.")
-        return
-
-    # Rank by most negative score (sign flip = broken bond)
-    ranked = sorted(candidate_bonds.items(), key=lambda x: x[1][0])  # ascending: most negative first
-    print(f"\nCandidate bonds (ranked by signal, per-cycle scoring):")
+    ranked = sorted(candidate_bonds.items(), key=lambda x: x[1][0])
+    print(f"\nFallback product scoring (top 5):")
     for bond_idx, (score, cyc) in ranked[:5]:
         a, b = get_bond_sites(g['edges'][bond_idx])
         print(f"  Bond {bond_idx:3d}: {a:3d} ↔ {b:3d}  score={score:.3f}  best_cycle={cyc}")
 
-    predicted_bond = ranked[0][0]
+    # Use RED-first if available, else fall back to product scoring
+    if predicted_bond < 0 and ranked:
+        predicted_bond = ranked[0][0]
+    elif predicted_bond < 0:
+        print("\n  No candidate bonds found.")
+        return
+
     a_pred, b_pred = get_bond_sites(g['edges'][predicted_bond])
     print(f"\nC_searcher declares: Bond {predicted_bond} ({a_pred} ↔ {b_pred})")
 

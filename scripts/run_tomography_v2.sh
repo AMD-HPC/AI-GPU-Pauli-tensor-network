@@ -26,7 +26,7 @@ BOND_PY="${BOND//;/,}"
 cd /scratch/MPF/CppSim
 source /scratch/.venv/bin/activate
 
-LOGDIR="logs/tomo_v2"
+LOGDIR="logs/tomo_v3"
 mkdir -p $LOGDIR
 
 GRAPH="data/graphs/rect_7x7.json"
@@ -48,14 +48,14 @@ BROKEN_JSON=$LOGDIR/broken_bond${BOND_TAG}.json
 if [[ $MODE == A_center* ]]; then
     CENTER=${MODE#A_center}
     CHI=50
-    STEPS=3
+    STEPS=7
     CENTER_ARG="--center=$CENTER"
     VHOP_ARG="--v_hop=0.5"
     TAG="${MODE}_bond${BOND_TAG}"
 elif [[ $MODE == "B" ]]; then
     CENTER_ARG="--center=$CENTERS_STR"
     CHI=50   # chi=80 OOMs with 2 parallel runs on 32GB GPU; chi=50 safe
-    STEPS=5
+    STEPS=7
     VHOP_ARG=""   # no v_hop — all bonds must be reachable
     TAG="B_bond${BOND_TAG}"
 elif [[ $MODE == "C" ]]; then
@@ -138,10 +138,12 @@ nc = min(nc_b, nc_p)
 fig, axes = plt.subplots(1, nc, figsize=(5*nc, 5))
 if nc == 1: axes = [axes]
 fig.suptitle('$MODE bond=$BOND (${sa}↔${sb}) dJ=$DJ chi=$CHI', fontsize=11)
-FLOOR=1e-6
+FLOOR=1e-7
+THR=1e-4
 for i, t in enumerate(range(nc)):
     ax = axes[i]
     ce = np.array([-np.log(max(data_pert[t,vi],FLOOR)/max(data_base[t,vi],FLOOR))
+                   if data_base[t,vi] > THR else 0.0
                    for vi in range(ns)])
     norm = mcolors.TwoSlopeNorm(vmin=-0.5, vcenter=0, vmax=0.5)
     sc = ax.scatter(xs, ys, c=ce, cmap='RdBu_r', norm=norm, s=400, zorder=3)

@@ -72,14 +72,15 @@ def bfs_distances(g, source):
     return dist
 
 def bond_distances(g, source):
-    """Distance from source to each bond (min distance to either endpoint)."""
+    """Distance from source to cross each bond (max distance to either endpoint).
+    The wavefront must reach BOTH endpoints to cross the bond and detect it."""
     dist = bfs_distances(g, source)
     bond_dist = []
     for e in g['edges']:
         a, b = get_bond_sites(e)
         d_a = dist.get(a, 9999)
         d_b = dist.get(b, 9999)
-        bond_dist.append(min(d_a, d_b))
+        bond_dist.append(max(d_a, d_b))
     return np.array(bond_dist)
 
 def all_sites(g):
@@ -142,16 +143,63 @@ def t_loop(g, v_hop, girth=None):
             girth = 4  # rect grid
     return girth / (2 * v_hop)
 
+def random_centers(g, n_centers, seed=42):
+    """
+    Choose n_centers randomly from all sites with a fixed seed for reproducibility.
+    Returns: list of center sites, site_bond_dist dict
+    """
+    import random
+    random.seed(seed)
+    sites = sorted(all_sites(g))
+    chosen = random.sample(sites, min(n_centers, len(sites)))
+    print(f"  Random centers (seed={seed}): {chosen}")
+
+    # Precompute bond distances from chosen centers
+    site_bond_dist = {}
+    n_bonds = len(g['edges'])
+    for s in chosen:
+        site_bond_dist[s] = bond_distances(g, s)
+
+    return chosen, site_bond_dist
+
+def compute_bond_cycles(centers, site_bond_dist, g, v_hop):
+    """
+    For each bond, compute T_b = ceil(d_min / v_hop):
+    the minimum cycles needed for the closest center to reach either endpoint.
+    """
+    n_bonds = len(g['edges'])
+    T_b = np.zeros(n_bonds)
+    nearest_center = np.full(n_bonds, -1)
+
+    for bond_idx in range(n_bonds):
+        d_min = 9999
+        nc = -1
+        for c in centers:
+            bd = site_bond_dist[c][bond_idx]
+            if bd < d_min:
+                d_min = bd
+                nc = c
+        T_b[bond_idx] = int(np.ceil(d_min / v_hop)) if d_min < 9999 else -1
+        nearest_center[bond_idx] = nc
+
+    return T_b, nearest_center
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--graph',  required=True)
-    ap.add_argument('--d',      type=int, default=3,
-                    help='Max bond distance from center (default: 3)')
-    ap.add_argument('--v_hop',  type=float, default=None,
+    ap.add_argument('--graph',          required=True)
+    ap.add_argument('--d',              type=int, default=3,
+                    help='Max bond distance for greedy cover (default: 3)')
+    ap.add_argument('--random',         type=int, default=None, metavar='N',
+                    help='Use N random centers instead of greedy (requires --seed)')
+    ap.add_argument('--seed',           type=int, default=42,
+                    help='Random seed for reproducibility (default: 42)')
+    ap.add_argument('--v_hop',          type=float, default=None,
                     help='Frontier velocity (hops/cycle) for time window estimate')
-    ap.add_argument('--show',   action='store_true',
+    ap.add_argument('--show',           action='store_true',
                     help='Show per-bond coverage')
-    ap.add_argument('--out',    default=None,
+    ap.add_argument('--show-cycles',    action='store_true',
+                    help='Show T_b (required cycles) per bond')
+    ap.add_argument('--out',            default=None,
                     help='Save center list to JSON')
     args = ap.parse_args()
 
@@ -182,8 +230,13 @@ def main():
     else:
         print(f"  ⚠ T_clean > t_loop: interference expected, BP approximate")
 
-    print(f"\nGreedy p-center selection (d_max={args.d}):")
-    centers, site_bond_dist = greedy_p_center(g, args.d)
+    # Center selection: greedy or random
+    if args.random:
+        print(f"\nRandom center selection (n={args.random}, seed={args.seed}):")
+        centers, site_bond_dist = random_centers(g, args.random, seed=args.seed)
+    else:
+        print(f"\nGreedy p-center selection (d_max={args.d}):")
+        centers, site_bond_dist = greedy_p_center(g, args.d)
 
     print(f"\nResult: {len(centers)} centers needed")
     print(f"  Centers: {centers}")
@@ -209,16 +262,38 @@ def main():
                   f"dist={all_bond_min_dist[i]}  "
                   f"nearest_center={centers[nearest]}")
 
+    # Per-bond T_b: required cycles for nearest center to reach bond
+    T_b, nearest_center = compute_bond_cycles(centers, site_bond_dist, g, args.v_hop)
+    T_max = int(T_b[T_b > 0].max()) if (T_b > 0).any() else 0
+    T_mean = T_b[T_b > 0].mean() if (T_b > 0).any() else 0
+
+    print(f"\nPer-bond required cycles T_b = ceil(d_min / v_hop):")
+    print(f"  Max T_b: {T_max} cycles  (run at least this many)")
+    print(f"  Mean T_b: {T_mean:.1f} cycles")
+    print(f"  Bonds reachable in 3 cycles: {(T_b <= 3).sum()}/{n_bonds}")
+    print(f"  Bonds reachable in 5 cycles: {(T_b <= 5).sum()}/{n_bonds}")
+
+    if args.show_cycles:
+        print(f"\nPer-bond T_b:")
+        for i, e in enumerate(g['edges']):
+            a, b = get_bond_sites(e)
+            print(f"  Bond {i:3d}: {a:3d} ↔ {b:3d}  "
+                  f"T_b={T_b[i]:.0f}  nearest_center={nearest_center[i]}")
+
     if args.out:
         result = {
-            'graph': args.graph,
-            'd_max': args.d,
-            'v_hop': args.v_hop,
-            't_clean_cycles': t_clean,
-            't_loop_cycles': t_loop_est,
-            'centers': centers,
-            'n_centers': len(centers),
-            'max_bond_dist': int(all_bond_min_dist.max()),
+            'graph':            args.graph,
+            'method':           'random' if args.random else 'greedy',
+            'seed':             args.seed if args.random else None,
+            'd_max':            args.d,
+            'v_hop':            args.v_hop,
+            't_clean_cycles':   t_clean,
+            't_loop_cycles':    t_loop_est,
+            'centers':          centers,
+            'n_centers':        len(centers),
+            'max_bond_dist':    int(all_bond_min_dist.max()),
+            'max_T_b':          T_max,
+            'mean_T_b':         float(T_mean),
             'coverage_complete': bool((all_bond_min_dist <= args.d).sum() == n_bonds)
         }
         with open(args.out, 'w') as f:
