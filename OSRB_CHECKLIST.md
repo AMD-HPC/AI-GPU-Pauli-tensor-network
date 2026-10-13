@@ -22,11 +22,20 @@
 - [ ] Supporting publications: arXiv preprints, QIML 2026
 
 ## Submit
-- [ ] Click **"Request Approval"** transition → status becomes "Approvals Pending"
-- [ ] Set calendar reminder: monitor Jira comments every day for 7 business days
-- [ ] Respond to any questions within **2 business days**
+- [x] Click **"Request Approval"** → status: Approvals Pending (2026-10-09)
+- [ ] Monitor Jira comments daily, respond within 2 business days
 
-## After OSRB approved
+## Security approval (SWOSRB-647 — Biswas, Subir — 2026-10-13)
+Security requires:
+- [ ] **SAST scan (CodeQL)** on source code
+  - Guide: https://amd.atlassian.net/wiki/spaces/SILC/pages/541791598
+  - AMD queries: https://github.com/AMD-SIT-SAST-SCV/amd-queries
+  - Use CodeQL (not Coverity — discontinued 2027)
+  - Fix Critical/High issues OR get VP exception
+  - View results: contact dl.AppliedAI-security@amd.com
+- [ ] **SCA scan (Black Duck)** — only if binary deliverables (likely NO for us)
+
+## After OSRB fully approved
 - [ ] Download OSRB approval document
 - [ ] Re-submit ServiceNow: "Request for Public Repo/Change Repo Visibility to Public"
 - [ ] Attach OSRB approval document
@@ -55,6 +64,7 @@ MIT license. AMD will maintain with ongoing research contributions.
 | 2026-10-09 | SWOSRB Jira checklist created — next step: file Jira ticket |
 | 2026-10-09 | SWOSRB Jira ticket filed: https://amd.atlassian.net/browse/SWOSRB-647 |
 | 2026-10-09 | "Request Approval" clicked — status now "Approvals Pending" — approvers notified |
+| 2026-10-13 | Security approval condition received (Biswas, Subir): CodeQL SAST scan required |
 
 ---
 
