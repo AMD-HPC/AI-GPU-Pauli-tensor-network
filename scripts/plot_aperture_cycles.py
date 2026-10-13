@@ -34,7 +34,8 @@ def main():
     ap.add_argument('--centers',    default='25,10,34,30,6,32')
     ap.add_argument('--out',        default='/tmp/aperture_cycles.png')
     ap.add_argument('--vmax',       type=float, default=0.6)
-    ap.add_argument('--thr',        type=float, default=1e-4)
+    ap.add_argument('--thr',        type=float, default=1e-3,
+                    help='n_base threshold — matches detection threshold')
     ap.add_argument('--lmin',       type=float, default=0.0, help='Zero L below this magnitude')
     ap.add_argument('--max-cycles', type=int,   default=5)
     args = ap.parse_args()
