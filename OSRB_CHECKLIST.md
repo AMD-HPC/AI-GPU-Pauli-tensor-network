@@ -27,7 +27,7 @@
 
 ## Security approval (SWOSRB-647 — Biswas, Subir — 2026-10-13)
 Security requires:
-- [ ] **SAST scan (CodeQL)** on source code
+- [x] **SAST scan (CodeQL)** on source code — 0 C/C++ issues, 0 Python issues (2026-10-13)
   - Download: https://mkmartifactory.amd.com:8443/artifactory/system-provisioning/CodeQL/bundles/latest/codeql-bundle-linux64.tar.gz
   - Run: `bash scripts/run_codeql_scan.sh` (C/C++ + Python, see script)
   - AMD queries: https://github.com/AMD-SIT-SAST-SCV/amd-queries
@@ -65,6 +65,7 @@ MIT license. AMD will maintain with ongoing research contributions.
 | 2026-10-09 | SWOSRB Jira ticket filed: https://amd.atlassian.net/browse/SWOSRB-647 |
 | 2026-10-09 | "Request Approval" clicked — status now "Approvals Pending" — approvers notified |
 | 2026-10-13 | Security approval condition received (Biswas, Subir): CodeQL SAST scan required |
+| 2026-10-13 | CodeQL scan completed: 0 C/C++ issues, 0 Python issues — results sent to security |
 
 ---
 
