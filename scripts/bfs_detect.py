@@ -34,10 +34,55 @@ import argparse
 import json
 import numpy as np
 import sys
+from collections import deque
 sys.path.insert(0, 'scripts')
 from searcher import parse_pauli_log, load_graph, build_adj, get_bond_sites
 
 FLOOR = 1e-7
+
+
+def bond_color_class(g, bi):
+    """Color class of bond bi: 0,1=horizontal, 2,3=vertical."""
+    from searcher import get_bond_sites
+    a, b = get_bond_sites(g['edges'][bi])
+    row_a = (a-1)//7; col_a = (a-1)%7
+    row_b = (b-1)//7
+    if row_a == row_b:  # horizontal
+        return col_a % 2
+    else:  # vertical
+        return 2 + row_a % 2
+
+
+def bfs_with_color(centers, adj, all_sites, g):
+    """
+    BFS from centers tracking (hop, color_class) for sub-cycle causality.
+    Returns:
+      hop[v]        = min hop distance from any center
+      color[v]      = color class of last bond on BFS path
+      parent_bond[v]= bond_idx on BFS path to v
+      causal_order[v]= (hop, color_class) — true sub-cycle ordering
+    """
+    hop          = {s: -1 for s in all_sites}
+    color        = {s: -1 for s in all_sites}
+    parent_bond  = {s: -1 for s in all_sites}
+
+    q = deque()
+    for c in centers:
+        if c in hop:
+            hop[c] = 0; color[c] = -1
+            q.append(c)
+
+    while q:
+        v = q.popleft()
+        for u, bi in adj[v]:
+            if hop[u] >= 0: continue
+            c_bond = bond_color_class(g, bi)
+            hop[u] = hop[v] + 1
+            color[u] = c_bond
+            parent_bond[u] = bi
+            q.append(u)
+
+    return hop, color, parent_bond
 
 
 def threshold_crossing(data, thr, T_max):
@@ -73,23 +118,20 @@ def is_collision(db, v, t_star, site_idx, s, thr, T_max):
 def bfs_detect_scan(db, dp, centers, bonds_covered, g, adj, all_sites, site_idx,
                     v_hop, thr=1e-3, thr_L=0.05, T_max=5, verbose=False):
     """
-    For one scan: threshold-crossing BFS fault detection.
+    BFS fault detection with (hop, color_class) sub-cycle causal ordering.
+    No Voronoi filter — all bonds scored across all scans.
 
-    For each site v:
-      t*_base = threshold crossing of n_base
-      t*_pert = threshold crossing of n_pert
-      L(v)    = signal at t*_base
-
-    Broken bond identification:
-      Find neighbor u of v that crossed threshold BEFORE v (u is center-side).
-      Broken bond = bond(u, v) — the last edge before the anomaly site.
-
-    Returns list of candidate bonds with scores.
+    For each anomaly site s (|L| > thr_L at t*_base):
+      Find neighbor u with sign flip (BLUE↔RED).
+      Score using: sign flip + delay + BFS causal order (hop, color_class).
+      Earlier in BFS (smaller hop, earlier color) = more reliable.
     """
     t_base = threshold_crossing(db, thr, T_max)
-    t_pert = threshold_crossing(dp, thr, T_max)
+    t_pert  = threshold_crossing(dp, thr, T_max)
 
-    # Compute L at BFS frontier (t*_base) for each site
+    # BFS with color class for sub-cycle causal ordering
+    hop_bfs, color_bfs, _ = bfs_with_color(centers, adj, all_sites, g)
+
     ns = db.shape[1]
     L_frontier = np.zeros(ns)
     for v in range(ns):
@@ -101,67 +143,63 @@ def bfs_detect_scan(db, dp, centers, bonds_covered, g, adj, all_sites, site_idx,
     candidates = []
     for si, s in enumerate(all_sites):
         t = t_base[si]
-        if t < 0: continue  # baseline never arrives
-
+        if t < 0: continue
         L = L_frontier[si]
-        if abs(L) < thr_L: continue  # no significant signal
+        if abs(L) < thr_L: continue
 
-        # Check collision
         is_col = is_collision(db, s, t, site_idx, s, thr, T_max)
-
-        # Identify broken bond:
-        # For RED+delayed sites: broken bond connects s to a BLUE neighbor
-        #   (BLUE neighbor = wall face, s = shadow)
-        # For BLUE sites: broken bond connects s to a RED/delayed neighbor
-        #   (s = wall face, RED neighbor = shadow)
-        # Fallback: use neighbor that arrived strictly before s (upstream)
         t_p = t_pert[si]
         delayed = (t_p < 0) or (t_p > t)
 
-        best_bond = -1
-        best_u    = -1
-        best_score = -1
+        hop_s   = hop_bfs.get(s, 999)
+        color_s = color_bfs.get(s, 9)
+
+        best_bond = -1; best_u = -1; best_score = -1
 
         for u, bond_idx in adj[s]:
-            if bond_idx not in bonds_covered: continue
+            # No Voronoi filter — score ALL neighboring bonds
             ui = site_idx[u]
-            tu_b = t_base[ui]
-            tu_p = t_pert[ui]
+            tu_b = t_base[ui]; tu_p = t_pert[ui]
             if tu_b < 0: continue
 
-            nb_u = db[tu_b-1, ui] if tu_b > 0 else 0
-            np_u = dp[tu_b-1, ui] if tu_b > 0 else 0
-            L_u = -np.log(max(np_u, FLOOR) / nb_u) if nb_u > thr else 0.0
+            nb_u = db[tu_b-1,ui]; np_u = dp[tu_b-1,ui]
+            L_u = -np.log(max(np_u,FLOOR)/nb_u) if nb_u>thr else 0.0
 
-            # Prefer: opposite sign from s (sign flip across bond = broken bond)
             sign_flip = (L > 0 and L_u < -0.05) or (L < 0 and L_u > 0.05)
-            # Also prefer: delayed arrival on either side
+            if not sign_flip: continue
+
+            hop_u   = hop_bfs.get(u, 999)
+            color_u = color_bfs.get(u, 9)
+
+            # Causal order: earlier in BFS tree is center-side (wall face)
+            u_upstream = (hop_u, color_u) < (hop_s, color_s)
+            s_upstream = (hop_s, color_s) < (hop_u, color_u)
+
             u_delayed = (tu_p < 0) or (tu_p > tu_b)
 
-            score = 0
-            if sign_flip: score += 10  # sign flip = strong evidence
-            if u_delayed or delayed: score += 5
-            if tu_b < t: score += 2   # u arrived before s = upstream
-            if tu_b == t: score += 1  # same cycle = possible wall face
+            score = 10  # base for sign flip
+            if delayed or u_delayed: score += 5
+            if u_upstream or s_upstream: score += 3  # known causal direction
+            # BFS proximity bonus: earlier sites = stronger evidence
+            bfs_min = min(hop_s*10+color_s, hop_u*10+color_u)
+            score += max(0, 30 - bfs_min)
 
             if score > best_score:
-                best_score = score
-                best_u = u
-                best_bond = bond_idx
+                best_score = score; best_u = u; best_bond = bond_idx
 
-        if best_bond < 0: continue  # no suitable neighbor found
+        if best_bond < 0: continue
 
         candidates.append({
-            'site':       s,
-            'bond':       best_bond,
-            'L':          L,
-            't_base':     t,
-            't_pert':     t_p,
-            'delayed':    delayed,
+            'site':         s,
+            'bond':         best_bond,
+            'L':            L,
+            't_base':       t,
+            't_pert':       t_p,
+            'delayed':      delayed,
             'is_collision': is_col,
-            'upstream':   best_u,
-            't_pert':     t_p,
-            'delayed':    delayed,
+            'upstream':     best_u,
+            'hop':          hop_s,
+            'color':        color_s,
         })
 
     return candidates
@@ -179,7 +217,8 @@ def bfs_detect(logdir, plan, g, adj, all_sites, site_idx, v_hop,
     for sc in plan['placements']:
         sid     = sc['scan']
         centers = sc['centers']
-        bonds_covered = set(sc['bonds_covered'])
+        # No Voronoi filter — pass ALL bonds to each scan
+        all_bonds = set(range(len(g['edges'])))
 
         try:
             _, _, db = parse_pauli_log(f'{logdir}/scan{sid}_base.log', 'NL')
@@ -188,7 +227,7 @@ def bfs_detect(logdir, plan, g, adj, all_sites, site_idx, v_hop,
             if verbose: print(f"  Scan {sid}: ERROR {e}")
             continue
 
-        cands = bfs_detect_scan(db, dp, centers, bonds_covered, g, adj,
+        cands = bfs_detect_scan(db, dp, centers, all_bonds, g, adj,
                                  all_sites, site_idx, v_hop, thr, thr_L, T_max,
                                  verbose=False)
 
