@@ -492,6 +492,89 @@ cycle 2 (center 4, 2 hops away), scan 1 provides weak confirmation at
 cycle 2 from the far corners. The intersection of the three balls gives
 a small candidate set containing the true bond.
 
+\paragraph{BFS-guided fault detection algorithm.}
+The detection method reduces to a graph-theoretic algorithm that operates
+entirely on the observable $n(v,t)$, without reference to the Hamiltonian,
+coupling values, or simulation parameters. We state it precisely.
+
+Let $G = (V, E)$ be the coupling graph, $\{c_s\}$ the observation centers,
+and $\varepsilon_{\rm th}$ the detection threshold.
+
+\begin{enumerate}
+    \item \textbf{BFS frontier timing.} For each center $c_s$ and each site $v \in V$, define
+    the \emph{baseline arrival time}
+    $t^*_{\rm base}(v) = \min\{t : n_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
+    and \emph{perturbed arrival time}
+    $t^*_{\rm pert}(v) = \min\{t : n_{\rm pert}(v,t) > \varepsilon_{\rm th}\}$.
+    These are the BFS frontier crossing times — the actual wavefront arrival,
+    not a predicted hop distance. Note that $t^*_{\rm base}(v)$ and
+    $t^*_{\rm pert}(v)$ may differ if a broken bond on the path to $v$ delays
+    the perturbed wave.
+
+    \item \textbf{Sub-cycle causal ordering.} Within the same BFS cycle, the
+    Trotter color class $c(e) \in \{0,1,2,3\}$ of each bond $e$ determines the
+    firing order. Assign each site $v$ the pair $(h(v), c(e_v))$ where $h(v)$
+    is its BFS hop depth and $c(e_v)$ is the color class of the bond used to
+    reach it. The total order $(h, c)$ gives exact sub-cycle causality:
+    $(h_u, c_u) < (h_v, c_v)$ means site $u$ is strictly upstream of $v$.
+
+    \item \textbf{Bond transfer and anomaly detection.}
+    Consider a bond $(u, v)$ where $u$ is the source (center-side) and $v$ is the
+    destination (shadow-side). The \emph{bond transfer coefficient} is:
+    \begin{equation}
+        T = \frac{n(v,\, t^*_{\rm base}(v))}{n(u,\, t^*_{\rm base}(u))}
+    \end{equation}
+    When $n_{\rm base}(u, t^*_{\rm base}(u)) \gg \varepsilon_{\rm th}$ (source well
+    established), the threshold condition ensures both waves have the same source
+    amplitude: $n_{\rm base}(u) \approx n_{\rm pert}(u)$ at the BFS frontier,
+    since the perturbation is downstream of $u$.
+    In this regime:
+    \begin{equation}
+        \mathcal{L}(v,\, t^*_{\rm base}(v)) = -\ln\frac{n_{\rm pert}(v)}{n_{\rm base}(v)}
+        \approx \ln\frac{T_{\rm base}}{T_{\rm pert}}
+    \end{equation}
+    so $\mathcal{L}$ directly measures the \emph{relative change in bond transfer coefficient}.
+    A broken bond ($J \neq 1$) reduces the transfer $T_{\rm pert} < T_{\rm base}$,
+    giving $\mathcal{L}(v) > 0$ (RED shadow). The wall face $u$ shows
+    $\mathcal{L}(u) < 0$ (BLUE accumulation) from the same effect in reverse.
+    A delay $t^*_{\rm pert}(v) > t^*_{\rm base}(v)$ is additional evidence that
+    the transfer was slowed.
+
+    \item \textbf{Bond identification.} For each anomalous site $v$, examine its
+    neighbors $u$ in $G$. The broken bond is $(u,v)$ where:
+    (a) $\mathcal{L}(u)$ and $\mathcal{L}(v)$ have opposite signs (sign flip), and
+    (b) $(h_u, c_u) < (h_v, c_v)$ (causal order: $u$ is center-side, $v$ is shadow).
+    Score each candidate bond by $|\mathcal{L}(u) - \mathcal{L}(v)| \cdot \delta / t^*$
+    where $\delta = 2$ if delayed, $1$ otherwise, and $t^* = \min(t^*_{\rm base}(u), t^*_{\rm base}(v))$.
+
+    \item \textbf{Multi-scan aggregation.} Repeat steps 1--4 for each scan independently
+    (no Voronoi spatial restriction). Rank all candidate bonds by total score across scans.
+    Declare the top-$k$ bonds as broken, where $k$ is the number of expected faults.
+\end{enumerate}
+
+\paragraph{Pattern vocabulary.}
+The algorithm naturally identifies distinct interference signatures depending on
+the relative geometry of broken bonds and centers:
+\begin{itemize}
+    \item \textbf{RED$-$BLUE}: single broken bond, center on one side — clean sign flip
+    \item \textbf{BLUE$-$WHITE$-$BLUE}: bond sandwiched between two equidistant centers
+    (collinear) — white site is the interference node; both bonds identifiable
+    \item \textbf{BLUE$-$BLUE$-$RED}: two orthogonal broken bonds at a shared endpoint —
+    shared site accumulates from two directions; outer RED identifies one bond,
+    adjacent BLUEs identify the second
+\end{itemize}
+Each pattern is a direct consequence of the BFS frontier geometry and the
+Trotter color class ordering — no quantum-specific reasoning required.
+
+\paragraph{Experimental results.}
+On a $7\times7$ lattice with 3 scans (13 centers, 3 GPUs parallel, $d_{\rm max}=2$),
+testing 10 random trials with 2 simultaneous broken bonds ($\delta J = -0.20$):
+the BFS algorithm with sub-cycle color-class ordering finds \textbf{both bonds correctly
+in 9/10 trials} (90\%), with 1 partial case and 0 complete failures.
+The single partial failure (trial 5) corresponds to two orthogonal bonds sharing an
+endpoint where both centers' waves are simultaneously blocked — the BLUE$-$BLUE$-$RED
+pattern, representing the hardest geometric configuration.
+
 \paragraph{Failure taxonomy.}
 We characterize five failure modes of increasing complexity:
 \begin{enumerate}

@@ -115,15 +115,44 @@ def is_collision(db, v, t_star, site_idx, s, thr, T_max):
     return nb_now > 3.0 * nb_prev
 
 
+def bond_transfer_L(db, dp, si, ui, tb_s, tb_u, tp_s, tp_u):
+    """
+    Bond transfer coefficient ratio: ln(T_base / T_pert)
+    where T = n(destination, t*_dest) / n(source, t*_source)
+
+    When source is well established (n_base(source) >> thr), the
+    threshold condition ensures n_base(source) ≈ n_pert(source),
+    so this reduces to L(destination) = -ln(n_pert/n_base).
+    But using explicit source normalization is more accurate.
+    """
+    if tb_s < 1 or tb_u < 1: return 0.0
+    nb_s = db[tb_s-1, si]; nb_u = db[tb_u-1, ui]
+    if nb_s < 1e-10 or nb_u < 1e-10: return 0.0
+
+    # Perturbed: use t*_pert if available, else t*_base
+    tp_s_use = tp_s if tp_s > 0 else tb_s
+    tp_u_use = tp_u if tp_u > 0 else tb_u
+    np_s = dp[min(tp_s_use-1, dp.shape[0]-1), si]
+    np_u = dp[min(tp_u_use-1, dp.shape[0]-1), ui]
+    if np_s < 1e-10: return 0.0
+
+    T_base = nb_u / nb_s
+    T_pert = max(np_u, FLOOR) / max(np_s, FLOOR)
+    if T_base < 1e-10 or T_pert < 1e-10: return 0.0
+
+    return np.log(T_base / T_pert)
+
+
 def bfs_detect_scan(db, dp, centers, bonds_covered, g, adj, all_sites, site_idx,
                     v_hop, thr=1e-3, thr_L=0.05, T_max=5, verbose=False):
     """
     BFS fault detection with (hop, color_class) sub-cycle causal ordering.
     No Voronoi filter — all bonds scored across all scans.
 
-    For each anomaly site s (|L| > thr_L at t*_base):
-      Find neighbor u with sign flip (BLUE↔RED).
-      Score using: sign flip + delay + BFS causal order (hop, color_class).
+    For each bond (u→v) where u is BFS upstream of v:
+      Compute bond transfer ratio: ln(T_base/T_pert)
+      This directly measures the coupling change, normalized by source.
+      Score using: transfer ratio + delay + BFS causal order (hop, color_class).
       Earlier in BFS (smaller hop, earlier color) = more reliable.
     """
     t_base = threshold_crossing(db, thr, T_max)
@@ -177,10 +206,25 @@ def bfs_detect_scan(db, dp, centers, bonds_covered, g, adj, all_sites, site_idx,
 
             u_delayed = (tu_p < 0) or (tu_p > tu_b)
 
+            # Bond transfer ratio: ln(T_base/T_pert)
+            # Source is BFS-upstream site, destination is downstream
+            if u_upstream:
+                src_i, dst_i = ui, si
+                tb_src, tb_dst = tu_b, t
+                tp_src, tp_dst = tu_p, t_p
+            else:
+                src_i, dst_i = si, ui
+                tb_src, tb_dst = t, tu_b
+                tp_src, tp_dst = t_p, tu_p
+
+            transfer = bond_transfer_L(db, dp, src_i, dst_i,
+                                       tb_src, tb_dst, tp_src, tp_dst)
+
             score = 10  # base for sign flip
+            score += min(20, abs(transfer) * 10)  # transfer ratio magnitude
             if delayed or u_delayed: score += 5
-            if u_upstream or s_upstream: score += 3  # known causal direction
-            # BFS proximity bonus: earlier sites = stronger evidence
+            if u_upstream or s_upstream: score += 3
+            # BFS proximity bonus: earlier = stronger evidence
             bfs_min = min(hop_s*10+color_s, hop_u*10+color_u)
             score += max(0, 30 - bfs_min)
 
