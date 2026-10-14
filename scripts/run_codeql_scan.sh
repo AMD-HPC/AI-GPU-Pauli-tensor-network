@@ -1,13 +1,15 @@
 #!/bin/bash
 # run_codeql_scan.sh — Run CodeQL SAST scan for OSRB security approval
 #
-# Requirements:
-#   1. Download CodeQL bundle (Linux):
-#      wget https://mkmartifactory.amd.com:8443/artifactory/system-provisioning/CodeQL/bundles/latest/codeql-bundle-linux64.tar.gz
-#      tar xzf codeql-bundle-linux64.tar.gz
-#      export PATH=$PATH:$(pwd)/codeql
+# IMPORTANT: Run this INSIDE the docker container where hipcc/make are available.
+# CodeQL must intercept the actual compiler calls.
 #
-# Usage:
+# Setup (once, inside docker):
+#   wget https://mkmartifactory.amd.com:8443/artifactory/system-provisioning/CodeQL/bundles/latest/codeql-bundle-linux64.tar.gz
+#   tar xzf codeql-bundle-linux64.tar.gz -C /scratch/
+#   export PATH=$PATH:/scratch/codeql
+#
+# Usage (inside docker):
 #   bash scripts/run_codeql_scan.sh [output_dir]
 
 REPO_ROOT="/scratch/MPF/CppSim"
@@ -23,7 +25,8 @@ echo "Output: $OUTPUT_DIR"
 echo ""
 
 # ── Step 1: C/C++ scan ────────────────────────────────────────────────────────
-echo "--- Step 1: C/C++ database creation ---"
+echo "--- Step 1: C/C++ database creation (make clean first so CodeQL intercepts compiler) ---"
+make clean 2>/dev/null || true
 codeql database create "$DB_DIR/cpp_db" \
     --language=cpp \
     --source-root="$REPO_ROOT" \
