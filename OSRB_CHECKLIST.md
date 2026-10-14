@@ -28,12 +28,12 @@
 ## Security approval (SWOSRB-647 — Biswas, Subir — 2026-10-13)
 Security requires:
 - [ ] **SAST scan (CodeQL)** on source code
-  - Guide: https://amd.atlassian.net/wiki/spaces/SILC/pages/541791598
+  - Download: https://mkmartifactory.amd.com:8443/artifactory/system-provisioning/CodeQL/bundles/latest/codeql-bundle-linux64.tar.gz
+  - Run: `bash scripts/run_codeql_scan.sh` (C/C++ + Python, see script)
   - AMD queries: https://github.com/AMD-SIT-SAST-SCV/amd-queries
-  - Use CodeQL (not Coverity — discontinued 2027)
   - Fix Critical/High issues OR get VP exception
   - View results: contact dl.AppliedAI-security@amd.com
-- [ ] **SCA scan (Black Duck)** — only if binary deliverables (likely NO for us)
+- [ ] **SCA scan (Black Duck)** — only if binary deliverables (likely NO — source only)
 
 ## After OSRB fully approved
 - [ ] Download OSRB approval document
