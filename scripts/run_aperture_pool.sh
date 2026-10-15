@@ -17,8 +17,8 @@ J_NEW=$3
 CANDIDATES=$4   # space-separated "bond:center" pairs
 
 BINARY="./main_pauli_sweep_rect7x7"
-CHI=50; STEPS=3; CUTOFF=1e-3
-V_HOP="--v_hop=0.448"
+CHI=50; STEPS=5; CUTOFF=1e-3
+V_HOP=""   # no v_hop: allow all paths to build signal at far endpoint
 
 cd /scratch/MPF/CppSim
 source /scratch/.venv/bin/activate 2>/dev/null || true
