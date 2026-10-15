@@ -290,8 +290,10 @@ def scatter_map(ax, vals, pos, ns, cmap, vmin, vmax, t_nl, t_g=None, title='', c
     if xs_c:
         sc = ax.scatter(xs_c, ys_c, c=cs, cmap=cmap, vmin=vmin, vmax=vmax,
                         s=100, zorder=4, edgecolors='gray', lw=0.3)
-        plt.colorbar(sc, ax=ax, label=cb_label, fraction=0.046, pad=0.04)
-    ax.set_title(title, fontsize=9)
+        cb = plt.colorbar(sc, ax=ax, fraction=0.046, pad=0.04)
+        cb.set_label(cb_label, fontsize=10)
+        cb.ax.tick_params(labelsize=9)
+    ax.set_title(title, fontsize=11)
     ax.set_aspect('equal')
     ax.set_facecolor('#e8e8e8')
     ax.tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
@@ -321,9 +323,9 @@ for fig_name, field, cmap, vmin_fn, vmax_fn, cb_label, fig_title in [
                         wm['t_nl'], wm[g]['t'],
                         title=f'{lbl} — {LABELS[g]}',
                         cb_label=cb_label)
-    fig.suptitle(fig_title, fontsize=11)
+    fig.suptitle(fig_title, fontsize=13)
     plt.tight_layout()
-    plt.savefig(f'{OUTDIR}/{fig_name}.png', dpi=150, bbox_inches='tight')
+    plt.savefig(f'{OUTDIR}/{fig_name}.png', dpi=200, bbox_inches='tight')
     plt.close()
     print(f"  saved {fig_name}.png")
 
