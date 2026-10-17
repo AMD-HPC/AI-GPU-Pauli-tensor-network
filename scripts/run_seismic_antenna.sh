@@ -34,7 +34,11 @@ print(f\"{br.get('perturbation',{}).get('J_perturbed',0.8):.3f}\")")
 
     echo "--- Trial $TRIAL: bonds=$BOND_TAG J_new=$J_NEW ---"
 
-    # Phase 1: get BFS candidates with wall center assignments
+    # Phase 1: get BFS candidates
+    # High confidence (score > CONF_THR): confirmed directly from seismic, no antenna
+    # Low confidence (score <= CONF_THR): uncertain, run wall antenna
+    CONF_THR=1.5
+
     ASSIGNMENTS=$(python3 -c "
 import sys, json
 sys.path.insert(0,'scripts')
@@ -46,36 +50,55 @@ g = load_graph('data/graphs/rect_7x7.json')
 adj, bond_map, all_sites = build_adj(g)
 site_idx = {s: i for i, s in enumerate(all_sites)}
 plan = json.load(open('data/scans/rect_7x7_scan_3gpu.json'))
+CONF_THR = $CONF_THR
 
 ranked, _ = bfs_detect('$LOGDIR', plan, g, adj, all_sites, site_idx,
                          v_hop=0.448, thr=1e-3, thr_L=0.05, T_max=5, verbose=False)
 
+confirmed_direct = []
 for bi, score in ranked[:5]:
-    wall, orient, direction, near, a, b = find_wall_centers(bi, g, set(all_sites))
-    if not wall: continue
-    cstr = ','.join(map(str, wall))
-    print(f'{bi}|{cstr}|{near}')
+    a,b = get_bond_sites(g['edges'][bi])
+    if score > CONF_THR:
+        # High confidence: confirmed directly from seismic
+        print(f'{bi}|DIRECT|{a}|score={score:.2f}')
+    else:
+        # Low confidence: need wall antenna
+        wall, orient, direction, near, a, b = find_wall_centers(bi, g, set(all_sites))
+        if not wall: continue
+        cstr = ','.join(map(str, wall))
+        print(f'{bi}|ANTENNA|{cstr}|{near}')
 " 2>/dev/null)
 
     [ -z "$ASSIGNMENTS" ] && echo "  No candidates" && continue
 
-    # Phase 2: run wall antenna for each candidate
+    # Phase 2+3: process each candidate
     confirmed=()
-    while IFS='|' read -r BOND_IDX CENTERS NEAR; do
+    while IFS='|' read -r BOND_IDX METHOD REST; do
         [ -z "$BOND_IDX" ] && continue
-        BASE_LOG="$LOGDIR/wall_b${BOND_IDX}_base.log"
-        PERT_LOG="$LOGDIR/wall_b${BOND_IDX}_pert.log"
 
-        if [ ! -f "$BASE_LOG" ]; then
-            ROCR_VISIBLE_DEVICES=0 $BINARY $CHI $STEPS $CUTOFF \
-                --center=$CENTERS --state=NL > $BASE_LOG 2>&1
-            ROCR_VISIBLE_DEVICES=1 $BINARY $CHI $STEPS $CUTOFF \
-                --center=$CENTERS --state=NL "--perturb-bond=${BOND_TAG},${J_NEW}" \
-                > $PERT_LOG 2>&1
-        fi
+        if [ "$METHOD" = "DIRECT" ]; then
+            # High confidence — confirmed from seismic, no antenna needed
+            SCORE=$(echo $REST | grep -oP 'score=\K[0-9.]+')
+            echo "  Bond $BOND_IDX: CONFIRMED (seismic score=$SCORE, no antenna needed)"
+            confirmed+=($BOND_IDX)
 
-        # Phase 3: validate sign flip
-        RESULT=$(python3 -c "
+        elif [ "$METHOD" = "ANTENNA" ]; then
+            # Low confidence — run wall antenna
+            CENTERS=$(echo $REST | cut -d'|' -f1)
+            NEAR=$(echo $REST | cut -d'|' -f2)
+            BASE_LOG="$LOGDIR/wall_b${BOND_IDX}_base.log"
+            PERT_LOG="$LOGDIR/wall_b${BOND_IDX}_pert.log"
+
+            if [ ! -f "$BASE_LOG" ]; then
+                ROCR_VISIBLE_DEVICES=0 $BINARY $CHI $STEPS $CUTOFF \
+                    --center=$CENTERS --state=NL > $BASE_LOG 2>&1
+                ROCR_VISIBLE_DEVICES=1 $BINARY $CHI $STEPS $CUTOFF \
+                    --center=$CENTERS --state=NL "--perturb-bond=${BOND_TAG},${J_NEW}" \
+                    > $PERT_LOG 2>&1
+            fi
+
+            # Validate sign flip
+            RESULT=$(python3 -c "
 import sys, numpy as np
 sys.path.insert(0,'scripts')
 from searcher import parse_pauli_log, load_graph, build_adj, get_bond_sites
@@ -86,10 +109,10 @@ site_idx = {s: i for i, s in enumerate(all_sites)}
 try:
     _, _, db = parse_pauli_log('$BASE_LOG','NL')
     _, _, dp = parse_pauli_log('$PERT_LOG','NL')
-except: print('ERROR'); exit()
+except: print('ERROR|0|0'); exit()
 a,b = get_bond_sites(g['edges'][$BOND_IDX])
 nc = min(db.shape[0], dp.shape[0])
-best = 0.0; best_cyc = -1
+best=0.0; best_cyc=-1
 for t in range(nc):
     nb_a=db[t,site_idx[a]]; np_a=dp[t,site_idx[a]]
     nb_b=db[t,site_idx[b]]; np_b=dp[t,site_idx[b]]
@@ -102,11 +125,12 @@ if best_cyc>0: print(f'CONFIRMED|{best_cyc}|{best:.3f}')
 else: print('REJECTED|0|0')
 " 2>/dev/null)
 
-        TAG=$(echo $RESULT | cut -d'|' -f1)
-        CYC=$(echo $RESULT | cut -d'|' -f2)
-        CONT=$(echo $RESULT | cut -d'|' -f3)
-        echo "  Bond $BOND_IDX: $TAG (cycle=$CYC contrast=$CONT)"
-        [ "$TAG" = "CONFIRMED" ] && confirmed+=($BOND_IDX)
+            TAG=$(echo $RESULT | cut -d'|' -f1)
+            CYC=$(echo $RESULT | cut -d'|' -f2)
+            CONT=$(echo $RESULT | cut -d'|' -f3)
+            echo "  Bond $BOND_IDX: $TAG [antenna] (cycle=$CYC contrast=$CONT)"
+            [ "$TAG" = "CONFIRMED" ] && confirmed+=($BOND_IDX)
+        fi
     done <<< "$ASSIGNMENTS"
 
     # Check result
