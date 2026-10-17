@@ -26,7 +26,8 @@ from wall_aperture import find_wall_centers
 FLOOR = 1e-7
 BINARY = './main_pauli_sweep_rect7x7'
 CHI = 50; STEPS = 5; CUTOFF = '1e-3'
-CONF_THR = 1.5   # score > this → confirmed directly from seismic
+CONF_THR = 0.5   # score > this → confirmed directly from seismic
+                 # (lower because 2 broken bonds reduce individual scores)
 THR = 1e-3; THR_L = 0.05
 N_GPUS = 3
 
@@ -126,7 +127,11 @@ def run_trial(trial, logbase, plan, g, adj, all_sites, site_idx):
             confirmed.add(bi)
         else:
             wall, orient, direction, near, a, b_site = find_wall_centers(
-                bi, g, set(all_sites))
+                bi, g, set(all_sites), offset=-1)
+            if not wall:
+                # Try opposite side
+                wall, orient, direction, near, a, b_site = find_wall_centers(
+                    bi, g, set(all_sites), offset=+1)
             if not wall:
                 print(f"  Bond {bi:3d}: no wall found, skipping")
                 continue
