@@ -34,7 +34,7 @@ from searcher import load_graph, build_adj, get_bond_sites, parse_pauli_log
 from integral_detect import compute_integral
 
 BINARY  = './main_pauli_sweep_rect7x7'
-CHI     = 50; STEPS = 3; CUTOFF = '1e-3'
+CHI     = 50; STEPS = 4; CUTOFF = '1e-3'
 V_HOP   = '--v_hop=0.5'
 N_GPUS  = 3
 THETA   = 0.1   # minimum |log(B/N)| to consider anomalous
@@ -74,6 +74,7 @@ def main():
     ap.add_argument('--broken',   default=None)
     ap.add_argument('--theta',    type=float, default=THETA)
     ap.add_argument('--T_max',    type=int,   default=STEPS)
+    ap.add_argument('--top_k',    type=int,   default=2)
     args = ap.parse_args()
 
     g = load_graph(args.graph)
@@ -146,35 +147,20 @@ def main():
 
     for bi in range(len(g['edges'])):
         a, b = get_bond_sites(g['edges'][bi])
-        row_a = (a-1)//NCOLS; col_a = (a-1)%NCOLS
-        row_b = (b-1)//NCOLS; col_b = (b-1)%NCOLS
 
-        is_horizontal = (row_a == row_b)
+        best_contrast = 0.0
+        # Score bond by best sign flip across endpoints in ANY single antenna
+        for key, lr in antenna_logratios.items():
+            la = lr[site_idx[a]]
+            lb = lr[site_idx[b]]
+            flip = (la > args.theta and lb < -args.theta) or \
+                   (la < -args.theta and lb > args.theta)
+            if flip:
+                contrast = abs(la) + abs(lb)
+                best_contrast = max(best_contrast, contrast)
 
-        # For each site endpoint, check if it's conflicted across antenna pairs
-        max_conflict = 0.0
-        for s, row_s, col_s in [(a, row_a, col_a), (b, row_b, col_b)]:
-            si = site_idx[s]
-            # Compare row antennas above vs below this row
-            row_above = f'row{max(0, row_s-1)}'
-            row_below = f'row{min(NROWS-1, row_s+1)}'
-            col_left  = f'col{max(0, col_s-1)}'
-            col_right = f'col{min(NCOLS-1, col_s+1)}'
-
-            for k1, k2 in [(row_above, row_below), (col_left, col_right),
-                           (f'row{row_s}', f'col{col_s}')]:
-                if k1 not in antenna_logratios or k2 not in antenna_logratios:
-                    continue
-                v1 = antenna_logratios[k1][si]
-                v2 = antenna_logratios[k2][si]
-                # Conflict: opposite signs
-                if (v1 > args.theta and v2 < -args.theta) or \
-                   (v1 < -args.theta and v2 > args.theta):
-                    conflict = abs(v1) + abs(v2)
-                    max_conflict = max(max_conflict, conflict)
-
-        if max_conflict > args.theta:
-            bond_scores[bi] = max_conflict
+        if best_contrast > args.theta:
+            bond_scores[bi] = best_contrast
 
     # Rank and declare
     ranked = sorted(bond_scores.items(), key=lambda x: -x[1])
@@ -184,7 +170,7 @@ def main():
         true_tag = ' ← TRUE' if bi in true_bonds else ''
         print(f"  {bi:>3}  {a:>3}↔{b:>3}  {score:>10.4f}{true_tag}")
 
-    declared = set(bi for bi, _ in ranked[:n_true])
+    declared = set(bi for bi, _ in ranked[:args.top_k])
     print(f"\nDeclared: {sorted(declared)}")
     if true_bonds:
         found = declared & true_bonds
