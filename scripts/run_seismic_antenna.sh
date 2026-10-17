@@ -1,0 +1,128 @@
+#!/bin/bash
+# run_seismic_antenna.sh — Complete seismic + antenna pipeline for all 10 trials
+#
+# Phase 1: BFS candidates from existing 3-scan seismic logs
+# Phase 2: Wall antenna per candidate (column/row of centers, one side)
+# Phase 3: Sign flip validation
+#
+# Usage: bash scripts/run_seismic_antenna.sh
+
+cd /scratch/MPF/CppSim
+source /scratch/.venv/bin/activate 2>/dev/null || true
+
+LOGBASE="logs/mawgm_f64_2b"
+BINARY="./main_pauli_sweep_rect7x7"
+CHI=50; STEPS=5; CUTOFF=1e-3
+
+correct=0; total=0
+
+echo "=== Seismic + Antenna Pipeline: all 10 trials ==="
+echo "$(date)"
+echo ""
+
+for TRIAL in $(seq 1 10); do
+    LOGDIR="${LOGBASE}/trial_${TRIAL}"
+    BROKEN="${LOGDIR}/broken.json"
+    [ ! -f "$BROKEN" ] && continue
+
+    BOND_TAG=$(python3 -c "
+import json; br=json.load(open('$BROKEN'))
+print(';'.join(map(str,sorted(br.get('bonds',[br.get('bond',-1)])))))")
+    J_NEW=$(python3 -c "
+import json; br=json.load(open('$BROKEN'))
+print(f\"{br.get('perturbation',{}).get('J_perturbed',0.8):.3f}\")")
+
+    echo "--- Trial $TRIAL: bonds=$BOND_TAG J_new=$J_NEW ---"
+
+    # Phase 1: get BFS candidates with wall center assignments
+    ASSIGNMENTS=$(python3 -c "
+import sys, json
+sys.path.insert(0,'scripts')
+from searcher import load_graph, build_adj, get_bond_sites
+from bfs_detect import bfs_detect
+from wall_aperture import find_wall_centers
+
+g = load_graph('data/graphs/rect_7x7.json')
+adj, bond_map, all_sites = build_adj(g)
+site_idx = {s: i for i, s in enumerate(all_sites)}
+plan = json.load(open('data/scans/rect_7x7_scan_3gpu.json'))
+
+ranked, _ = bfs_detect('$LOGDIR', plan, g, adj, all_sites, site_idx,
+                         v_hop=0.448, thr=1e-3, thr_L=0.05, T_max=5, verbose=False)
+
+for bi, score in ranked[:5]:
+    wall, orient, direction, near, a, b = find_wall_centers(bi, g, set(all_sites))
+    if not wall: continue
+    cstr = ','.join(map(str, wall))
+    print(f'{bi}|{cstr}|{near}')
+" 2>/dev/null)
+
+    [ -z "$ASSIGNMENTS" ] && echo "  No candidates" && continue
+
+    # Phase 2: run wall antenna for each candidate
+    confirmed=()
+    while IFS='|' read -r BOND_IDX CENTERS NEAR; do
+        [ -z "$BOND_IDX" ] && continue
+        BASE_LOG="$LOGDIR/wall_b${BOND_IDX}_base.log"
+        PERT_LOG="$LOGDIR/wall_b${BOND_IDX}_pert.log"
+
+        if [ ! -f "$BASE_LOG" ]; then
+            ROCR_VISIBLE_DEVICES=0 $BINARY $CHI $STEPS $CUTOFF \
+                --center=$CENTERS --state=NL > $BASE_LOG 2>&1
+            ROCR_VISIBLE_DEVICES=1 $BINARY $CHI $STEPS $CUTOFF \
+                --center=$CENTERS --state=NL "--perturb-bond=${BOND_TAG},${J_NEW}" \
+                > $PERT_LOG 2>&1
+        fi
+
+        # Phase 3: validate sign flip
+        RESULT=$(python3 -c "
+import sys, numpy as np
+sys.path.insert(0,'scripts')
+from searcher import parse_pauli_log, load_graph, build_adj, get_bond_sites
+FLOOR=1e-7; thr=1e-3; thr_L=0.05
+g = load_graph('data/graphs/rect_7x7.json')
+adj, bond_map, all_sites = build_adj(g)
+site_idx = {s: i for i, s in enumerate(all_sites)}
+try:
+    _, _, db = parse_pauli_log('$BASE_LOG','NL')
+    _, _, dp = parse_pauli_log('$PERT_LOG','NL')
+except: print('ERROR'); exit()
+a,b = get_bond_sites(g['edges'][$BOND_IDX])
+nc = min(db.shape[0], dp.shape[0])
+best = 0.0; best_cyc = -1
+for t in range(nc):
+    nb_a=db[t,site_idx[a]]; np_a=dp[t,site_idx[a]]
+    nb_b=db[t,site_idx[b]]; np_b=dp[t,site_idx[b]]
+    La=-np.log(max(np_a,FLOOR)/nb_a) if nb_a>thr else 0.0
+    Lb=-np.log(max(np_b,FLOOR)/nb_b) if nb_b>thr else 0.0
+    if (La<-thr_L and Lb>thr_L) or (La>thr_L and Lb<-thr_L):
+        contrast=abs(La)+abs(Lb)
+        if contrast>best: best=contrast; best_cyc=t+1
+if best_cyc>0: print(f'CONFIRMED|{best_cyc}|{best:.3f}')
+else: print('REJECTED|0|0')
+" 2>/dev/null)
+
+        TAG=$(echo $RESULT | cut -d'|' -f1)
+        CYC=$(echo $RESULT | cut -d'|' -f2)
+        CONT=$(echo $RESULT | cut -d'|' -f3)
+        echo "  Bond $BOND_IDX: $TAG (cycle=$CYC contrast=$CONT)"
+        [ "$TAG" = "CONFIRMED" ] && confirmed+=($BOND_IDX)
+    done <<< "$ASSIGNMENTS"
+
+    # Check result
+    python3 -c "
+import json
+br=json.load(open('$BROKEN'))
+true_bonds=set(br.get('bonds',[br.get('bond',-1)]))
+confirmed=set([$(IFS=,; echo "${confirmed[*]}" | sed 's/ /,/g')])
+both=true_bonds.issubset(confirmed)
+found=true_bonds&confirmed
+tag='BOTH' if both else ('PARTIAL' if found else 'NONE')
+print(f'  Result: {tag}  confirmed={sorted(confirmed)}  true={sorted(true_bonds)}')
+" 2>/dev/null
+
+    total=$((total+1))
+    echo ""
+done
+
+echo "=== DONE $(date) ==="
