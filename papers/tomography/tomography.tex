@@ -103,19 +103,116 @@ at least one center. For the $7\times7$ lattice: centers at sites
 $\{6, 10, 25, 30, 32, 34\}$, covering all 84 bonds.
 
 % ─────────────────────────────────────────────────────────────────────────────
+\section{Signal Vocabulary and Measurement Definitions}
+\label{sec:vocab}
+
+We introduce a vocabulary of observable patterns and their physical interpretation.
+All definitions are expressed in terms of two observables per site per cycle:
+$n_{\rm base}(v,t)$ and $n_{\rm pert}(v,t)$, the non-identity Pauli weights under
+the nominal and perturbed Hamiltonian respectively.
+The BFS frontier crossing time $t_0(v) = \min\{t : n_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
+defines a site-specific reference time.
+
+\paragraph{Three frontier patterns.}
+At each site $v$ in the 3-cycle window $[t_0(v) \pm 1]$:
+\begin{itemize}
+    \item \textbf{White} $[\mathsf{W}]$: $n_{\rm base}(v, t_0) \leq \varepsilon_{\rm th}$ —
+    baseline wave has not yet arrived. No information available.
+    \item \textbf{Blue} $[\mathsf{B}]$: $n_{\rm pert}(v, t_0) > n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$ —
+    perturbed wave accumulates at $v$; drainage blocked by a broken bond downstream.
+    The site is a \emph{wall face}.
+    \item \textbf{Red} $[\mathsf{R}]$: $n_{\rm pert}(v, t_0) < n_{\rm base}(v, t_0)$,
+    $n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$ —
+    perturbed wave is attenuated at $v$; a broken bond on the path from center
+    blocked transmission. The site is in the \emph{shadow}.
+\end{itemize}
+
+\paragraph{Observable patterns at bond endpoints.}
+For a bond $(u, v)$ where $u$ is the center-side (wall face) and $v$ is the shadow:
+\begin{itemize}
+    \item $[\mathsf{W,W,W}]$: both endpoints white — bond not yet reached, or healthy.
+    \item $[\mathsf{W,B,W}]$: wall face detected, shadow not yet visible — early arrival,
+    one more cycle needed.
+    \item $[\mathsf{W,B,R}]$: \textbf{broken bond signature} — blue at $u$ (cycle $t_0$),
+    red at $v$ (cycle $t_0 + 1$). The bond between $u$ and $v$ is anomalous.
+\end{itemize}
+The pattern $[\mathsf{W,B,R}]$ is the primary detection target.
+The temporal order (blue before red by one cycle) is universal and follows
+from the BFS causal structure: $u$ is reached before $v$, so the wall
+accumulates before the shadow appears.
+
+\paragraph{The local cross-correlation $\mathcal{L}(v_0, [t_0 \pm 1])$.}
+The signed cross-entropy evaluated in the frontier window is:
+\begin{equation}
+    \mathcal{L}(v_0,\, [t_0 \pm 1]) = -\ln \frac{n_{\rm pert}(v_0,\, t_0)}
+                                                  {n_{\rm base}(v_0,\, t_0)}
+\end{equation}
+This is a \emph{cross-correlation fixed in space}: both waves evaluated at the same
+site $v_0$ at the same frontier moment $t_0$, with the window $[t_0 \pm 1]$
+providing context (white before, red after).
+Positive $\mathcal{L}$ identifies red (shadow), negative identifies blue (wall face).
+The broken bond is the edge between consecutive blue and red sites in the BFS ordering.
+
+\paragraph{Bond transfer ratio $T(v_0 \to u_0)$.}
+A complementary observable measures the wave \emph{through} a bond rather than \emph{at} a site.
+Consider the bond $(v_0, u_0)$ in the BFS path from the center.
+The baseline reaches $v_0$ at frontier time $t_0$ and $u_0$ at $t_1 = t_0 + 1$.
+The \emph{baseline transfer ratio} is:
+\begin{equation}
+    T_{\rm base}(v_0 \to u_0) = \frac{n_{\rm base}(u_0,\, t_1)}{n_{\rm base}(v_0,\, t_0)}
+\end{equation}
+This measures how much of the wave at $v_0$ propagates through the bond to $u_0$ in one BFS step —
+directly encoding the gate's coupling strength $J$.
+For the perturbed run (with potentially delayed frontier times $t_0^p$, $t_1^p$):
+\begin{equation}
+    T_{\rm pert}(v_0 \to u_0) = \frac{n_{\rm pert}(u_0,\, t_1^p)}{n_{\rm pert}(v_0,\, t_0^p)}
+\end{equation}
+The ratio $T_{\rm base} / T_{\rm pert} > 1$ signals a broken bond — less weight
+crosses the bond in the perturbed run.
+
+\paragraph{Limitations of the bond transfer ratio.}
+Two important caveats apply:
+
+\textit{Path distortion}: the perturbed wave arriving at $v_0$ has already traversed
+all upstream bonds. If any of those are also broken, $n_{\rm pert}(v_0, t_0^p)$ is
+already weakened — not by bond $(v_0, u_0)$ but by upstream damage.
+The ratio $T_{\rm base}/T_{\rm pert}$ then conflates the upstream distortion with the
+target bond signal. The ratio is not a pure measurement of bond $(v_0, u_0)$.
+
+\textit{Sensitivity}: the perturbed weight $n_{\rm pert}(v_0, t_0^p)$ may be close
+to $\varepsilon_{\rm th}$, making the ratio numerically unreliable.
+The local cross-correlation $\mathcal{L}(v_0, [t_0 \pm 1])$ avoids this by using
+the baseline as the reference — it measures the \emph{relative} change, not the
+absolute transfer.
+
+\textit{When the bond transfer ratio is clean}: if the center is placed at $v_0$
+itself (one hop from the bond), there are no upstream broken bonds.
+The perturbed wave is uncontaminated at $v_0$, and $T_{\rm base}/T_{\rm pert}$
+directly measures bond $(v_0, u_0)$ alone.
+This is the principle behind targeted aperture validation: center ON the near endpoint,
+3 cycles, pure bond measurement.
+
+% ─────────────────────────────────────────────────────────────────────────────
 \section{The Cross-Entropy Wavemap Observable}
 
-\paragraph{Signed cross-entropy.}
-For each center $k$, run two simulations (baseline and perturbed) and
-compute the signed cross-entropy at first baseline arrival:
+\paragraph{Signed cross-entropy as a local cross-correlation.}
+For each center $k$ and site $v$, define the BFS frontier crossing time
+$t_0(v) = \min\{t : n^k_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
+as the first cycle at which the baseline wave reaches site $v$.
+We evaluate the signed cross-entropy in a 3-cycle window $[t_0 \pm 1]$
+centered on this frontier crossing:
 \begin{equation}
-    \mathcal{L}_k(v) = -\ln \frac{n^k_{\rm pert}(v,\, t^k_{\rm first}(v))}
-                                  {n^k_{\rm base}(v,\, t^k_{\rm first}(v))}
+    \mathcal{L}_k(v,\, [t_0 \pm 1]) = -\ln \frac{n^k_{\rm pert}(v,\, t_0(v))}
+                                                  {n^k_{\rm base}(v,\, t_0(v))}
 \end{equation}
-where $t^k_{\rm first}(v) = \min\{t : n^k_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
-is the first cycle at which the baseline wave reaches site $v$ from center $k$.
+This is a \emph{cross-correlation fixed in space}: both waves are evaluated
+at the same site $v$ and the same frontier moment $t_0(v)$, defined by the
+baseline. The window $[t_0-1, t_0, t_0+1]$ captures three states:
+$t_0-1$ (before arrival, WHITE), $t_0$ (wall-face signal, BLUE or WHITE),
+and $t_0+1$ (shadow signal, RED). The notation $[t_0 \pm 1]$ emphasizes
+that the detection is local in both space and time.
 
-At $t^k_{\rm first}(v)$, the baseline wave has just arrived while the perturbed
+At $t_0(v)$, the baseline wave has just arrived while the perturbed
 wave may be blocked or delayed — this is the moment of maximum signal and
 minimum chi-saturation noise.
 
@@ -125,11 +222,6 @@ At time $t_0$, the baseline wave has just crossed the bond and
 $n_{\rm base}(u, t_0) \approx n_{\rm pert}(u, t_0)$ — both waves have reached $u$
 with equal amplitude. One cycle later at $t_1 = t_0 + 1$:
 \begin{itemize}
-    \item \textbf{Upstream site $u$ (red)}: in the baseline, weight at $u$ drains
-    normally through bond $(u,v)$. In the perturbed run, the weaker bond
-    ($J < 1$, i.e.\ smaller rotation angle) passes less weight through:
-    $n_{\rm base}(u, t_1) < n_{\rm pert}(u, t_1)$,
-    so $\mathcal{L}(u) = -\ln(n_{\rm pert}/n_{\rm base}) < 0$... wait, this is blue.
     \item \textbf{Wall face $u$ (blue, first)}: the weaker bond slows drainage from $u$
     — weight accumulates: $n_{\rm pert}(u) > n_{\rm base}(u)$
     $\Rightarrow$ $\mathcal{L}(u) < 0$ (blue). This appears first, at cycle $t_0$.
