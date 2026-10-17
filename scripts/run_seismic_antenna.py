@@ -19,6 +19,7 @@ import numpy as np
 from multiprocessing.pool import ThreadPool
 import sys
 sys.path.insert(0, 'scripts')
+import os
 from searcher import load_graph, build_adj, get_bond_sites, parse_pauli_log
 from bfs_detect import bfs_detect
 from wall_aperture import find_wall_centers
@@ -114,7 +115,7 @@ def run_trial(trial, logbase, plan, g, adj, all_sites, site_idx):
     print(f"\n--- Trial {trial}: bonds={bond_tag} J_new={j_new} ---")
 
     # Phase 1: BFS candidates
-    ranked, _ = bfs_detect(logdir, plan, g, adj, all_sites, site_idx,
+    ranked, _, flagged = bfs_detect(logdir, plan, g, adj, all_sites, site_idx,
                             v_hop=0.448, thr=THR, thr_L=THR_L, T_max=5, verbose=False)
 
     confirmed = set()
@@ -153,6 +154,93 @@ def run_trial(trial, logbase, plan, g, adj, all_sites, site_idx):
             print(f"  Bond {bi:3d} ({a}↔{b_site}): {tag} [antenna cycle={cyc} contrast={contrast:.3f}]")
             if ok:
                 confirmed.add(bi)
+
+    # Phase 3: Cross-antenna for flagged sites (BLUE-BLUE or RED-RED pairs)
+    # For each flagged site pair that is adjacent: run left+right (or top+bottom) walls
+    if flagged and not true_bonds.issubset(confirmed):
+        print(f"  Flagged sites needing cross-antenna: {sorted(flagged)}")
+        # Find adjacent flagged site pairs
+        flagged_pairs = set()
+        for s in flagged:
+            for nbr, bond_idx in adj[s]:
+                if nbr in flagged and bond_idx not in confirmed:
+                    pair = (min(s,nbr), max(s,nbr), bond_idx)
+                    flagged_pairs.add(pair)
+
+        cross_jobs = []  # (bond_idx, centers_str_left, centers_str_right, logdir)
+        for s, nbr, bond_idx in flagged_pairs:
+            a, b_site = get_bond_sites(g['edges'][bond_idx])
+            # Left wall (offset=-1) and right wall (offset=+1)
+            wall_L, _, dir_L, near_L, _, _ = find_wall_centers(bond_idx, g, set(all_sites), -1)
+            wall_R, _, dir_R, near_R, _, _ = find_wall_centers(bond_idx, g, set(all_sites), +1)
+            if not wall_L and not wall_R: continue
+            print(f"  Cross-antenna for bond {bond_idx} ({a}↔{b_site}): "
+                  f"left={','.join(map(str,wall_L)) if wall_L else 'N/A'} "
+                  f"right={','.join(map(str,wall_R)) if wall_R else 'N/A'}")
+            cross_jobs.append((bond_idx, wall_L, wall_R))
+
+        # Run cross-antenna jobs
+        if cross_jobs:
+            sim_tasks = []
+            gpu = 0
+            for bond_idx, wall_L, wall_R in cross_jobs:
+                for wall, side in [(wall_L,'L'), (wall_R,'R')]:
+                    if not wall: continue
+                    cstr = ','.join(map(str, wall))
+                    base_log = f'{logdir}/cross_b{bond_idx}_{side}_base.log'
+                    pert_log = f'{logdir}/cross_b{bond_idx}_{side}_pert.log'
+                    if not os.path.exists(base_log):
+                        sim_tasks.append((
+                            [BINARY, str(CHI), str(STEPS), CUTOFF,
+                             f'--center={cstr}', '--state=NL'],
+                            base_log, gpu
+                        ))
+                        sim_tasks.append((
+                            [BINARY, str(CHI), str(STEPS), CUTOFF,
+                             f'--center={cstr}', '--state=NL',
+                             f'--perturb-bond={bond_tag},{j_new}'],
+                            pert_log, gpu
+                        ))
+                    gpu = (gpu + 1) % N_GPUS
+
+            if sim_tasks:
+                with ThreadPool(N_GPUS) as pool:
+                    pool.map(run_simulation, sim_tasks)
+
+            # Validate cross-antenna: sign flip in log(B/N) between left and right walls
+            from integral_detect import compute_integral
+            for bond_idx, wall_L, wall_R in cross_jobs:
+                a, b_site = get_bond_sites(g['edges'][bond_idx])
+                log_ratios = {}
+                for side in ['L', 'R']:
+                    base_log = f'{logdir}/cross_b{bond_idx}_{side}_base.log'
+                    pert_log = f'{logdir}/cross_b{bond_idx}_{side}_pert.log'
+                    if not os.path.exists(base_log): continue
+                    try:
+                        _, _, db = parse_pauli_log(base_log, 'NL')
+                        _, _, dp = parse_pauli_log(pert_log, 'NL')
+                        B, N, lr = compute_integral(db, dp, STEPS)
+                        log_ratios[side] = lr
+                    except: continue
+
+                if 'L' in log_ratios and 'R' in log_ratios:
+                    # Site a: RED in one wall (shadow), BLUE in other (wall face)
+                    la_L = log_ratios['L'][site_idx[a]]
+                    la_R = log_ratios['R'][site_idx[a]]
+                    lb_L = log_ratios['L'][site_idx[b_site]]
+                    lb_R = log_ratios['R'][site_idx[b_site]]
+
+                    # Cross-antenna sign flip: same site different sign in L vs R
+                    conflict_a = (la_L > 0.1 and la_R < -0.1) or (la_L < -0.1 and la_R > 0.1)
+                    conflict_b = (lb_L > 0.1 and lb_R < -0.1) or (lb_L < -0.1 and lb_R > 0.1)
+
+                    if conflict_a or conflict_b:
+                        print(f"  Bond {bond_idx} ({a}↔{b_site}): ✓ CROSS-ANTENNA CONFIRMED "
+                              f"la=[{la_L:+.2f},{la_R:+.2f}] lb=[{lb_L:+.2f},{lb_R:+.2f}]")
+                        confirmed.add(bond_idx)
+                    else:
+                        print(f"  Bond {bond_idx} ({a}↔{b_site}): ✗ cross-antenna rejected "
+                              f"la=[{la_L:+.2f},{la_R:+.2f}] lb=[{lb_L:+.2f},{lb_R:+.2f}]")
 
     both = true_bonds.issubset(confirmed)
     partial = bool(true_bonds & confirmed) and not both

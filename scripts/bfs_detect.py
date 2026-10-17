@@ -302,6 +302,46 @@ def bfs_detect(logdir, plan, g, adj, all_sites, site_idx, v_hop,
                 print(f"  {c['site']:>5}  {bi:>3}({a}↔{b})  {c['L']:>+8.3f}  "
                       f"{c['t_base']:>5}  {c['t_pert']:>5}  {dly:>6}  {col}")
 
+    # Stage 2: find same-color anomalous sites (BLUE-BLUE or RED-RED)
+    # These flag sites that need cross-antenna to identify the specific bond
+    flagged_sites = set()
+    ns = len(all_sites)
+    FLOOR_loc = 1e-7
+    for sc in plan['placements']:
+        sid     = sc['scan']
+        try:
+            _, _, db_c = parse_pauli_log(f'{logdir}/scan{sid}_base.log', 'NL')
+            _, _, dp_c = parse_pauli_log(f'{logdir}/scan{sid}_pert.log', 'NL')
+        except: continue
+
+        t_base = threshold_crossing(db_c, thr, T_max)
+        t_pert  = threshold_crossing(dp_c, thr, T_max)
+        hop_bfs_c, _, _ = bfs_with_color(sc['centers'], adj, all_sites, g)
+
+        L_pos = np.zeros(ns); L_neg = np.zeros(ns)
+        for v in range(ns):
+            for t in range(min(db_c.shape[0], dp_c.shape[0], T_max)):
+                if db_c[t,v] > thr:
+                    val = -np.log(max(dp_c[t,v],FLOOR_loc)/db_c[t,v])
+                    if val > L_pos[v]: L_pos[v] = val
+                    if val < L_neg[v]: L_neg[v] = val
+        L_signed = np.where(np.abs(L_pos)>=np.abs(L_neg), L_pos, L_neg)
+
+        # Find bond pairs where both endpoints have same anomalous color
+        for bond_idx, e in enumerate(g['edges']):
+            a, b = get_bond_sites(e)
+            La = L_signed[site_idx[a]]; Lb = L_signed[site_idx[b]]
+            # Both significantly BLUE or both significantly RED
+            both_blue = La < -0.1 and Lb < -0.1
+            both_red  = La >  0.1 and Lb >  0.1
+            if both_blue or both_red:
+                # Flag both sites — bond may be nearby but not necessarily this bond
+                flagged_sites.add(a)
+                flagged_sites.add(b)
+
+    if verbose and flagged_sites:
+        print(f"\n  Flagged sites (same-color anomaly, need cross-antenna): {sorted(flagged_sites)}")
+
     ranked = sorted(bond_score.items(), key=lambda x: -x[1])
 
     if verbose and ranked:
@@ -313,7 +353,7 @@ def bfs_detect(logdir, plan, g, adj, all_sites, site_idx, v_hop,
             print(f"    Bond {bi:3d} ({a}↔{b})  score={score:.4f}  "
                   f"n_scans={n_sc}  n_ev={len(evs)}")
 
-    return ranked, bond_detail
+    return ranked, bond_detail, flagged_sites
 
 
 def main():
@@ -335,7 +375,7 @@ def main():
     plan = json.load(open(args.plan))
 
     print(f"BFS threshold-crossing fault detection: {args.logdir}")
-    ranked, detail = bfs_detect(
+    ranked, detail, flagged = bfs_detect(
         args.logdir, plan, g, adj, all_sites, site_idx,
         v_hop=args.v_hop, thr=args.thr, thr_L=args.thr_L,
         T_max=args.T_max, verbose=True)
