@@ -83,19 +83,80 @@ for bi, score in ranked[:5]:
             confirmed+=($BOND_IDX)
 
         elif [ "$METHOD" = "ANTENNA" ]; then
-            # Low confidence — run wall antenna
+            # Low confidence — queue for GPU pool
             CENTERS=$(echo $REST | cut -d'|' -f1)
             NEAR=$(echo $REST | cut -d'|' -f2)
-            BASE_LOG="$LOGDIR/wall_b${BOND_IDX}_base.log"
-            PERT_LOG="$LOGDIR/wall_b${BOND_IDX}_pert.log"
+            ANTENNA_QUEUE+=("${BOND_IDX}|${CENTERS}|${NEAR}")
+        fi
+    done <<< "$ASSIGNMENTS"
 
-            if [ ! -f "$BASE_LOG" ]; then
-                ROCR_VISIBLE_DEVICES=0 $BINARY $CHI $STEPS $CUTOFF \
-                    --center=$CENTERS --state=NL > $BASE_LOG 2>&1
-                ROCR_VISIBLE_DEVICES=1 $BINARY $CHI $STEPS $CUTOFF \
-                    --center=$CENTERS --state=NL "--perturb-bond=${BOND_TAG},${J_NEW}" \
-                    > $PERT_LOG 2>&1
-            fi
+    # Run antenna queue with GPU pool (3 GPUs, base+pert sequential on same GPU)
+    run_antenna_gpu() {
+        local BOND_IDX=$1; local CENTERS=$2; local GPU=$3
+        local BASE_LOG="$LOGDIR/wall_b${BOND_IDX}_base.log"
+        local PERT_LOG="$LOGDIR/wall_b${BOND_IDX}_pert.log"
+        [ -f "$BASE_LOG" ] && return  # already exists
+        ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
+            --center=$CENTERS --state=NL > $BASE_LOG 2>&1
+        ROCR_VISIBLE_DEVICES=$GPU $BINARY $CHI $STEPS $CUTOFF \
+            --center=$CENTERS --state=NL "--perturb-bond=${BOND_TAG},${J_NEW}" \
+            > $PERT_LOG 2>&1
+    }
+
+    GPU=0
+    PIDS=()
+    for ENTRY in "${ANTENNA_QUEUE[@]}"; do
+        BI=$(echo $ENTRY | cut -d'|' -f1)
+        CS=$(echo $ENTRY | cut -d'|' -f2)
+        run_antenna_gpu $BI "$CS" $GPU &
+        PIDS+=($!)
+        GPU=$(( (GPU+1) % 3 ))
+        if [ $GPU -eq 0 ]; then wait "${PIDS[@]}"; PIDS=(); fi
+    done
+    [ ${#PIDS[@]} -gt 0 ] && wait "${PIDS[@]}"
+
+    # Validate all antenna results
+    confirmed=("${DIRECT_CONFIRMED[@]}")
+    for ENTRY in "${ANTENNA_QUEUE[@]}"; do
+        BOND_IDX=$(echo $ENTRY | cut -d'|' -f1)
+        BASE_LOG="$LOGDIR/wall_b${BOND_IDX}_base.log"
+        PERT_LOG="$LOGDIR/wall_b${BOND_IDX}_pert.log"
+        if [ ! -f "$BASE_LOG" ]; then
+            echo "  Bond $BOND_IDX: ERROR (no log)"
+            continue
+        fi
+        RESULT=$(python3 -c "
+import sys, numpy as np
+sys.path.insert(0,'scripts')
+from searcher import parse_pauli_log, load_graph, build_adj, get_bond_sites
+FLOOR=1e-7; thr=1e-3; thr_L=0.05
+g = load_graph('data/graphs/rect_7x7.json')
+adj, bond_map, all_sites = build_adj(g)
+site_idx = {s: i for i, s in enumerate(all_sites)}
+try:
+    _, _, db = parse_pauli_log('$BASE_LOG','NL')
+    _, _, dp = parse_pauli_log('$PERT_LOG','NL')
+except: print('ERROR|0|0'); exit()
+a,b = get_bond_sites(g['edges'][$BOND_IDX])
+nc = min(db.shape[0], dp.shape[0])
+best=0.0; best_cyc=-1
+for t in range(nc):
+    nb_a=db[t,site_idx[a]]; np_a=dp[t,site_idx[a]]
+    nb_b=db[t,site_idx[b]]; np_b=dp[t,site_idx[b]]
+    La=-np.log(max(np_a,FLOOR)/nb_a) if nb_a>thr else 0.0
+    Lb=-np.log(max(np_b,FLOOR)/nb_b) if nb_b>thr else 0.0
+    if (La<-thr_L and Lb>thr_L) or (La>thr_L and Lb<-thr_L):
+        contrast=abs(La)+abs(Lb)
+        if contrast>best: best=contrast; best_cyc=t+1
+if best_cyc>0: print(f'CONFIRMED|{best_cyc}|{best:.3f}')
+else: print('REJECTED|0|0')
+" 2>/dev/null)
+        TAG=$(echo $RESULT | cut -d'|' -f1)
+        CYC=$(echo $RESULT | cut -d'|' -f2)
+        CONT=$(echo $RESULT | cut -d'|' -f3)
+        echo "  Bond $BOND_IDX: $TAG [antenna] (cycle=$CYC contrast=$CONT)"
+        [ "$TAG" = "CONFIRMED" ] && confirmed+=($BOND_IDX)
+        if [ "$METHOD" = "DUMMY" ]; then  # unreachable, keeps syntax valid
 
             # Validate sign flip
             RESULT=$(python3 -c "
