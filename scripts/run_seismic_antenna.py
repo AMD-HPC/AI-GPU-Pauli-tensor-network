@@ -179,33 +179,32 @@ def run_trial(trial, logbase, plan, g, adj, all_sites, site_idx):
                   f"right={','.join(map(str,wall_R)) if wall_R else 'N/A'}")
             cross_jobs.append((bond_idx, wall_L, wall_R))
 
-        # Run cross-antenna jobs
-        if cross_jobs:
-            sim_tasks = []
-            gpu = 0
-            for bond_idx, wall_L, wall_R in cross_jobs:
-                for wall, side in [(wall_L,'L'), (wall_R,'R')]:
-                    if not wall: continue
-                    cstr = ','.join(map(str, wall))
-                    base_log = f'{logdir}/cross_b{bond_idx}_{side}_base.log'
-                    pert_log = f'{logdir}/cross_b{bond_idx}_{side}_pert.log'
-                    if not os.path.exists(base_log):
-                        sim_tasks.append((
-                            [BINARY, str(CHI), str(STEPS), CUTOFF,
-                             f'--center={cstr}', '--state=NL'],
-                            base_log, gpu
-                        ))
-                        sim_tasks.append((
-                            [BINARY, str(CHI), str(STEPS), CUTOFF,
-                             f'--center={cstr}', '--state=NL',
-                             f'--perturb-bond={bond_tag},{j_new}'],
-                            pert_log, gpu
-                        ))
-                    gpu = (gpu + 1) % N_GPUS
+        # Run cross-antenna jobs — one task per wall (base+pert sequential on same GPU)
+        # Pool consumes the task list, N_GPUS workers each handle one wall at a time
+        def run_wall(args):
+            bond_idx, wall, side, gpu = args
+            cstr = ','.join(map(str, wall))
+            base_log = f'{logdir}/cross_b{bond_idx}_{side}_base.log'
+            pert_log = f'{logdir}/cross_b{bond_idx}_{side}_pert.log'
+            if os.path.exists(base_log):
+                return  # already done
+            env = os.environ.copy()
+            env['ROCR_VISIBLE_DEVICES'] = str(gpu)
+            import subprocess
+            cmd_base = [BINARY, str(CHI), str(STEPS), CUTOFF,
+                        f'--center={cstr}', '--state=NL']
+            cmd_pert = cmd_base + [f'--perturb-bond={bond_tag},{j_new}']
+            with open(base_log,'w') as f: subprocess.run(cmd_base, stdout=f, stderr=f, env=env)
+            with open(pert_log,'w') as f: subprocess.run(cmd_pert, stdout=f, stderr=f, env=env)
 
-            if sim_tasks:
-                with ThreadPool(N_GPUS) as pool:
-                    pool.map(run_simulation, sim_tasks)
+        if cross_jobs:
+            task_list = []
+            for i, (bond_idx, wall_L, wall_R) in enumerate(cross_jobs):
+                if wall_L: task_list.append((bond_idx, wall_L, 'L', i % N_GPUS))
+                if wall_R: task_list.append((bond_idx, wall_R, 'R', i % N_GPUS))
+
+            with ThreadPool(N_GPUS) as pool:
+                pool.map(run_wall, task_list)
 
             # Validate cross-antenna: sign flip in log(B/N) between left and right walls
             from integral_detect import compute_integral
