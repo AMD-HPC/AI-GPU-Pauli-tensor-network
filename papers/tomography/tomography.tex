@@ -185,16 +185,9 @@ target bond signal. The ratio is not a pure measurement of bond $(v_0, u_0)$.
 
 \textit{Sensitivity}: the perturbed weight $n_{\rm pert}(v_0, t_0^p)$ may be close
 to $\varepsilon_{\rm th}$, making the ratio numerically unreliable.
-The local cross-correlation $\mathcal{L}(v_0, [t_0 \pm 1])$ avoids this by using
-the baseline as the reference; it measures the \emph{relative} change, not the
-absolute transfer.
-
-\textit{When the bond transfer ratio is clean}: if the center is placed at $v_0$
-itself (one hop from the bond), there are no upstream broken bonds.
-The perturbed wave is uncontaminated at $v_0$, and $T_{\rm base}/T_{\rm pert}$
-directly measures bond $(v_0, u_0)$ alone.
-This is the principle behind targeted aperture validation: center ON the near endpoint,
-3 cycles, pure bond measurement.
+The local cross-correlation $\mathcal{L}(v_0, [t_0 \pm 1])$ avoids both caveats by using
+the baseline as the reference; it measures the \emph{relative} change at the
+frontier moment, not the absolute transfer.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{The Cross-Entropy Wavemap Observable}
