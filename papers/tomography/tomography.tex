@@ -92,12 +92,14 @@ where $O_c(t) = \sum_P c_P(t) P$ is the evolved operator initialized at
 center $c$. By normalization $\sum_P c_P^2 = 1$, $n(v,t) \in [0,1]$ is
 a probability.
 
-To simulate a miscalibrated bond, we weaken its coupling by $\delta J = -0.20$,
-setting $J = 0.80$ (a 20\% degradation). The Pauli transfer matrix entries scale as
+To simulate miscalibrated bonds, we weaken their couplings by $\delta J$,
+with each bond potentially taking a different value. In the experiments below
+we use $\delta J = -0.20$ ($J = 0.80$, a 20\% degradation) as a representative
+choice; the detection method does not depend on knowing $\delta J$ in advance
+and works for any coupling deviation. The Pauli transfer matrix entries scale as
 $\cos(J\varepsilon)$, attenuating operator propagation without blocking it entirely.
-This is a realistic miscalibration scenario: a dimmer switch rather than a perfect switch.
 For the multi-bond experiments in Section~\ref{sec:multibond}, $k$ bonds are selected
-uniformly at random and perturbed simultaneously with the same $\delta J$.
+uniformly at random and perturbed simultaneously.
 
 We place $p=6$ observation centers using a greedy geodesic bond cover: the
 minimum set of sites such that every bond is within $d_{\rm max}=2$ hops of
