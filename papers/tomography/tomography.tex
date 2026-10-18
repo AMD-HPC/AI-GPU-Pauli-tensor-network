@@ -188,42 +188,32 @@ the frontier moment, not the absolute transfer.
 % ─────────────────────────────────────────────────────────────────────────────
 \section{The Cross-Entropy Wavemap Observable}
 
-\paragraph{Signed cross-entropy as a local cross-correlation.}
-For each center $k$ and site $v$, define the BFS frontier crossing time
-$t_0(v) = \min\{t : n^k_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
-as the first cycle at which the baseline wave reaches site $v$.
-We evaluate the signed cross-entropy in a 3-cycle window $[t_0 \pm 1]$
-centered on this frontier crossing:
+For each center $k$ and site $v$, we evaluate the signed cross-entropy in a
+3-cycle window $[t_0 \pm 1]$ centered on the BFS frontier crossing
+$t_0(v) = \min\{t : n^k_{\rm base}(v,t) > \varepsilon_{\rm th}\}$:
 \begin{equation}
     \mathcal{L}_k(v,\, [t_0 \pm 1]) = -\ln \frac{n^k_{\rm pert}(v,\, t_0(v))}
                                                   {n^k_{\rm base}(v,\, t_0(v))}
 \end{equation}
 This is a \emph{cross-correlation fixed in space}: both waves are evaluated
 at the same site $v$ and the same frontier moment $t_0(v)$, defined by the
-baseline. The window $[t_0-1, t_0, t_0+1]$ captures three states:
-$t_0-1$ (before arrival, WHITE), $t_0$ (wall-face signal, BLUE or WHITE),
-and $t_0+1$ (shadow signal, RED). The notation $[t_0 \pm 1]$ emphasizes
-that the detection is local in both space and time.
+baseline. The window $[t_0-1, t_0, t_0+1]$ captures three states ---
+before arrival (WHITE), wall-face signal (BLUE or WHITE), and shadow signal (RED) ---
+and $t_0(v)$ is the moment of maximum signal and minimum $\chi$-saturation noise.
 
-At $t_0(v)$, the baseline wave has just arrived while the perturbed
-wave may be blocked or delayed; this is the moment of maximum signal and
-minimum chi-saturation noise.
-
-\paragraph{Sign interpretation and the delay mechanism.}
 Consider a bond $(u, v)$ with $u$ closer to center $k$.
 At time $t_0$, the baseline wave has just crossed the bond and
 $n_{\rm base}(u, t_0) \approx n_{\rm pert}(u, t_0)$; both waves have reached $u$
 with equal amplitude. One cycle later at $t_1 = t_0 + 1$, the weaker bond
 slows drainage from $u$: weight accumulates, $n_{\rm pert}(u) > n_{\rm base}(u)$,
-so $\mathcal{L}(u) < 0$ (blue, wall face, first). Simultaneously, in the baseline
+so $\mathcal{L}(u) < 0$ (blue, wall face). Simultaneously, in the baseline
 weight flows through bond $(u,v)$ and arrives at $v$, while in the perturbed run
 less weight crosses: $n_{\rm pert}(v, t_1) < n_{\rm base}(v, t_1)$,
-so $\mathcal{L}(v) > 0$ (red, shadow, one cycle later).
-
-The temporal order is universal: blue at the wall face first, red at the shadow one cycle later.
-The broken bond sits between the blue and red sites, identified by the sign change
-(Figure~\ref{fig:ce}). The contrast $|\mathcal{L}(u) - \mathcal{L}(v)|$ is maximum
-at $t_1$, providing the detection signal.
+so $\mathcal{L}(v) > 0$ (red, shadow). The temporal order is universal: blue
+at the wall face first, red at the shadow one cycle later. The broken bond sits
+between the blue and red sites, identified by the sign change (Figure~\ref{fig:ce}).
+The contrast $|\mathcal{L}(u) - \mathcal{L}(v)|$ is maximum at $t_1$, providing
+the detection signal.
 
 \begin{figure}[h]
 \centering
@@ -234,40 +224,35 @@ rect $7\times7$, $\chi=50$.
 \textbf{Cycle 1}: no signal.
 \textbf{Cycle 2}: site 16 red ($\mathcal{L}>0$, shadow), site 15 blue
 ($\mathcal{L}<0$, wall face): bond 12 identified by sign flip.
-\textbf{Cycle 3}: signal strengthens before chi saturation.
+\textbf{Cycle 3}: signal strengthens before $\chi$ saturation.
 Gold circles: bond endpoints. Stars: seismic centers.}
 \label{fig:ce}
 \end{figure}
 
-\paragraph{Ensemble log-likelihood.}
 Each center $k$ is initialized and evolved \emph{independently}: a separate
 baseline and perturbed simulation pair per center. The signed cross-entropy
-$\mathcal{L}_k(v)$ is computed for each center individually, then summed:
+$\mathcal{L}_k(v)$ is computed for each center individually, then summed into
+an ensemble log-likelihood:
 \begin{equation}
     \mathcal{L}_{\rm ens}(v) = \sum_{k=1}^{p} \mathcal{L}_k(v)
 \end{equation}
-This is a log-likelihood ensemble: centers on the same side of the broken
-bond see the same sign at the bond endpoints and reinforce each other;
-centers on opposite sides contribute opposite signs that partially cancel.
-Silent centers (wave never reaches site $v$) contribute zero and do not corrupt the sum.
+Centers on the same side of the broken bond reinforce each other; centers on
+opposite sides contribute opposite signs that partially cancel. Silent centers
+(wave never reaches site $v$) contribute zero and do not corrupt the sum.
 
-\paragraph{Integrated log-ratio $\mathcal{B}(v)/\mathcal{N}(v)$.}
 A more robust alternative to the pointwise $\mathcal{L}(v, t_0)$ accumulates
-the signal over all cycles:
+the signal over all $T$ cycles:
 \begin{equation}
     \mathcal{B}(v) = \sum_{t=1}^{T} n_{\rm base}(v,t), \qquad
-    \mathcal{N}(v) = \sum_{t=1}^{T} n_{\rm pert}(v,t)
-\end{equation}
-\begin{equation}
+    \mathcal{N}(v) = \sum_{t=1}^{T} n_{\rm pert}(v,t), \qquad
     \Lambda(v) = \ln \frac{\mathcal{B}(v)}{\mathcal{N}(v)}
 \end{equation}
-Positive $\Lambda$ identifies red (shadow), negative identifies blue (wall face),
-as with $\mathcal{L}$. The integral captures both the delay and the sustained
-amplitude difference; a broken bond both delays the perturbed wave
-\emph{and} reduces its steady-state weight. This makes $\Lambda(v)$ more robust
-than $\mathcal{L}(v, t_0)$ when the pointwise signal is weak or the threshold
-crossing is noisy. In the multi-bond experiments, $\Lambda(v)$ is the primary
-detection signal, replacing $\mathcal{L}_k^{\rm signed}(v)$ in the bond score.
+Positive $\Lambda$ identifies red (shadow), negative identifies blue (wall face).
+The integral captures both the delay and the sustained amplitude difference: a
+broken bond delays the perturbed wave \emph{and} reduces its steady-state weight,
+making $\Lambda(v)$ more robust than $\mathcal{L}(v, t_0)$ when the pointwise
+signal is weak. In the multi-bond experiments, $\Lambda(v)$ is the primary
+detection signal.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Bond Detection}
