@@ -118,29 +118,25 @@ The BFS frontier crossing time $t_0(v) = \min\{t : n_{\rm base}(v,t) > \varepsil
 defines a site-specific reference time; it marks the physical arrival of the
 wavefront at $v$, set by the Lieb-Robinson lightcone, not by the numerical cutoff.
 
-\paragraph{Three frontier patterns.}
-At each site $v$ in the 3-cycle window $[t_0(v) \pm 1]$:
-\begin{itemize}
-    \item \textbf{White} $[\mathsf{W}]$: $n_{\rm base}(v, t_0) \leq \varepsilon_{\rm th}$:
-    baseline wave has not yet arrived. No information available.
-    \item \textbf{Blue} $[\mathsf{B}]$: $n_{\rm pert}(v, t_0) > n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$:
-    perturbed wave accumulates at $v$; drainage blocked by a broken bond downstream.
-    The site is a \emph{wall face}.
-    \item \textbf{Red} $[\mathsf{R}]$: $n_{\rm pert}(v, t_0) < n_{\rm base}(v, t_0)$,
-    $n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$:
-    perturbed wave is attenuated at $v$; a broken bond on the path from center
-    blocked transmission. The site is in the \emph{shadow}.
-\end{itemize}
+At each site $v$ in the 3-cycle window $[t_0(v) \pm 1]$ we observe one of three
+frontier patterns. A site is \textbf{White} $[\mathsf{W}]$ when
+$n_{\rm base}(v, t_0) \leq \varepsilon_{\rm th}$: the baseline wave has not yet
+arrived and no information is available. A site is \textbf{Blue} $[\mathsf{B}]$
+when $n_{\rm pert}(v, t_0) > n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$: the
+perturbed wave accumulates at $v$ because drainage is blocked by a broken bond
+downstream; the site is a \emph{wall face}. A site is \textbf{Red} $[\mathsf{R}]$
+when $n_{\rm pert}(v, t_0) < n_{\rm base}(v, t_0)$ with
+$n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$: the perturbed wave is attenuated
+because a broken bond on the path from center blocked transmission; the site is
+in the \emph{shadow}.
 
-\paragraph{Observable patterns at bond endpoints.}
-For a bond $(u, v)$ where $u$ is the center-side (wall face) and $v$ is the shadow:
-\begin{itemize}
-    \item $[\mathsf{W,W,W}]$: both endpoints white: bond not yet reached, or healthy.
-    \item $[\mathsf{W,B,W}]$: wall face detected, shadow not yet visible; early arrival,
-    one more cycle needed.
-    \item $[\mathsf{W,B,R}]$: \textbf{broken bond signature}: blue at $u$ (cycle $t_0$),
-    red at $v$ (cycle $t_0 + 1$). The bond between $u$ and $v$ is anomalous.
-\end{itemize}
+For a bond $(u, v)$ with $u$ on the center-side and $v$ on the shadow-side,
+these patterns combine into three observable signatures. When both endpoints
+are white $[\mathsf{W,W,W}]$ the bond has not yet been reached or is healthy.
+When the wall face is detected but the shadow is not yet visible $[\mathsf{W,B,W}]$,
+one more cycle is needed. The \textbf{broken bond signature} $[\mathsf{W,B,R}]$
+is the primary target: $u$ appears blue at cycle $t_0$ and $v$ appears red at
+cycle $t_0+1$, identifying the bond between them as anomalous.
 The pattern $[\mathsf{W,B,R}]$ is the primary detection target.
 It rests on a single assumption: both the baseline and perturbed waves
 reach $v_0$ at the same frontier time $t_0$, so any difference in their
