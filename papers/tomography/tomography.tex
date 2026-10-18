@@ -110,13 +110,13 @@ $\{6, 10, 25, 30, 32, 34\}$, covering all 84 bonds.
 \section{Signal Vocabulary and Measurement Definitions}
 \label{sec:vocab}
 
-We introduce a vocabulary of observable patterns and their physical interpretation.
-All definitions are expressed in terms of two observables per site per cycle:
-$n_{\rm base}(v,t)$ and $n_{\rm pert}(v,t)$, the non-identity Pauli weights under
-the nominal and perturbed Hamiltonian respectively.
-The BFS frontier crossing time $t_0(v) = \min\{t : n_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
-defines a site-specific reference time; it marks the physical arrival of the
-wavefront at $v$, set by the Lieb-Robinson lightcone, not by the numerical cutoff.
+All definitions are expressed in terms of two observables per site per
+cycle: $n_{\rm base}(v,t)$ and $n_{\rm pert}(v,t)$, the non-identity
+Pauli weights under the nominal and perturbed Hamiltonian
+respectively.  The BFS frontier crossing time $t_0(v) = \min\{t :
+n_{\rm base}(v,t) > \varepsilon_{\rm th}\}$ defines a site-specific
+reference time; it marks the physical arrival of the wavefront at $v$,
+set by the Lieb-Robinson lightcone, not by the numerical cutoff. 
 
 At each site $v$ in the 3-cycle window $[t_0(v) \pm 1]$ we observe one of three
 frontier patterns. A site is \textbf{White} $[\mathsf{W}]$ when
@@ -145,7 +145,6 @@ The temporal order (blue before red by one cycle) is then universal and follows
 from the BFS causal structure: $u$ is reached before $v$, so the wall
 accumulates before the shadow appears.
 
-\paragraph{The local cross-correlation $\mathcal{L}(v_0, [t_0 \pm 1])$.}
 The signed cross-entropy evaluated in the frontier window is:
 \begin{equation}
     \mathcal{L}(v_0,\, [t_0 \pm 1]) = -\ln \frac{n_{\rm pert}(v_0,\, t_0)}
@@ -157,7 +156,6 @@ providing context (white before, red after).
 Positive $\mathcal{L}$ identifies red (shadow), negative identifies blue (wall face).
 The broken bond is the edge between consecutive blue and red sites in the BFS ordering.
 
-\paragraph{Bond transfer ratio $T(v_0 \to u_0)$.}
 A complementary observable measures the wave \emph{through} a bond rather than \emph{at} a site.
 Consider the bond $(v_0, u_0)$ in the BFS path from the center.
 The baseline reaches $v_0$ at frontier time $t_0$ and $u_0$ at $t_1 = t_0 + 1$.
@@ -174,20 +172,20 @@ For the perturbed run (with potentially delayed frontier times $t_0^p$, $t_1^p$)
 The ratio $T_{\rm base} / T_{\rm pert} > 1$ signals a broken bond: less weight
 crosses the bond in the perturbed run.
 
-\paragraph{Limitations of the bond transfer ratio.}
-Two important caveats apply:
 
-\textit{Path distortion}: the perturbed wave arriving at $v_0$ has already traversed
-all upstream bonds. If any of those are also broken, $n_{\rm pert}(v_0, t_0^p)$ is
+Two important caveats apply. First, there is a path distortion. The
+perturbed wave arriving at $v_0$ has already traversed all upstream
+bonds. If any of those are also broken, $n_{\rm pert}(v_0, t_0^p)$ is
 already weakened, not by bond $(v_0, u_0)$ but by upstream damage.
-The ratio $T_{\rm base}/T_{\rm pert}$ then conflates the upstream distortion with the
-target bond signal. The ratio is not a pure measurement of bond $(v_0, u_0)$.
-
-\textit{Sensitivity}: the perturbed weight $n_{\rm pert}(v_0, t_0^p)$ may be close
-to $\varepsilon_{\rm th}$, making the ratio numerically unreliable.
-The local cross-correlation $\mathcal{L}(v_0, [t_0 \pm 1])$ avoids both caveats by using
-the baseline as the reference; it measures the \emph{relative} change at the
-frontier moment, not the absolute transfer.
+The ratio $T_{\rm base}/T_{\rm pert}$ then conflates the upstream
+distortion with the target bond signal. The ratio is not a pure
+measurement of bond $(v_0, u_0)$. Second, there is a measurable
+Sensitivity. problem. The perturbed weight $n_{\rm pert}(v_0, t_0^p)$
+may be close to $\varepsilon_{\rm th}$, the threshold, making the
+ratio numerically unreliable.  The local cross-correlation
+$\mathcal{L}(v_0, [t_0 \pm 1])$ avoids both caveats by using the
+baseline as the reference; it measures the \emph{relative} change at
+the frontier moment, not the absolute transfer.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{The Cross-Entropy Wavemap Observable}
@@ -217,16 +215,12 @@ minimum chi-saturation noise.
 Consider a bond $(u, v)$ with $u$ closer to center $k$.
 At time $t_0$, the baseline wave has just crossed the bond and
 $n_{\rm base}(u, t_0) \approx n_{\rm pert}(u, t_0)$; both waves have reached $u$
-with equal amplitude. One cycle later at $t_1 = t_0 + 1$:
-\begin{itemize}
-    \item \textbf{Wall face $u$ (blue, first)}: the weaker bond slows drainage from $u$
-    weight accumulates: $n_{\rm pert}(u) > n_{\rm base}(u)$
-    $\Rightarrow$ $\mathcal{L}(u) < 0$ (blue). This appears first, at cycle $t_0$.
-    \item \textbf{Shadow site $v$ (red, second)}: in the baseline, weight flows through
-    bond $(u,v)$ and arrives at $v$. In the perturbed run, less weight crosses,
-    $n_{\rm pert}(v, t_1) < n_{\rm base}(v, t_1)$
-    $\Rightarrow$ $\mathcal{L}(v) > 0$ (red). This appears one cycle later, at $t_1$.
-\end{itemize}
+with equal amplitude. One cycle later at $t_1 = t_0 + 1$, the weaker bond
+slows drainage from $u$: weight accumulates, $n_{\rm pert}(u) > n_{\rm base}(u)$,
+so $\mathcal{L}(u) < 0$ (blue, wall face, first). Simultaneously, in the baseline
+weight flows through bond $(u,v)$ and arrives at $v$, while in the perturbed run
+less weight crosses: $n_{\rm pert}(v, t_1) < n_{\rm base}(v, t_1)$,
+so $\mathcal{L}(v) > 0$ (red, shadow, one cycle later).
 
 The temporal order is universal: blue at the wall face first, red at the shadow one cycle later.
 The broken bond sits between the blue and red sites, identified by the sign change
@@ -240,8 +234,8 @@ at $t_1$, providing the detection signal.
 (bond 12, sites 15$\leftrightarrow$16, identity PTM), seismic initialization,
 rect $7\times7$, $\chi=50$.
 \textbf{Cycle 1}: no signal.
-\textbf{Cycle 2}: site 16 red ($\mathcal{L}>0$, blocked), site 17 blue
-($\mathcal{L}<0$, shadow): bond 12 identified by sign flip.
+\textbf{Cycle 2}: site 16 red ($\mathcal{L}>0$, shadow), site 15 blue
+($\mathcal{L}<0$, wall face): bond 12 identified by sign flip.
 \textbf{Cycle 3}: signal strengthens before chi saturation.
 Gold circles: bond endpoints. Stars: seismic centers.}
 \label{fig:ce}
