@@ -80,12 +80,10 @@ as red and blue pebbles identify the I/O bottleneck in a computation.
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Setup}
 
-\paragraph{Observable.}
 We simulate the kicked isotropic Heisenberg model on a $7\times7$ rectangular
 lattice (49 sites, 84 bonds) using a GPU-accelerated belief propagation tensor
 network simulator with Trotter step $\varepsilon=0.10$, bond dimension
 $\chi=50$, and truncation cutoff $\delta=10^{-3}$.
-
 The non-identity Pauli weight at site $v$ and cycle $t$ is:
 \begin{equation}
     n(v,t) = \sum_{P:\,P_v \neq I} c_P(t)^2
@@ -94,19 +92,16 @@ where $O_c(t) = \sum_P c_P(t) P$ is the evolved operator initialized at
 center $c$. By normalization $\sum_P c_P^2 = 1$, $n(v,t) \in [0,1]$ is
 a probability.
 
-\paragraph{Perturbation.}
-The fault injection step selects one or more bonds and weakens their coupling by $\delta J = -0.20$,
+To simulate a miscalibrated bond, we weaken its coupling by $\delta J = -0.20$,
 setting $J = 0.80$ (a 20\% degradation). The Pauli transfer matrix entries scale as
-$\cos(J\varepsilon)$, attenuating operator propagation through the bond without
-blocking it entirely. This is a realistic miscalibration scenario: a dimmer switch
-rather than a perfect switch. For the multi-bond experiments in
-Section~\ref{sec:multibond}, $k$ bonds are selected uniformly at random and perturbed
-simultaneously with the same $\delta J$.
+$\cos(J\varepsilon)$, attenuating operator propagation without blocking it entirely.
+This is a realistic miscalibration scenario: a dimmer switch rather than a perfect switch.
+For the multi-bond experiments in Section~\ref{sec:multibond}, $k$ bonds are selected
+uniformly at random and perturbed simultaneously with the same $\delta J$.
 
-\paragraph{p-center placement.}
 We place $p=6$ observation centers using a greedy geodesic bond cover: the
 minimum set of sites such that every bond is within $d_{\rm max}=2$ hops of
-at least one center. For the $7\times7$ lattice: centers at sites
+at least one center. For the $7\times7$ lattice this gives centers at sites
 $\{6, 10, 25, 30, 32, 34\}$, covering all 84 bonds.
 
 % ─────────────────────────────────────────────────────────────────────────────
