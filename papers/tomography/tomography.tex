@@ -57,13 +57,13 @@ weight fields: $n_{\rm base}(v,t)$ from the nominal evolution, and
 $n_{\rm pert}(v,t)$ from an evolution where one bond has been silently
 modified. The \emph{detection algorithm} receives only these
 two arrays of numbers and must identify the modified bond from their ratio
-alone — with no knowledge of the Hamiltonian, the perturbation type, or
+alone, with no knowledge of the Hamiltonian, the perturbation type, or
 its magnitude. The detection is deliberately blind.
 
 A perturbed bond creates a causal signature in the wavefront: a sign flip
 in the cross-entropy field $\mathcal{L}(v) = -\ln(n_{\rm pert}/n_{\rm base})$
 between its two endpoints that propagates no further. The broken bond is
-exactly where the wavefront sign changes — identifiable from the observables
+exactly where the wavefront sign changes, identifiable from the observables
 alone.
 
 The method is inspired by seismic tomography: place sensors (observation
@@ -98,7 +98,7 @@ a probability.
 The fault injection step selects one or more bonds and weakens their coupling by $\delta J = -0.20$,
 setting $J = 0.80$ (a 20\% degradation). The Pauli transfer matrix entries scale as
 $\cos(J\varepsilon)$, attenuating operator propagation through the bond without
-blocking it entirely. This is a realistic miscalibration scenario — a dimmer switch
+blocking it entirely. This is a realistic miscalibration scenario: a dimmer switch
 rather than a perfect switch. For the multi-bond experiments in
 Section~\ref{sec:multibond}, $k$ bonds are selected uniformly at random and perturbed
 simultaneously with the same $\delta J$.
@@ -123,13 +123,13 @@ defines a site-specific reference time.
 \paragraph{Three frontier patterns.}
 At each site $v$ in the 3-cycle window $[t_0(v) \pm 1]$:
 \begin{itemize}
-    \item \textbf{White} $[\mathsf{W}]$: $n_{\rm base}(v, t_0) \leq \varepsilon_{\rm th}$ —
+    \item \textbf{White} $[\mathsf{W}]$: $n_{\rm base}(v, t_0) \leq \varepsilon_{\rm th}$:
     baseline wave has not yet arrived. No information available.
-    \item \textbf{Blue} $[\mathsf{B}]$: $n_{\rm pert}(v, t_0) > n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$ —
+    \item \textbf{Blue} $[\mathsf{B}]$: $n_{\rm pert}(v, t_0) > n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$:
     perturbed wave accumulates at $v$; drainage blocked by a broken bond downstream.
     The site is a \emph{wall face}.
     \item \textbf{Red} $[\mathsf{R}]$: $n_{\rm pert}(v, t_0) < n_{\rm base}(v, t_0)$,
-    $n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$ —
+    $n_{\rm base}(v, t_0) > \varepsilon_{\rm th}$:
     perturbed wave is attenuated at $v$; a broken bond on the path from center
     blocked transmission. The site is in the \emph{shadow}.
 \end{itemize}
@@ -137,10 +137,10 @@ At each site $v$ in the 3-cycle window $[t_0(v) \pm 1]$:
 \paragraph{Observable patterns at bond endpoints.}
 For a bond $(u, v)$ where $u$ is the center-side (wall face) and $v$ is the shadow:
 \begin{itemize}
-    \item $[\mathsf{W,W,W}]$: both endpoints white — bond not yet reached, or healthy.
-    \item $[\mathsf{W,B,W}]$: wall face detected, shadow not yet visible — early arrival,
+    \item $[\mathsf{W,W,W}]$: both endpoints white: bond not yet reached, or healthy.
+    \item $[\mathsf{W,B,W}]$: wall face detected, shadow not yet visible; early arrival,
     one more cycle needed.
-    \item $[\mathsf{W,B,R}]$: \textbf{broken bond signature} — blue at $u$ (cycle $t_0$),
+    \item $[\mathsf{W,B,R}]$: \textbf{broken bond signature}: blue at $u$ (cycle $t_0$),
     red at $v$ (cycle $t_0 + 1$). The bond between $u$ and $v$ is anomalous.
 \end{itemize}
 The pattern $[\mathsf{W,B,R}]$ is the primary detection target.
@@ -168,13 +168,13 @@ The \emph{baseline transfer ratio} is:
 \begin{equation}
     T_{\rm base}(v_0 \to u_0) = \frac{n_{\rm base}(u_0,\, t_1)}{n_{\rm base}(v_0,\, t_0)}
 \end{equation}
-This measures how much of the wave at $v_0$ propagates through the bond to $u_0$ in one BFS step —
+This measures how much of the wave at $v_0$ propagates through the bond to $u_0$ in one BFS step,
 directly encoding the gate's coupling strength $J$.
 For the perturbed run (with potentially delayed frontier times $t_0^p$, $t_1^p$):
 \begin{equation}
     T_{\rm pert}(v_0 \to u_0) = \frac{n_{\rm pert}(u_0,\, t_1^p)}{n_{\rm pert}(v_0,\, t_0^p)}
 \end{equation}
-The ratio $T_{\rm base} / T_{\rm pert} > 1$ signals a broken bond — less weight
+The ratio $T_{\rm base} / T_{\rm pert} > 1$ signals a broken bond: less weight
 crosses the bond in the perturbed run.
 
 \paragraph{Limitations of the bond transfer ratio.}
@@ -182,14 +182,14 @@ Two important caveats apply:
 
 \textit{Path distortion}: the perturbed wave arriving at $v_0$ has already traversed
 all upstream bonds. If any of those are also broken, $n_{\rm pert}(v_0, t_0^p)$ is
-already weakened — not by bond $(v_0, u_0)$ but by upstream damage.
+already weakened, not by bond $(v_0, u_0)$ but by upstream damage.
 The ratio $T_{\rm base}/T_{\rm pert}$ then conflates the upstream distortion with the
 target bond signal. The ratio is not a pure measurement of bond $(v_0, u_0)$.
 
 \textit{Sensitivity}: the perturbed weight $n_{\rm pert}(v_0, t_0^p)$ may be close
 to $\varepsilon_{\rm th}$, making the ratio numerically unreliable.
 The local cross-correlation $\mathcal{L}(v_0, [t_0 \pm 1])$ avoids this by using
-the baseline as the reference — it measures the \emph{relative} change, not the
+the baseline as the reference; it measures the \emph{relative} change, not the
 absolute transfer.
 
 \textit{When the bond transfer ratio is clean}: if the center is placed at $v_0$
@@ -220,26 +220,26 @@ and $t_0+1$ (shadow signal, RED). The notation $[t_0 \pm 1]$ emphasizes
 that the detection is local in both space and time.
 
 At $t_0(v)$, the baseline wave has just arrived while the perturbed
-wave may be blocked or delayed — this is the moment of maximum signal and
+wave may be blocked or delayed; this is the moment of maximum signal and
 minimum chi-saturation noise.
 
 \paragraph{Sign interpretation and the delay mechanism.}
 Consider a bond $(u, v)$ with $u$ closer to center $k$.
 At time $t_0$, the baseline wave has just crossed the bond and
-$n_{\rm base}(u, t_0) \approx n_{\rm pert}(u, t_0)$ — both waves have reached $u$
+$n_{\rm base}(u, t_0) \approx n_{\rm pert}(u, t_0)$; both waves have reached $u$
 with equal amplitude. One cycle later at $t_1 = t_0 + 1$:
 \begin{itemize}
     \item \textbf{Wall face $u$ (blue, first)}: the weaker bond slows drainage from $u$
-    — weight accumulates: $n_{\rm pert}(u) > n_{\rm base}(u)$
+    weight accumulates: $n_{\rm pert}(u) > n_{\rm base}(u)$
     $\Rightarrow$ $\mathcal{L}(u) < 0$ (blue). This appears first, at cycle $t_0$.
     \item \textbf{Shadow site $v$ (red, second)}: in the baseline, weight flows through
-    bond $(u,v)$ and arrives at $v$. In the perturbed run, less weight crosses —
+    bond $(u,v)$ and arrives at $v$. In the perturbed run, less weight crosses,
     $n_{\rm pert}(v, t_1) < n_{\rm base}(v, t_1)$
     $\Rightarrow$ $\mathcal{L}(v) > 0$ (red). This appears one cycle later, at $t_1$.
 \end{itemize}
 
 The temporal order is universal: blue at the wall face first, red at the shadow one cycle later.
-The broken bond sits between the blue and red sites — identified by the sign change
+The broken bond sits between the blue and red sites, identified by the sign change
 (Figure~\ref{fig:ce}). The contrast $|\mathcal{L}(u) - \mathcal{L}(v)|$ is maximum
 at $t_1$, providing the detection signal.
 
@@ -251,14 +251,14 @@ at $t_1$, providing the detection signal.
 rect $7\times7$, $\chi=50$.
 \textbf{Cycle 1}: no signal.
 \textbf{Cycle 2}: site 16 red ($\mathcal{L}>0$, blocked), site 17 blue
-($\mathcal{L}<0$, shadow) — bond 12 identified by sign flip.
+($\mathcal{L}<0$, shadow): bond 12 identified by sign flip.
 \textbf{Cycle 3}: signal strengthens before chi saturation.
 Gold circles: bond endpoints. Stars: seismic centers.}
 \label{fig:ce}
 \end{figure}
 
 \paragraph{Ensemble log-likelihood.}
-Each center $k$ is initialized and evolved \emph{independently} — a separate
+Each center $k$ is initialized and evolved \emph{independently}: a separate
 baseline and perturbed simulation pair per center. The signed cross-entropy
 $\mathcal{L}_k(v)$ is computed for each center individually, then summed:
 \begin{equation}
@@ -281,7 +281,7 @@ the signal over all cycles:
 \end{equation}
 Positive $\Lambda$ identifies red (shadow), negative identifies blue (wall face),
 as with $\mathcal{L}$. The integral captures both the delay and the sustained
-amplitude difference — a broken bond both delays the perturbed wave
+amplitude difference; a broken bond both delays the perturbed wave
 \emph{and} reduces its steady-state weight. This makes $\Lambda(v)$ more robust
 than $\mathcal{L}(v, t_0)$ when the pointwise signal is weak or the threshold
 crossing is noisy. In the multi-bond experiments, $\Lambda(v)$ is the primary
@@ -295,7 +295,7 @@ For each bond $b$ connecting sites $v_a$ and $v_b$:
 \begin{equation}
     S(b) = \mathcal{L}_{\rm ens}(v_a) \times \mathcal{L}_{\rm ens}(v_b)
 \end{equation}
-A negative product indicates a sign flip across the bond — the causal
+A negative product indicates a sign flip across the bond, the causal
 signature of the broken bond. Rank bonds by most negative $S(b)$.
 
 \paragraph{Results.}
@@ -327,7 +327,7 @@ Ensemble score: $S(12) = -0.164$, next bond $= -0.002$ (82× margin).}
 
 The ensemble identifies bond 12 with an 82-fold margin over the next
 candidate, despite only 2 of 6 individual centers giving the correct answer.
-The wrong individual answers — centers 25 and 32 — both correctly identify
+The wrong individual answers: centers 25 and 32 both correctly identify
 site 16 as a bond endpoint; their error is only in declaring the wrong
 adjacent bond. The ensemble product cancels these partial errors.
 
@@ -346,7 +346,7 @@ row \emph{or} column in the lattice. This guarantees that every bond has a
 strictly unique nearest center (no Voronoi ties): the perpendicular bisector
 between any two centers never passes through a bond, so one center always
 dominates the signal at every bond. For $p=7$ on the $7\times7$ lattice
-(one center per row, one per column — a permutation placement), this gives
+(one center per row, one per column, a permutation placement), giving
 centers $\{3,13,15,25,35,37,47\}$ with zero ties across all 84 bonds,
 maximum $T_b = 5$ cycles, and balanced Voronoi regions of 10--16 bonds each.
 The placement is found by exhaustive search over permutations, minimizing
@@ -386,7 +386,7 @@ seismic-then-aperture protocol achieves \textbf{10/10} correct identifications:
 \section{Tensor Network Simulation as Quantum Circuit Execution}
 
 The Trotter simulation underlying our method is not merely an approximation
-of a quantum circuit — it \emph{is} the quantum circuit, represented in the
+of a quantum circuit; it \emph{is} the quantum circuit, represented in the
 Pauli operator basis rather than the amplitude basis. The identification is exact:
 
 \begin{itemize}
@@ -399,7 +399,7 @@ Pauli operator basis rather than the amplitude basis. The identification is exac
     \item Each \textbf{PAULI\_NL output} = a mid-circuit Pauli weight measurement
 \end{itemize}
 
-This correspondence is not a coincidence — both the graph coloring (determining
+This correspondence is not a coincidence: both the graph coloring (determining
 which bonds share qubits) and the quantum circuit parallelism constraint (which
 gates can be applied simultaneously) derive from the same source: the lattice
 topology. The color class ordering is the gate layer ordering.
@@ -423,18 +423,18 @@ per-cycle BP (as used here) loses sub-step information; per-color BP (Julia L-MP
 respects the causal barrier structure of the quantum circuit.
 
 \paragraph{Bond perturbation as gate miscalibration.}
-A perturbed bond (coupling $J \neq 1$) is a \emph{miscalibrated gate} — the
+A perturbed bond (coupling $J \neq 1$) is a \emph{miscalibrated gate}: the
 two-qubit rotation angle $\theta = J \cdot \varepsilon$ differs from the nominal
 value. The Pauli transfer matrix for $\exp(-i\theta(XX+YY+ZZ))$ has diagonal
 entries $\cos(\theta)$, which for any $J \neq 1$ gives $\cos(J\varepsilon) \neq \cos(\varepsilon)$.
 Since $|\cos(\theta)| \leq 1$ for all $\theta$ (unitary gate), any coupling
-deviation attenuates the wave relative to baseline — guaranteeing $n_{\rm pert}(v^*) < n_{\rm base}(v^*)$
+deviation attenuates the wave relative to baseline, guaranteeing $n_{\rm pert}(v^*) < n_{\rm base}(v^*)$
 at the shadow endpoint $v^*$, so $\mathcal{L}(v^*) > 0$ (red) regardless of
 the sign of $\delta J = J - 1$. The detection method is robust: the red site
 is always the shadow endpoint, never inverted.
 
 This frames our tomography as \emph{quantum ATPG} (Automatic Test Pattern
-Generation)~\cite{roth1966diagnosis} — the classical circuit testing methodology
+Generation)~\cite{roth1966diagnosis}, the classical circuit testing methodology
 generalized to quantum gates. In classical ATPG: fault activation (excite the
 stuck-at gate), path sensitization (find an observable path from fault to output),
 backward implication (infer the faulty gate). Here: perturbation (change $J$),
@@ -446,7 +446,7 @@ cross-entropy inversion (red site + center position → bond identity).
 Running all $p$ centers simultaneously (seismic initialization
 $O(0) = \sum_k Z_{c_k}$) produces the same ensemble field in a single
 simulation. At each site $v$, the first-arrival signal is dominated by the
-nearest center — automatically selecting the strongest directional component.
+nearest center, automatically selecting the strongest directional component.
 The sign flip at the broken bond endpoints emerges without any explicit
 path tracing or center-by-center analysis.
 
@@ -469,7 +469,7 @@ topology alone, independent of the Hamiltonian.
 \paragraph{Causal structure.}
 The method exploits the Lieb-Robinson bound: information cannot propagate
 faster than $v_{\rm hop}$ hops/cycle. A broken bond creates a causal
-anomaly — the wavefront on one side cannot inform the other. This is
+anomaly: the wavefront on one side cannot inform the other. This is
 detectable without knowing $v_{\rm hop}$ explicitly; the first-arrival
 time $t_{\rm first}(v)$ is observed directly.
 
@@ -501,13 +501,13 @@ faster than seismic and uses half the VRAM per GPU. The speedup comes from
 two effects: (1) single-center simulations have smaller active lightcones
 ($\chi$ grows slower), and (2) far centers contribute negligible computation
 (center 6: 3.5\,s, center 34: 9.5\,s) while contributing zero to the
-ensemble — self-filtering at no cost. The bottleneck is the GPU pair
+ensemble, self-filtering at no cost. The bottleneck is the GPU pair
 running the two nearest centers (25 and 10, $\sim$20\,s each sequential).
 
 Aperture also enables a \emph{coarse-to-fine} strategy unavailable to
 seismic: run a fast aperture sweep (small $\chi$, $v_{\rm hop}=0.5$) to
 identify candidate bonds, then re-run only the adjacent centers with larger
-$\chi$ for high-accuracy confirmation — each targeted run remains
+$\chi$ for high-accuracy confirmation; each targeted run remains
 memory-bounded by the lightcone allocation.
 
 \paragraph{Grid-size independence.}
@@ -517,7 +517,7 @@ $v_{\rm hop}=0.5$ and $n_{\rm steps}$ cycles, each center sees a local ball
 of radius $r = n_{\rm steps} \times v_{\rm hop} \approx 2.5$ hops, containing
 $\sim$13 sites on a $7\times7$ lattice. The same ball contains the same
 $\sim$13 sites on a $100\times100$ lattice. The computation per center scales
-as $O(r^2 \chi^3)$, where $r$ is the BFS radius — independent of $N_{\rm sites}$.
+as $O(r^2 \chi^3)$, where $r$ is the BFS radius, independent of $N_{\rm sites}$.
 
 Total aperture cost:
 \begin{equation}
@@ -525,7 +525,7 @@ Total aperture cost:
 \end{equation}
 where $p$ grows with the number of bonds (more centers needed for coverage)
 but each center cost $T_{\rm local}$ is constant. For a single bond
-perturbation, most centers contribute zero signal — their $\mathcal{L}_k(v)
+perturbation, most centers contribute zero signal; their $\mathcal{L}_k(v)
 \approx 0$ everywhere. Their wall-clock is short (center 6: 3.5\,s) and
 their ensemble contribution is zero. They are neither harmful nor expensive.
 
@@ -540,7 +540,7 @@ cover grows much slower than the grid area.
 When two adjacent bonds are perturbed simultaneously (bonds 12 and 13, sharing
 endpoint site 16), the cross-entropy field shows a three-site pattern at 3 cycles:
 site 15 (red, $\mathcal{L}=+0.55$), site 16 (white, $\mathcal{L}\approx 0$),
-site 17 (blue). The shared endpoint is the \emph{interference node} — the red
+site 17 (blue). The shared endpoint is the \emph{interference node}: the red
 signal from bond 12 and the blue signal from bond 13 cancel destructively, exactly
 as in thin-film interference. The white fringe is not a detection failure; it is
 the interference pattern. The number of white sites between the red and blue
@@ -548,9 +548,9 @@ boundaries counts the number of broken bonds in the wall.
 
 This extends the signal vocabulary:
 \begin{itemize}
-    \item Single broken bond: \textbf{red — blue} (two sites, sign flip)
-    \item Two adjacent broken bonds: \textbf{red — white — blue} (three sites, interference node)
-    \item $n$ adjacent broken bonds: \textbf{red —} $n-1$ \textbf{whites — blue}
+    \item Single broken bond: \textbf{red/blue} (two sites, sign flip)
+    \item Two adjacent broken bonds: \textbf{red/white/blue} (three sites, interference node)
+    \item $n$ adjacent broken bonds: \textbf{red}, $n-1$ \textbf{whites}, \textbf{blue}
 \end{itemize}
 The current algorithm detects pairs; detecting walls requires a triplet scorer
 $S_{\rm wall}(b_1, b_2) = \mathcal{L}(v_a) \times \mathcal{L}(v_c)$ where $v_b$
@@ -559,7 +559,7 @@ is the shared endpoint (white site) and $v_a$, $v_c$ are the outer endpoints.
 \paragraph{Adaptive seismic-to-aperture strategy.}
 The seismic and aperture methods are naturally complementary and suggest
 a two-phase adaptive protocol. In \textbf{Phase 1} (seismic), all $p$ centers
-fire simultaneously — one quantum experiment, minimum cost — producing a map of
+fire simultaneously: one quantum experiment, minimum cost, producing a map of
 RED sites that identifies the region of interest. In \textbf{Phase 2} (aperture),
 the RED sites from Phase 1 guide the selection of targeted observation centers
 geometrically positioned to discriminate between candidate bonds adjacent to
@@ -585,7 +585,7 @@ sign flip alone. This enables a triangulation strategy analogous to GPS:
 each scan provides a time-of-arrival constraint that localizes the bond.
 
 Formally, scan $s$ with nearest center $c_s$ detects the broken bond at
-cycle $t_s^*$ — the first cycle where $|\mathcal{L}_k(v)| > \varepsilon_{\rm th}$
+cycle $t_s^*$, the first cycle where $|\mathcal{L}_k(v)| > \varepsilon_{\rm th}$
 for some bond endpoint $v$. This constrains the bond to lie within
 $d_s = t_s^* \times v_{\rm hop}$ hops of $c_s$: a ball $B(c_s, d_s)$
 on the graph. Across $M$ scans, the bond lies in the intersection:
@@ -623,7 +623,7 @@ and $\varepsilon_{\rm th}$ the detection threshold.
     $t^*_{\rm base}(v) = \min\{t : n_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
     and \emph{perturbed arrival time}
     $t^*_{\rm pert}(v) = \min\{t : n_{\rm pert}(v,t) > \varepsilon_{\rm th}\}$.
-    These are the BFS frontier crossing times — the actual wavefront arrival,
+    These are the BFS frontier crossing times: the actual wavefront arrival,
     not a predicted hop distance. Note that $t^*_{\rm base}(v)$ and
     $t^*_{\rm pert}(v)$ may differ if a broken bond on the path to $v$ delays
     the perturbed wave.
@@ -673,15 +673,15 @@ and $\varepsilon_{\rm th}$ the detection threshold.
 The algorithm naturally identifies distinct interference signatures depending on
 the relative geometry of broken bonds and centers:
 \begin{itemize}
-    \item \textbf{RED$-$BLUE}: single broken bond, center on one side — clean sign flip
+    \item \textbf{RED$-$BLUE}: single broken bond, center on one side: clean sign flip
     \item \textbf{BLUE$-$WHITE$-$BLUE}: bond sandwiched between two equidistant centers
-    (collinear) — white site is the interference node; both bonds identifiable
+    (collinear): white site is the interference node; both bonds identifiable
     \item \textbf{BLUE$-$BLUE$-$RED}: two orthogonal broken bonds at a shared endpoint —
     shared site accumulates from two directions; outer RED identifies one bond,
     adjacent BLUEs identify the second
 \end{itemize}
 Each pattern is a direct consequence of the BFS frontier geometry and the
-Trotter color class ordering — no quantum-specific reasoning required.
+Trotter color class ordering; no quantum-specific reasoning required.
 
 \paragraph{Experimental results.}
 On a $7\times7$ lattice with 3 scans (13 centers, 3 GPUs parallel, $d_{\rm max}=2$),
@@ -689,7 +689,7 @@ testing 10 random trials with 2 simultaneous broken bonds ($\delta J = -0.20$):
 the BFS algorithm with sub-cycle color-class ordering finds \textbf{both bonds correctly
 in 9/10 trials} (90\%), with 1 partial case and 0 complete failures.
 The single partial failure (trial 5) corresponds to two orthogonal bonds sharing an
-endpoint where both centers' waves are simultaneously blocked — the BLUE$-$BLUE$-$RED
+endpoint where both centers' waves are simultaneously blocked: the BLUE$-$BLUE$-$RED
 pattern, representing the hardest geometric configuration.
 
 \paragraph{Failure taxonomy.}
@@ -697,14 +697,14 @@ We characterize five failure modes of increasing complexity:
 \begin{enumerate}
     \item \textbf{Single bond} (demonstrated): clean sign flip, 82× margin
     \item \textbf{Multiple random bonds}: shadows may overlap, L field becomes ambiguous
-    \item \textbf{Collinear bonds}: line of failures looks like a thick wall — bond resolution fails
-    \item \textbf{Hexagonal cluster}: faulty qubit touches 2-3 bonds — RED cluster with BLUE halo
-    \item \textbf{Graduated failure} ($\delta J$ smooth variation): dimmer switch — sensitivity limit
+    \item \textbf{Collinear bonds}: line of failures looks like a thick wall: bond resolution fails
+    \item \textbf{Hexagonal cluster}: faulty qubit touches 2-3 bonds: RED cluster with BLUE halo
+    \item \textbf{Graduated failure} ($\delta J$ smooth variation): dimmer switch; sensitivity limit
 \end{enumerate}
 Cases 2-5 represent the primary open experimental questions.
 
 \paragraph{Limitations.}
-The current experiment uses the identity PTM — a maximally disruptive
+The current experiment uses the identity PTM, a maximally disruptive
 perturbation that is deliberately clean. Cases 2-5 above are designed to
 stress-test the method: case 2 tests whether overlapping shadows can be
 resolved, case 3 tests spatial resolution limits, case 4 tests cluster
@@ -745,7 +745,7 @@ The per-bond detection rate remains above 90\% even at 8 simultaneous faults.
 Systematic failures are geometrically localized: bond 8 (sites 10$\leftrightarrow$11)
 and bond 36 (sites 43$\leftrightarrow$44) consistently score below the top-$k$
 threshold due to weak seismic illumination from the three scan center placements.
-These are not random failures — they reflect the coverage geometry of the 3-scan plan.
+These are not random failures; they reflect the coverage geometry of the 3-scan plan.
 
 \paragraph{Iterative calibration loop.}
 The multi-bond results motivate a natural operating protocol:
@@ -755,8 +755,8 @@ The multi-bond results motivate a natural operating protocol:
     \item Recalibrate the declared bonds on hardware.
     \item Re-run MAWGM. Fixed bonds disappear from the ranking; remaining faults
           surface with cleaner signal.
-    \item Repeat until $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ everywhere
-          — no residual signal.
+    \item Repeat until $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ everywhere,
+          with no residual signal.
 \end{enumerate}
 
 This iterative approach reduces every multi-bond problem to a sequence of
@@ -770,13 +770,13 @@ faults simultaneously; a moderate threshold $\varepsilon_{\rm th} = 10^{-3}$
 maximizes BFS coverage so the broken bond is never in a blind spot; and
 3 seismic placements cover all 84 bonds with no geometric dead zones
 except the small set of bonds with weak illumination from all three centers.
-The stopping criterion — wavefront convergence — is physical and requires
+The stopping criterion (wavefront convergence) is physical and requires
 no additional measurement overhead beyond the standard MAWGM protocol.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Measurability and Detection Thresholds}
 
-The detection method requires $n(v,t)$ to be measurable — both from the
+The detection method requires $n(v,t)$ to be measurable, both from the
 simulation fidelity standpoint and from the hardware shot budget.
 Two independent conditions must hold simultaneously.
 
@@ -836,7 +836,7 @@ this work satisfies both conditions simultaneously at $N = 10^6$.
 
 For $N < 10^6$, the hardware floor dominates and a larger $\varepsilon_{\rm th}$
 is required. For tighter cutoffs $\delta_{\rm cut} < 10^{-3}$, the simulation
-floor drops below the hardware floor — enabling more cycles before saturation
+floor drops below the hardware floor, enabling more cycles before saturation
 at the cost of longer simulation time.
 
 \paragraph{Minimum detectable coupling deviation.}
@@ -857,7 +857,7 @@ This improves as $1/\sqrt{N}$ with more shots. For $N = 10^7$: $|\delta J|_{\rm 
 We have demonstrated that the operator lightcone wavemap enables
 model-free Hamiltonian tomography via a simple signed cross-entropy
 observable. The broken bond is identified by its causal signature —
-a sign flip in $\mathcal{L}(v)$ at its two endpoints — with an 82-fold
+a sign flip in $\mathcal{L}(v)$ at its two endpoints, with an 82-fold
 margin using an ensemble of 6 observation centers on a $7\times7$ lattice.
 The seismic multi-center initialization achieves the same result in a
 single simulation.
@@ -867,14 +867,14 @@ and multiple simultaneous faults, the integrated log-ratio $\Lambda(v) =
 \ln(\mathcal{B}(v)/\mathcal{N}(v))$ achieves a per-bond detection rate
 above 90\% for up to 8 simultaneous faults in a single seismic pass,
 using only 6 simulations (3 baseline + 3 perturbed). The iterative
-calibration loop — detect, fix, re-run — reduces the multi-bond problem
+calibration loop (detect, fix, re-run) reduces the multi-bond problem
 to a sequence of single-bond problems, each solved at 100\% accuracy.
 
 The method requires no model assumptions and no knowledge of the perturbation
 type or magnitude.
 It is a natural sequitur to the Lindblad MPF framework: both use the same
 observable $n(v,t)$ and the same circuits, but in opposite inference
-directions — MPF infers noise from a known Hamiltonian, while MAWGM
+directions: MPF infers noise from a known Hamiltonian, while MAWGM
 infers coupling geometry from a known noise baseline.
 
 % ─────────────────────────────────────────────────────────────────────────────
