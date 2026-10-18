@@ -391,21 +391,6 @@ backward implication (infer the faulty gate). Here: perturbation (change $J$),
 wavefront propagation (operator spreading from center to shadow site), and
 cross-entropy inversion (red site + center position → bond identity).
 
-\section{The Seismic Approach}
-
-Running all $p$ centers simultaneously (seismic initialization
-$O(0) = \sum_k Z_{c_k}$) produces the same ensemble field in a single
-simulation. At each site $v$, the first-arrival signal is dominated by the
-nearest center, automatically selecting the strongest directional component.
-The sign flip at the broken bond endpoints emerges without any explicit
-path tracing or center-by-center analysis.
-
-The seismic approach reduces $2p$ simulations (p baselines + p perturbed)
-to 2 simulations at the cost of mixing center contributions. For the
-purpose of bond detection the mixing is benign: the sign flip at the
-broken bond is preserved since the nearest center to each endpoint
-dominates at $t_{\rm first}$.
-
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Discussion}
 
