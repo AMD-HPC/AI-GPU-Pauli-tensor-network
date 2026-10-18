@@ -305,53 +305,33 @@ site 16 as a bond endpoint; their error is only in declaring the wrong
 adjacent bond. The ensemble product cancels these partial errors.
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Aperture Synthesis Tomography}
+\section{Seismic Multi-Center Scanning}
 
-The $p$ independent center runs can be understood as an \emph{aperture synthesis}
-in direct analogy with radio interferometry. Each center $k$ at a different graph
-position plays the role of one antenna at a different baseline. The signed
-cross-entropy $\mathcal{L}_k(v)$ encodes which side of the broken bond site $v$
-is on (sign) and the signal strength (magnitude).
+Rather than running each center independently, we initialize all $p$ centers
+simultaneously in a single seismic scan: the initial operator is
+$O(0) = \sum_k Z_{c_k}$, firing all centers at once. At each site $v$,
+the first-arrival signal is dominated by the nearest center, automatically
+selecting the strongest directional component. The sign flip at the broken bond
+endpoints emerges without any explicit path tracing or per-center bookkeeping,
+and the cost drops from $2p$ simulations to just 2 (one baseline, one perturbed).
 
-We place $p$ centers with the constraint that no two centers share the same
-row \emph{or} column in the lattice. This guarantees that every bond has a
-strictly unique nearest center (no Voronoi ties): the perpendicular bisector
-between any two centers never passes through a bond, so one center always
-dominates the signal at every bond. For $p=7$ on the $7\times7$ lattice
-(one center per row, one per column, a permutation placement), giving
-centers $\{3,13,15,25,35,37,47\}$ with zero ties across all 84 bonds,
-maximum $T_b = 5$ cycles, and balanced Voronoi regions of 10--16 bonds each.
-The placement is found by exhaustive search over permutations, minimizing
-$\max_b T_b$.
+To achieve broad coverage with no geometric blind spots, we use three
+complementary center placements on the $7\times7$ lattice: corners and center
+($\{1,7,25,43,49\}$), quadrant centers ($\{11,13,37,39\}$), and mid-edge
+sites ($\{4,22,28,46\}$). Each placement covers a different region of the
+grid; together the three scans ensure every bond is within $d_{\rm max}=2$
+hops of at least one center in at least one scan. The total cost is 6
+simulations (3 baselines + 3 perturbed), run in parallel on 3 GPUs.
 
-Ensemble summation $\mathcal{L}_{\rm ens}(v) = \sum_k \mathcal{L}_k(v)$ fails
-for bonds sandwiched between centers on opposite sides: the RED signal from
-one side and the BLUE signal from the other partially cancel. Instead, we use
-a \emph{winner-takes-all} rule: for each center $k$ independently compute the
-signed contrast across every bond,
-\begin{equation}
-    C_k(b) = \bigl|\mathcal{L}_k^{\rm signed}(v_a) - \mathcal{L}_k^{\rm signed}(v_b)\bigr|
-\end{equation}
-where $\mathcal{L}_k^{\rm signed}(v)$ is the peak signed cross-entropy (positive
-or negative, whichever has larger magnitude) within the clean window $t \leq t_{\rm loop}$.
-The broken bond is declared by the globally winning center-bond pair:
-\begin{equation}
-    (k^*, b^*) = \argmax_{k,\,b} \; C_k(b)
-\end{equation}
-The winning center $k^*$ is necessarily on the BLUE (wall-face) side of the broken
-bond; the RED endpoint is the shadow. No summation across centers is performed —
-each center is a fully independent observer, and the one with the strongest signal wins.
-
-This is fundamentally different from voting or ensemble averaging: the aperture
-is not a democracy, it is a \emph{tournament}. The center whose wave most directly
-crossed the broken bond dominates by a large margin (typical contrast $> 1.0$
-vs.\ background $< 0.02$) and its declaration is unambiguous.
-
-We ran 10 trials with randomly selected broken bonds (J=0.8, $\delta J = -0.2$)
-on the $7\times7$ lattice using the Voronoi $p=7$ center set. The adaptive
-seismic-then-aperture protocol achieves \textbf{10/10} correct identifications:
-7 bonds identified by seismic alone (2 simulations), 3 by aperture winner-takes-all
-(14 simulations). Average cost: $2 + 0.3 \times 14 \approx 6$ simulations per bond.
+Bond scores are computed using the integrated log-ratio $\Lambda(v)$ across
+all three scans. For each bond $b$ connecting sites $v_a$ and $v_b$, the
+score is the maximum contrast $|\Lambda(v_a) - \Lambda(v_b)|$ over all scans.
+The top-$k$ bonds by score are declared broken, where $k$ is the number of
+expected faults. On 20 single-bond trials ($\delta J = -0.20$,
+two independent datasets), this procedure achieves \textbf{20/20} correct
+identifications. On 10 two-bond trials it achieves \textbf{9/10}, with the
+single failure corresponding to two bonds sharing an endpoint whose wavefronts
+cancel (the BLUE-BLUE-RED interference pattern discussed in Section~\ref{sec:multibond}).
 
 \section{Tensor Network Simulation as Quantum Circuit Execution}
 
@@ -850,5 +830,47 @@ infers coupling geometry from a known noise baseline.
 % ─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{plain}
 \bibliography{tomography}
+
+\appendix
+
+\section{Aperture Synthesis with Voronoi Center Placement}
+\label{app:voronoi}
+
+An alternative to the seismic approach runs each center independently, in
+direct analogy with aperture synthesis in radio interferometry. Each center
+$k$ at a different graph position plays the role of one antenna at a different
+baseline; $\mathcal{L}_k(v)$ encodes which side of the broken bond site $v$
+is on (sign) and the signal strength (magnitude).
+
+Centers are placed with the constraint that no two share the same row or
+column in the lattice. This guarantees every bond has a strictly unique nearest
+center (no Voronoi ties): the perpendicular bisector between any two centers
+never passes through a bond, so one center always dominates the signal at every
+bond. For $p=7$ on the $7\times7$ lattice (one center per row, one per column,
+a permutation placement), exhaustive search over permutations minimizing
+$\max_b T_b$ gives centers $\{3,13,15,25,35,37,47\}$ with zero ties across
+all 84 bonds, maximum $T_b = 5$ cycles, and balanced Voronoi regions of
+10--16 bonds each.
+
+Ensemble summation $\mathcal{L}_{\rm ens}(v) = \sum_k \mathcal{L}_k(v)$ fails
+for bonds sandwiched between centers on opposite sides, where RED and BLUE
+contributions partially cancel. A \emph{winner-takes-all} rule avoids this:
+for each center $k$ compute the signed contrast across every bond,
+\begin{equation}
+    C_k(b) = \bigl|\mathcal{L}_k^{\rm signed}(v_a) - \mathcal{L}_k^{\rm signed}(v_b)\bigr|
+\end{equation}
+and declare the globally winning center-bond pair
+$(k^*, b^*) = \argmax_{k,b} C_k(b)$.
+The winning center is necessarily on the BLUE side of the broken bond; each
+center is a fully independent observer and the one with the strongest signal wins.
+On 10 trials ($\delta J = -0.20$), the adaptive seismic-then-aperture protocol
+achieves \textbf{10/10} correct identifications: 7 bonds identified by seismic
+alone (2 simulations), 3 by aperture (14 simulations), at an average cost of
+$2 + 0.3 \times 14 \approx 6$ simulations per bond.
+
+The seismic 3-scan approach in Section~6 supersedes this method for the
+multi-bond case: it achieves the same single-bond accuracy at lower cost,
+and extends naturally to multiple simultaneous faults without requiring
+the no-shared-row-or-column placement constraint.
 
 \end{document}
