@@ -320,8 +320,9 @@ complementary center placements on the $7\times7$ lattice: corners and center
 ($\{1,7,25,43,49\}$), quadrant centers ($\{11,13,37,39\}$), and mid-edge
 sites ($\{4,22,28,46\}$). Each placement covers a different region of the
 grid; together the three scans ensure every bond is within $d_{\rm max}=2$
-hops of at least one center in at least one scan. The total cost is 6
-simulations (3 baselines + 3 perturbed), run in parallel on 3 GPUs.
+hops of at least one center in at least one scan. At $v_{\rm hop}\approx0.45$
+hops/cycle, 2 hops requires 5 simulation cycles. The total cost is 6 simulations
+(3 baselines + 3 perturbed), run in parallel on 3 GPUs.
 
 Bond scores are computed using the integrated log-ratio $\Lambda(v)$ across
 all three scans. For each bond $b$ connecting sites $v_a$ and $v_b$, the
