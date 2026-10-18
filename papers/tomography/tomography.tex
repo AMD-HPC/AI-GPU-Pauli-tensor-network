@@ -137,13 +137,11 @@ When the wall face is detected but the shadow is not yet visible $[\mathsf{W,B,W
 one more cycle is needed. The \textbf{broken bond signature} $[\mathsf{W,B,R}]$
 is the primary target: $u$ appears blue at cycle $t_0$ and $v$ appears red at
 cycle $t_0+1$, identifying the bond between them as anomalous.
-The pattern $[\mathsf{W,B,R}]$ is the primary detection target.
-It rests on a single assumption: both the baseline and perturbed waves
-reach $v_0$ at the same frontier time $t_0$, so any difference in their
-amplitudes is attributable to the bond, not to a timing offset.
-The temporal order (blue before red by one cycle) is then universal and follows
-from the BFS causal structure: $u$ is reached before $v$, so the wall
-accumulates before the shadow appears.
+This pattern rests on a single assumption: both waves reach $u$ at the same
+frontier time $t_0$, so any amplitude difference at $v$ is attributable to the
+bond, not to a timing offset. The temporal order (blue before red by one cycle)
+is then universal, following from the BFS causal structure: $u$ is reached
+before $v$, so the wall accumulates before the shadow appears.
 
 The signed cross-entropy evaluated in the frontier window is:
 \begin{equation}
