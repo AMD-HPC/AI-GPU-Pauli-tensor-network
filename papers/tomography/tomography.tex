@@ -47,9 +47,9 @@ type or magnitude; the detection is deliberately blind.
 
 Identifying miscalibrated or anomalous couplings in a quantum processor is
 a central challenge in quantum hardware characterization. Standard approaches
-require explicit Hamiltonian learning — fitting a parameterized noise or
-coupling model to measurement data — which scales poorly with system size and
-depends on model assumptions.
+require explicit Hamiltonian learning: fitting a parameterized coupling model
+to measurement data. This scales poorly with system size and depends on model
+assumptions about the noise and interaction structure.
 
 We propose a different approach based on a clear separation of roles.
 The \emph{simulator} knows the nominal Hamiltonian and produces two Pauli
