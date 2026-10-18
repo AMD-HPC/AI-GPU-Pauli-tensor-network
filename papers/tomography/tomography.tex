@@ -263,15 +263,15 @@ detection signal.
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Bond Detection}
 
-\paragraph{Bond score.}
-For each bond $b$ connecting sites $v_a$ and $v_b$:
+For each bond $b$ connecting sites $v_a$ and $v_b$ we define a {\em
+  bond score}:
 \begin{equation}
     S(b) = \mathcal{L}_{\rm ens}(v_a) \times \mathcal{L}_{\rm ens}(v_b)
 \end{equation}
 A negative product indicates a sign flip across the bond, the causal
 signature of the broken bond. Rank bonds by most negative $S(b)$.
 
-\paragraph{Results.}
+
 Table~\ref{tab:results} shows the individual and ensemble results for
 bond 12 (sites $15\\leftrightarrow16$, identity PTM perturbation, $7\times7$ lattice,
 $\chi=50$, 5 cycles).
@@ -313,7 +313,6 @@ position plays the role of one antenna at a different baseline. The signed
 cross-entropy $\mathcal{L}_k(v)$ encodes which side of the broken bond site $v$
 is on (sign) and the signal strength (magnitude).
 
-\paragraph{Voronoi center placement.}
 We place $p$ centers with the constraint that no two centers share the same
 row \emph{or} column in the lattice. This guarantees that every bond has a
 strictly unique nearest center (no Voronoi ties): the perpendicular bisector
@@ -325,7 +324,6 @@ maximum $T_b = 5$ cycles, and balanced Voronoi regions of 10--16 bonds each.
 The placement is found by exhaustive search over permutations, minimizing
 $\max_b T_b$.
 
-\paragraph{Winner-takes-all detection.}
 Ensemble summation $\mathcal{L}_{\rm ens}(v) = \sum_k \mathcal{L}_k(v)$ fails
 for bonds sandwiched between centers on opposite sides: the RED signal from
 one side and the BLUE signal from the other partially cancel. Instead, we use
@@ -349,7 +347,6 @@ is not a democracy, it is a \emph{tournament}. The center whose wave most direct
 crossed the broken bond dominates by a large margin (typical contrast $> 1.0$
 vs.\ background $< 0.02$) and its declaration is unambiguous.
 
-\paragraph{Experimental validation.}
 We ran 10 trials with randomly selected broken bonds (J=0.8, $\delta J = -0.2$)
 on the $7\times7$ lattice using the Voronoi $p=7$ center set. The adaptive
 seismic-then-aperture protocol achieves \textbf{10/10} correct identifications:
