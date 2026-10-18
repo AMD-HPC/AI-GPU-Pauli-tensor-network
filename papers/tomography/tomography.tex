@@ -188,6 +188,12 @@ the frontier moment, not the absolute transfer.
 % ─────────────────────────────────────────────────────────────────────────────
 \section{The Cross-Entropy Wavemap Observable}
 
+The previous section introduced the signal vocabulary for a wave with a single
+origin: one center fires, the wavefront spreads, and the red-blue sign flip
+at the bond endpoints is the detection signal. Here we extend to the case
+where $p$ centers fire independently, each producing its own wavemap. The key
+quantities are defined per-center, then combined into an ensemble.
+
 For each center $k$ and site $v$, we evaluate the signed cross-entropy in a
 3-cycle window $[t_0 \pm 1]$ centered on the BFS frontier crossing
 $t_0(v) = \min\{t : n^k_{\rm base}(v,t) > \varepsilon_{\rm th}\}$:
