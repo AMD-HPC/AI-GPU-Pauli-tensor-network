@@ -354,25 +354,20 @@ Both the graph coloring (determining which bonds share qubits) and the quantum
 circuit parallelism constraint (which gates can be applied simultaneously) derive
 from the lattice topology. The color class ordering is the gate layer ordering.
 
-\paragraph{Two timescales.}
-This identification reveals two distinct timescales:
+This identification reveals two distinct timescales. \textit{Physical time}
+$t$ counts integer Trotter cycles, $t = n \cdot \varepsilon$; the observables
+$C(t)$ and $n(v,t)$ at cycle granularity are physical, independent of color
+class ordering to $O(\varepsilon^2)$ and convergent to true quantum dynamics.
+\textit{Circuit time} $t_{\rm color}$ has sub-cycle, per-color-class granularity,
+a property of the circuit implementation rather than the Hamiltonian. Two Trotter
+implementations of the same Hamiltonian with different color orderings agree on
+$C(t)$ to first order in $\varepsilon$ but differ by $O(\varepsilon^2)$ Trotter
+errors; their $n(v, t_{\rm color})$ tomography fingerprints differ already at the
+first sub-cycle. The BP synchronization granularity determines which timescale is
+accessible: per-cycle BP (as used here) loses sub-step information; per-color BP
+(Julia L-MPF~\cite{robertson2026lindblad}) respects the causal barrier structure
+of the quantum circuit.
 
-\textit{Physical time} $t$: integer Trotter cycles, $t = n \cdot \varepsilon$.
-The observables $C(t)$ and $n(v,t)$ at cycle granularity are physical —
-independent of color class ordering to $O(\varepsilon^2)$ and convergent to
-true quantum dynamics.
-
-\textit{Circuit time} $t_{\rm color}$: sub-cycle, per-color-class granularity.
-This is a property of the circuit implementation, not the Hamiltonian. Two
-Trotter implementations of the same Hamiltonian with different color orderings
-agree on $C(t)$ to first order in $\varepsilon$ but differ by $O(\varepsilon^2)$
-Trotter errors that accumulate over time; their $n(v, t_{\rm color})$ tomography
-fingerprints differ already at the first sub-cycle.
-The BP synchronization granularity determines which timescale is accessible:
-per-cycle BP (as used here) loses sub-step information; per-color BP (Julia L-MPF~\cite{robertson2026lindblad})
-respects the causal barrier structure of the quantum circuit.
-
-\paragraph{Bond perturbation as gate miscalibration.}
 A perturbed bond (coupling $J \neq 1$) is a \emph{miscalibrated gate}: the
 two-qubit rotation angle $\theta = J \cdot \varepsilon$ differs from the nominal
 value. The Pauli transfer matrix for $\exp(-i\theta(XX+YY+ZZ))$ has diagonal
@@ -394,82 +389,20 @@ cross-entropy inversion (red site + center position → bond identity).
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Discussion}
 
-\paragraph{Connection to hardware.}
 The observable $n(v,t)$ is accessible on real quantum hardware via local
 Pauli measurements after ZNE gate-folding circuits~\cite{giurgica2020digital}.
-The cross-entropy $\mathcal{L}(v)$ requires only the ratio of two measurements
-— no absolute calibration. The p-center placement is determined by the graph
+The cross-entropy $\mathcal{L}(v)$ requires only the ratio of two measurements,
+with no absolute calibration. The center placement is determined by the graph
 topology alone, independent of the Hamiltonian.
 
-\paragraph{Causal structure.}
 The method exploits the Lieb-Robinson bound: information cannot propagate
-faster than $v_{\rm hop}$ hops/cycle. A broken bond creates a causal
-anomaly: the wavefront on one side cannot inform the other. This is
-detectable without knowing $v_{\rm hop}$ explicitly; the first-arrival
-time $t_{\rm first}(v)$ is observed directly.
+faster than $v_{\rm hop}$ hops/cycle. A broken bond creates a causal anomaly;
+the wavefront on one side cannot inform the other. The first-arrival time
+$t_{\rm first}(v)$ is observed directly, without knowing $v_{\rm hop}$ in advance.
 
-\paragraph{Complexity and timing.}
-The two methods have different computational costs on the $7\times7$ lattice
-($\chi=50$, 5 cycles, AMD MI100 32\,GB GPU):
-
-\begin{table}[h]
-\centering
-\small
-\begin{tabular}{lrrl}
-\toprule
-Method & Wall-clock & VRAM & Notes \\
-\midrule
-Seismic                & 272\,s & 11\% & 2 GPUs parallel, no $v_{\rm hop}$ \\
-Aperture (no $v_{\rm hop}$) & 300\,s & 11\% & 3 GPUs, $2\times$ sequential \\
-Aperture ($v_{\rm hop}=0.5$) & \textbf{191\,s} & \textbf{5--7\%} & 3 GPUs, $2\times$ sequential \\
-\bottomrule
-\end{tabular}
-\caption{Wall-clock timing comparison on rect $7\times7$, bond 12, $\chi=50$,
-5 cycles. Both methods produce \checkmark\ CORRECT results.
-$v_{\rm hop}=0.5$ is set by topology (d$_{\rm max}=2$ coverage), not by
-knowledge of the fault location.}
-\label{tab:timing}
-\end{table}
-
-Aperture synthesis with lightcone allocation ($v_{\rm hop}=0.5$) is 30\%
-faster than seismic and uses half the VRAM per GPU. The speedup comes from
-two effects: (1) single-center simulations have smaller active lightcones
-($\chi$ grows slower), and (2) far centers contribute negligible computation
-(center 6: 3.5\,s, center 34: 9.5\,s) while contributing zero to the
-ensemble, self-filtering at no cost. The bottleneck is the GPU pair
-running the two nearest centers (25 and 10, $\sim$20\,s each sequential).
-
-Aperture also enables a \emph{coarse-to-fine} strategy unavailable to
-seismic: run a fast aperture sweep (small $\chi$, $v_{\rm hop}=0.5$) to
-identify candidate bonds, then re-run only the adjacent centers with larger
-$\chi$ for high-accuracy confirmation; each targeted run remains
-memory-bounded by the lightcone allocation.
-
-\paragraph{Grid-size independence.}
-The most significant property of aperture synthesis with lightcone allocation
-is that the cost per center is \emph{independent of grid size}. With
-$v_{\rm hop}=0.5$ and $n_{\rm steps}$ cycles, each center sees a local ball
-of radius $r = n_{\rm steps} \times v_{\rm hop} \approx 2.5$ hops, containing
-$\sim$13 sites on a $7\times7$ lattice. The same ball contains the same
-$\sim$13 sites on a $100\times100$ lattice. The computation per center scales
-as $O(r^2 \chi^3)$, where $r$ is the BFS radius, independent of $N_{\rm sites}$.
-
-Total aperture cost:
-\begin{equation}
-    T_{\rm aperture} = p \times T_{\rm local}(\chi, r)
-\end{equation}
-where $p$ grows with the number of bonds (more centers needed for coverage)
-but each center cost $T_{\rm local}$ is constant. For a single bond
-perturbation, most centers contribute zero signal; their $\mathcal{L}_k(v)
-\approx 0$ everywhere. Their wall-clock is short (center 6: 3.5\,s) and
-their ensemble contribution is zero. They are neither harmful nor expensive.
-
-Seismic pays $O(N_{\rm sites} \chi^3)$ per simulation regardless. As the
-lattice grows, aperture synthesis becomes increasingly favored over seismic.
-The crossover occurs when $p \times T_{\rm local} > T_{\rm seismic}$, which
-for fixed $r$ and $\chi$ requires $p \gtrsim N_{\rm sites}/r^2$ centers —
-a condition that is rarely satisfied in practice since the geodesic bond
-cover grows much slower than the grid area.
+The seismic 3-scan cost is fixed at 6 simulations regardless of how many bonds
+are broken. On the $7\times7$ lattice ($\chi=50$, 5 cycles, AMD MI100 32\,GB GPU),
+each scan pair runs in 272\,s using 11\% VRAM with 2 GPUs in parallel.
 
 \paragraph{Interference signatures.}
 When two adjacent bonds are perturbed simultaneously (bonds 12 and 13, sharing
