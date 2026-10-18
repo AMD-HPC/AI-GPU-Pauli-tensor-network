@@ -142,7 +142,10 @@ For a bond $(u, v)$ where $u$ is the center-side (wall face) and $v$ is the shad
     red at $v$ (cycle $t_0 + 1$). The bond between $u$ and $v$ is anomalous.
 \end{itemize}
 The pattern $[\mathsf{W,B,R}]$ is the primary detection target.
-The temporal order (blue before red by one cycle) is universal and follows
+It rests on a single assumption: both the baseline and perturbed waves
+reach $v_0$ at the same frontier time $t_0$, so any difference in their
+amplitudes is attributable to the bond, not to a timing offset.
+The temporal order (blue before red by one cycle) is then universal and follows
 from the BFS causal structure: $u$ is reached before $v$, so the wall
 accumulates before the shadow appears.
 
