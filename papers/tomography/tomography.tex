@@ -55,7 +55,7 @@ We propose a different approach based on a clear separation of roles.
 The \emph{simulator} knows the nominal Hamiltonian and produces two Pauli
 weight fields: $n_{\rm base}(v,t)$ from the nominal evolution, and
 $n_{\rm pert}(v,t)$ from an evolution where one bond has been silently
-modified. The \emph{detection algorithm} (C\_searcher) receives only these
+modified. The \emph{detection algorithm} receives only these
 two arrays of numbers and must identify the modified bond from their ratio
 alone — with no knowledge of the Hamiltonian, the perturbation type, or
 its magnitude. The detection is deliberately blind.
@@ -95,7 +95,7 @@ center $c$. By normalization $\sum_P c_P^2 = 1$, $n(v,t) \in [0,1]$ is
 a probability.
 
 \paragraph{Perturbation.}
-C\_breaker selects one or more bonds and weakens their coupling by $\delta J = -0.20$,
+The fault injection step selects one or more bonds and weakens their coupling by $\delta J = -0.20$,
 setting $J = 0.80$ (a 20\% degradation). The Pauli transfer matrix entries scale as
 $\cos(J\varepsilon)$, attenuating operator propagation through the bond without
 blocking it entirely. This is a realistic miscalibration scenario — a dimmer switch
@@ -552,7 +552,7 @@ This extends the signal vocabulary:
     \item Two adjacent broken bonds: \textbf{red — white — blue} (three sites, interference node)
     \item $n$ adjacent broken bonds: \textbf{red —} $n-1$ \textbf{whites — blue}
 \end{itemize}
-The current searcher detects pairs; detecting walls requires a triplet scorer
+The current algorithm detects pairs; detecting walls requires a triplet scorer
 $S_{\rm wall}(b_1, b_2) = \mathcal{L}(v_a) \times \mathcal{L}(v_c)$ where $v_b$
 is the shared endpoint (white site) and $v_a$, $v_c$ are the outer endpoints.
 
