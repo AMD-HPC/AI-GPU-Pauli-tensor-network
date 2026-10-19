@@ -492,10 +492,14 @@ and $\varepsilon_{\rm th}$ the detection threshold.
     sub-cycle causality: $(h_u, c_u) < (h_v, c_v)$ means site $u$ is strictly
     upstream of $v$.
 
-    \item For a bond $(u, v)$ with $u$ upstream of $v$, compute the bond transfer
-    coefficient $T = n(v, t^*_{\rm base}(v)) / n(u, t^*_{\rm base}(u))$.
+    \item For a bond $(u, v)$ with $u$ upstream of $v$, compute the bond
+    transfer coefficient:
+    \begin{equation}
+        T = \frac{n(v,\, t^*_{\rm base}(v))}{n(u,\, t^*_{\rm base}(u))}
+    \end{equation}
     When $n_{\rm base}(u) \gg \varepsilon_{\rm th}$, both waves share the same
-    source amplitude at the BFS frontier and $\mathcal{L}(v) \approx \ln(T_{\rm base}/T_{\rm pert})$:
+    source amplitude at the BFS frontier and
+    $\mathcal{L}(v) \approx \ln(T_{\rm base}/T_{\rm pert})$:
     the signed cross-entropy directly measures the relative change in bond transfer.
     A broken bond reduces $T_{\rm pert} < T_{\rm base}$, giving $\mathcal{L}(v) > 0$
     (red shadow) and $\mathcal{L}(u) < 0$ (blue wall face).
