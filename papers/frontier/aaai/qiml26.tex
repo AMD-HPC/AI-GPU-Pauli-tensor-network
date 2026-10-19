@@ -224,7 +224,7 @@ and the \emph{amplitude ratio}
 $r_\gamma(v) = n_\gamma(v,t_\gamma(v))/n_{\rm nl}(v,t_\gamma(v)) \leq 1$,
 both guaranteed by the Lieb-Robinson bound for pure amplitude damping.
 Together they form the \emph{wavemap}: a spatial portrait of how noise
-deforms the lightcone, site by site and cycle by cycle (see Appendix, Figure~\ref{fig:qiml_app}).
+deforms the lightcone, site by site and cycle by cycle.
 
 \subsection{Cross-entropy as the information cost}
 
@@ -539,53 +539,6 @@ This opens the path to classifiers trained on simulation ground truth
 that diagnose noise type and severity directly from measured $n(v,t)$
 on real quantum processors, closing the loop between classical
 simulation and hardware characterization.
-
-\appendix
-\section{Wavemap Visualization and Entropy Recovery}
-
-This appendix provides the spatial visualization of the wavemap and the
-MPF entropy recovery that complements the numerical results in Tables 1--5.
-
-Figure~\ref{fig:qiml_app} shows two key aspects simultaneously.
-\textbf{Top panel}: the arrival delay $l_\gamma(v)$ and amplitude ratio $r_\gamma(v)$
-for $\gamma=1,2,3$ on the heavy-hex $3\times3$ lattice.
-White sites are outside the noiseless lightcone; black sites were reached by the noiseless wave
-but not by the noisy wave within 20 cycles.
-Colored sites show the delay in cycles (red = large delay) or amplitude ratio
-(green = ratio near 1, red = strongly attenuated).
-On the heavy-hex lattice with hardware-characterized noise, the delay is non-monotone
-in $\gamma$ — reflecting the rotation content of the PTM which can inject weight
-at previously unvisited sites, locally accelerating the apparent frontier.
-On the rect $7\times7$ lattice with synthetic uniform depolarizing noise,
-the delay is monotone in $\gamma$ as expected for pure amplitude damping.
-\textbf{Bottom panel}: the MPF entropy recovery.
-\textbf{Row 1} (red): per-site cross-entropy $\mathcal{L}(v)$ for noisy $\gamma=1,2,3$ —
-each column shows a spatial snapshot of information loss at the frontier.
-\textbf{Row 2} (green): the same quantity after MPF recovery with $\alpha(t)$ coefficients —
-the information loss is visibly reduced across all frontier sites.
-\textbf{Row 3}: integrated loss $L(t) = \sum_v \mathcal{L}(v)$ per cycle
-(noisy in red, MPF-recovered in green). The $\alpha(t)$ optimizer is ill-conditioned
-at cycles 12--15 (frontier collapse onto a thin shell) but recovers at cycle 16
-when the frontier expands again.
-\textbf{Row 4}: mean $\mathcal{L}(v)$ per BFS distance shell — $\alpha(t)$
-consistently reduces the cross-entropy at every shell, confirming that the recovery
-is spatially uniform, not concentrated at particular sites.
-
-\begin{figure*}[!ht]
-\centering
-\includegraphics[width=0.88\textwidth,height=0.75\textheight,keepaspectratio]{fig_qiml_hh20c_qiml.png}
-\caption{Wavemap visualization and entropy recovery, heavy-hex $3\times3$,
-20 cycles ($\chi=200$, $\delta=10^{-3}$, $\varepsilon_{\rm th}=10^{-4}$).
-\textbf{Top}: arrival delay $l_\gamma(v)$ (left) and amplitude ratio $r_\gamma(v)$ (right)
-for $\gamma=1,2,3$. White: outside lightcone. Black: reached by noiseless wave only.
-Non-monotone delay on heavy-hex reflects hardware PTM rotation content.
-\textbf{Bottom, Row 1} (red): per-site $\mathcal{L}(v)$ for noisy runs.
-\textbf{Row 2} (green): $\mathcal{L}(v)$ after $\alpha(t)$ MPF recovery — visibly reduced.
-\textbf{Row 3}: $L(t)=\sum_v\mathcal{L}(v)$ per cycle; ill-conditioned at cycles 12--15
-(frontier collapse), recovers at cycle 16.
-\textbf{Row 4}: mean $\mathcal{L}(v)$ per BFS shell; $\alpha(t)$ reduces loss at every shell.}
-\label{fig:qiml_app}
-\end{figure*}
 
 \bibliography{qiml26}
 
