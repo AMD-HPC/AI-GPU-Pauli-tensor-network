@@ -447,12 +447,12 @@ each scan provides a time-of-arrival constraint that localizes the bond.
 Formally, scan $s$ with nearest center $c_s$ detects the broken bond at
 cycle $t_s^*$, the first cycle where $|\mathcal{L}_k(v)| > \varepsilon_{\rm th}$
 for some bond endpoint $v$. This constrains the bond to lie within
-$d_s = t_s^* \times v_{\rm hop}$ hops of $c_s$: a ball $B(c_s, d_s)$
+$d_s = t_s^* \times v_{\rm hop}$ hops of $c_s$: a ball $\mathcal{D}(c_s, d_s)$
 on the graph. Across $M$ scans, the bond lies in the intersection:
 \begin{equation}
-    b^* \in \bigcap_{s=1}^{M} \mathcal{B}(c_s,\, t_s^* \times v_{\rm hop})
+    b^* \in \bigcap_{s=1}^{M} \mathcal{D}(c_s,\, t_s^* \times v_{\rm hop})
 \end{equation}
-where $\mathcal{B}(c, r)$ is the set of bonds within crossing distance $r$ of center $c$.
+where $\mathcal{D}(c, r)$ is the set of bonds within crossing distance $r$ of center $c$.
 
 The sign of the earliest detection (which endpoint is RED vs BLUE) further
 constrains the direction: the center $c_s$ is on the BLUE (wall-face) side
