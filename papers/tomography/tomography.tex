@@ -430,13 +430,14 @@ This mirrors standard practice in other imaging domains: a wide-field scout scan
 hardware, Phase 1 maps directly to a single quantum experiment; Phase 2 selects
 the minimum number of additional experiments to confirm the bond identity.
 
-The seismic phase is also the most natural starting point on hardware: it requires
-only one circuit (all centers in a single initialization), produces a rough
-hypothesis, and costs two experiments (baseline + perturbed). The aperture phase
-then tests the hypothesis with directional projections. Perturbation signals that
-survive across independent aperture projections with geometry-consistent timing are
-physical; chi-truncation artifacts and decoherence errors are uncorrelated across
-independent runs and average out.
+The seismic phase is the most natural starting point: it requires only one
+circuit (all centers in a single initialization) and one set of hardware shots
+for the perturbed device. The baseline $n_{\rm base}(v,t)$ is provided by
+simulation and reused across all candidate perturbations at no additional
+hardware cost. The aperture phase then tests the hypothesis with directional
+projections; perturbation signals that survive across independent projections
+with geometry-consistent timing are physical, while chi-truncation artifacts
+and shot noise are uncorrelated across runs and average out.
 
 \paragraph{Wavefront triangulation across scans.}
 When multiple independent scans are available, the temporal order in which
