@@ -469,64 +469,44 @@ cycle 2 (center 4, 2 hops away), scan 1 provides weak confirmation at
 cycle 2 from the far corners. The intersection of the three balls gives
 a small candidate set containing the true bond.
 
-\paragraph{BFS-guided fault detection algorithm.}
+\subsection*{BFS-guided fault detection algorithm}
+
 The detection method reduces to a graph-theoretic algorithm that operates
 entirely on the observable $n(v,t)$, without reference to the Hamiltonian,
-coupling values, or simulation parameters. We state it precisely.
-
+coupling values, or simulation parameters.
 Let $G = (V, E)$ be the coupling graph, $\{c_s\}$ the observation centers,
 and $\varepsilon_{\rm th}$ the detection threshold.
 
 \begin{enumerate}
-    \item \textbf{BFS frontier timing.} For each center $c_s$ and each site $v \in V$, define
-    the \emph{baseline arrival time}
-    $t^*_{\rm base}(v) = \min\{t : n_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
-    and \emph{perturbed arrival time}
-    $t^*_{\rm pert}(v) = \min\{t : n_{\rm pert}(v,t) > \varepsilon_{\rm th}\}$.
-    These are the BFS frontier crossing times: the actual wavefront arrival,
-    not a predicted hop distance. Note that $t^*_{\rm base}(v)$ and
-    $t^*_{\rm pert}(v)$ may differ if a broken bond on the path to $v$ delays
-    the perturbed wave.
+    \item For each center $c_s$ and each site $v \in V$, record the
+    baseline arrival time $t^*_{\rm base}(v) = \min\{t : n_{\rm base}(v,t) > \varepsilon_{\rm th}\}$
+    and perturbed arrival time $t^*_{\rm pert}(v) = \min\{t : n_{\rm pert}(v,t) > \varepsilon_{\rm th}\}$.
+    These are the actual BFS frontier crossings, not predicted hop distances;
+    $t^*_{\rm pert}(v)$ may exceed $t^*_{\rm base}(v)$ if a broken bond delays the perturbed wave.
 
-    \item \textbf{Sub-cycle causal ordering.} Within the same BFS cycle, the
-    Trotter color class $c(e) \in \{0,1,2,3\}$ of each bond $e$ determines the
-    firing order. Assign each site $v$ the pair $(h(v), c(e_v))$ where $h(v)$
-    is its BFS hop depth and $c(e_v)$ is the color class of the bond used to
-    reach it. The total order $(h, c)$ gives exact sub-cycle causality:
-    $(h_u, c_u) < (h_v, c_v)$ means site $u$ is strictly upstream of $v$.
+    \item Within each BFS cycle, assign each site $v$ the causal pair $(h(v), c(e_v))$
+    where $h(v)$ is its BFS hop depth and $c(e_v) \in \{0,1,2,3\}$ is the Trotter
+    color class of the bond used to reach it. The total order $(h, c)$ gives exact
+    sub-cycle causality: $(h_u, c_u) < (h_v, c_v)$ means site $u$ is strictly
+    upstream of $v$.
 
-    \item \textbf{Bond transfer and anomaly detection.}
-    Consider a bond $(u, v)$ where $u$ is the source (center-side) and $v$ is the
-    destination (shadow-side). The \emph{bond transfer coefficient} is:
-    \begin{equation}
-        T = \frac{n(v,\, t^*_{\rm base}(v))}{n(u,\, t^*_{\rm base}(u))}
-    \end{equation}
-    When $n_{\rm base}(u, t^*_{\rm base}(u)) \gg \varepsilon_{\rm th}$ (source well
-    established), the threshold condition ensures both waves have the same source
-    amplitude: $n_{\rm base}(u) \approx n_{\rm pert}(u)$ at the BFS frontier,
-    since the perturbation is downstream of $u$.
-    In this regime:
-    \begin{equation}
-        \mathcal{L}(v,\, t^*_{\rm base}(v)) = -\ln\frac{n_{\rm pert}(v)}{n_{\rm base}(v)}
-        \approx \ln\frac{T_{\rm base}}{T_{\rm pert}}
-    \end{equation}
-    so $\mathcal{L}$ directly measures the \emph{relative change in bond transfer coefficient}.
-    A broken bond ($J \neq 1$) reduces the transfer $T_{\rm pert} < T_{\rm base}$,
-    giving $\mathcal{L}(v) > 0$ (RED shadow). The wall face $u$ shows
-    $\mathcal{L}(u) < 0$ (BLUE accumulation) from the same effect in reverse.
-    A delay $t^*_{\rm pert}(v) > t^*_{\rm base}(v)$ is additional evidence that
-    the transfer was slowed.
+    \item For a bond $(u, v)$ with $u$ upstream of $v$, compute the bond transfer
+    coefficient $T = n(v, t^*_{\rm base}(v)) / n(u, t^*_{\rm base}(u))$.
+    When $n_{\rm base}(u) \gg \varepsilon_{\rm th}$, both waves share the same
+    source amplitude at the BFS frontier and $\mathcal{L}(v) \approx \ln(T_{\rm base}/T_{\rm pert})$:
+    the signed cross-entropy directly measures the relative change in bond transfer.
+    A broken bond reduces $T_{\rm pert} < T_{\rm base}$, giving $\mathcal{L}(v) > 0$
+    (red shadow) and $\mathcal{L}(u) < 0$ (blue wall face).
 
-    \item \textbf{Bond identification.} For each anomalous site $v$, examine its
-    neighbors $u$ in $G$. The broken bond is $(u,v)$ where:
-    (a) $\mathcal{L}(u)$ and $\mathcal{L}(v)$ have opposite signs (sign flip), and
-    (b) $(h_u, c_u) < (h_v, c_v)$ (causal order: $u$ is center-side, $v$ is shadow).
-    Score each candidate bond by $|\mathcal{L}(u) - \mathcal{L}(v)| \cdot \delta / t^*$
-    where $\delta = 2$ if delayed, $1$ otherwise, and $t^* = \min(t^*_{\rm base}(u), t^*_{\rm base}(v))$.
+    \item For each site $v$ with $|\mathcal{L}(v)| > \varepsilon_{\rm th}$, examine
+    neighbors $u$ with $(h_u, c_u) < (h_v, c_v)$. Declare bond $(u,v)$ as a candidate
+    if $\mathcal{L}(u)$ and $\mathcal{L}(v)$ have opposite signs. Score each candidate
+    by $|\mathcal{L}(u) - \mathcal{L}(v)| \cdot \delta / t^*$ where $\delta = 2$ if
+    $t^*_{\rm pert}(v) > t^*_{\rm base}(v)$, else $1$, and
+    $t^* = \min(t^*_{\rm base}(u), t^*_{\rm base}(v))$.
 
-    \item \textbf{Multi-scan aggregation.} Repeat steps 1--4 for each scan independently
-    (no Voronoi spatial restriction). Rank all candidate bonds by total score across scans.
-    Declare the top-$k$ bonds as broken, where $k$ is the number of expected faults.
+    \item Repeat steps 1--4 for each scan independently. Rank all candidate bonds
+    by total score across scans and declare the top-$k$ as broken.
 \end{enumerate}
 
 \paragraph{Pattern vocabulary.}
