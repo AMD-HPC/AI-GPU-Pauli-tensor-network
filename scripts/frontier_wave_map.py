@@ -461,7 +461,7 @@ def main():
               "window:\n$[t-\\Delta, t+\\Delta]$\n"
               "$\\Delta=\\max(1,l)$\n\n"
               "Green = MPF\nshould approach\nzero (recovery)",
-              transform=ax10.transAxes, va='top', fontsize=8)
+              transform=ax10.transAxes, va='top', fontsize=9)
     for col, g in enumerate(all_states, start=1):
         if g not in stats: continue
         ax = fig.add_subplot(gs[1, col])
@@ -478,7 +478,7 @@ def main():
               "$L(t)=\\sum_v -\\ln\\frac{n}{n_{\\rm nl}}$\n\n"
               "Dashed:\n$D_{\\rm KL}(n_{\\rm nl}\\|n)(t)$\n\n"
               "Green = MPF:\nshould sit near\nzero across all\ncycles",
-              transform=ax20.transAxes, va='top', fontsize=8)
+              transform=ax20.transAxes, va='top', fontsize=9)
     ax_L   = fig.add_subplot(gs[2, 1:])
     ax_L_r = ax_L.twinx()
     cycles = np.arange(1, data['NL'].shape[0]+1)
@@ -491,9 +491,9 @@ def main():
     ax_L.axhline(0, color='gray', lw=0.8, ls=':')
     ax_L.set_xlabel('Cycle', fontsize=9)
     ax_L.set_ylabel('Cross-entropy loss $L(t)$', fontsize=9)
-    ax_L_r.set_ylabel('KL divergence (dashed)', fontsize=8, color='gray')
+    ax_L_r.set_ylabel('KL divergence (dashed)', fontsize=9, color='gray')
     ax_L.set_title('Global entropy loss — noisy vs MPF-corrected', fontsize=10)
-    ax_L.legend(fontsize=8, loc='upper left')
+    ax_L.legend(fontsize=9, loc='upper left')
     ax_L.grid(True, alpha=0.3)
 
     # Row 3: per-shell distribution — all gammas + MPF overlaid on same plot
@@ -501,7 +501,7 @@ def main():
     ax30.text(0.05, 0.95,
               "Per-BFS-shell\n$\\mathcal{L}(v)$ (mean±σ)\n\n"
               "All γ + MPF\noverlaid — MPF\n(green) should\ncollapse toward\nzero at all\nshells",
-              transform=ax30.transAxes, va='top', fontsize=8)
+              transform=ax30.transAxes, va='top', fontsize=9)
     ax_sh = fig.add_subplot(gs[3, 1:])
     for g in list(gammas) + ['MPF']:
         if g not in stats: continue
@@ -522,7 +522,7 @@ def main():
     ax_sh.set_xlabel('BFS shell (distance from center)', fontsize=9)
     ax_sh.set_ylabel('$\\mathcal{L}$ (mean ± σ)', fontsize=9)
     ax_sh.set_title('Entropy loss per shell — MPF recovery', fontsize=10)
-    ax_sh.legend(fontsize=8)
+    ax_sh.legend(fontsize=9)
     ax_sh.grid(True, alpha=0.3)
 
     fig.suptitle(
