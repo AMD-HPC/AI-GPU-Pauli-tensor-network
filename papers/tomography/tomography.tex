@@ -515,19 +515,19 @@ and $\varepsilon_{\rm th}$ the detection threshold.
     by total score across scans and declare the top-$k$ as broken.
 \end{enumerate}
 
-\paragraph{Pattern vocabulary.}
-The algorithm naturally identifies distinct interference signatures depending on
-the relative geometry of broken bonds and centers:
-\begin{itemize}
-    \item \textbf{RED$-$BLUE}: single broken bond, center on one side: clean sign flip
-    \item \textbf{BLUE$-$WHITE$-$BLUE}: bond sandwiched between two equidistant centers
-    (collinear): white site is the interference node; both bonds identifiable
-    \item \textbf{BLUE$-$BLUE$-$RED}: two orthogonal broken bonds at a shared endpoint —
-    shared site accumulates from two directions; outer RED identifies one bond,
-    adjacent BLUEs identify the second
-\end{itemize}
-Each pattern is a direct consequence of the BFS frontier geometry and the
-Trotter color class ordering; no quantum-specific reasoning required.
+From our experiments we have identified three recurrent interference signatures,
+which we name here as a working vocabulary based on observed cases. Each is a
+consequence of the BFS frontier geometry and the Trotter color class ordering,
+with no quantum-specific reasoning required. We expect further patterns to emerge
+as the geometry of faults and center placements varies; the vocabulary below
+reflects our current observations, not an exhaustive classification.
+\textbf{RED-BLUE} is the clean single-bond signature: center on one side,
+sign flip across the bond. \textbf{BLUE-WHITE-BLUE} arises when a bond is
+sandwiched between two equidistant centers: the shared site is white (interference
+node) and the outer sites are blue on both sides, making both adjacent bonds
+identifiable. \textbf{BLUE-BLUE-RED} occurs when two orthogonal broken bonds
+share an endpoint: the shared site accumulates from two directions, the outer
+RED identifies one bond, and the adjacent BLUEs identify the second.
 
 \paragraph{Experimental results.}
 On a $7\times7$ lattice with 3 scans (13 centers, 3 GPUs parallel, $d_{\rm max}=2$),
