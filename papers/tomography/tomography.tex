@@ -484,9 +484,11 @@ and $\varepsilon_{\rm th}$ the detection threshold.
     These are the actual BFS frontier crossings, not predicted hop distances;
     $t^*_{\rm pert}(v)$ may exceed $t^*_{\rm base}(v)$ if a broken bond delays the perturbed wave.
 
-    \item Within each BFS cycle, assign each site $v$ the causal pair $(h(v), c(e_v))$
-    where $h(v)$ is its BFS hop depth and $c(e_v) \in \{0,1,2,3\}$ is the Trotter
-    color class of the bond used to reach it. The total order $(h, c)$ gives exact
+    \item Both the simulation and the quantum circuit assume an execution order
+    among independent bonds, determined by Trotter color class. We materialize
+    this order for causal determination: assign each site $v$ the pair $(h(v), c(e_v))$
+    where $h(v)$ is its BFS hop depth and $c(e_v) \in \{0,1,2,3\}$ is the color
+    class of the bond used to reach it. The total order $(h, c)$ gives exact
     sub-cycle causality: $(h_u, c_u) < (h_v, c_v)$ means site $u$ is strictly
     upstream of $v$.
 
