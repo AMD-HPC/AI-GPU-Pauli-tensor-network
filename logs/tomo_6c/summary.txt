@@ -1,12 +1,12 @@
 === 6-center individual experiment ===
-Bond=12  dJ=0.20  J_new=1.200  chi=50  steps=5
-Mon Oct  5 17:46:57 UTC 2026
+Bond=12;13  dJ=0.20  J_new=1.200  chi=50  steps=5
+Tue Oct  6 17:00:30 UTC 2026
 
-center=6 |  | 
-center=34 |  | 
-center=25 | Result: ✗ WRONG | C_searcher declares: Bond 50 (9 ↔ 16)
-center=32 | Result: ✗ WRONG | C_searcher declares: Bond 57 (16 ↔ 23)
+center=6 | Result: ✗ WRONG | C_searcher declares: Bond 14 (17 ↔ 18)
+center=34 | Result: ✗ WRONG | C_searcher declares: Bond 9 (11 ↔ 12)
+center=25 | Result: ✗ WRONG | C_searcher declares: Bond 13 (16 ↔ 17)
+center=32 | Result: ✗ WRONG | C_searcher declares: Bond 13 (16 ↔ 17)
 center=30 | Result: ✓ CORRECT | C_searcher declares: Bond 12 (15 ↔ 16)
-center=10 | Result: ✓ CORRECT | C_searcher declares: Bond 12 (15 ↔ 16)
+center=10 | Result: ✗ WRONG | C_searcher declares: Bond 1 (2 ↔ 3)
 
 === Summary ===

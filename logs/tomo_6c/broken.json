@@ -1,8 +1,24 @@
 {
   "graph": "data/graphs/rect_7x7.json",
   "bond": 12,
+  "bonds": [
+    12,
+    13
+  ],
   "site_a": 15,
   "site_b": 16,
+  "bonds_info": [
+    {
+      "bond": 12,
+      "site_a": 15,
+      "site_b": 16
+    },
+    {
+      "bond": 13,
+      "site_a": 16,
+      "site_b": 17
+    }
+  ],
   "J": 1.0,
   "eps": 0.1,
   "p0": 0.01,
