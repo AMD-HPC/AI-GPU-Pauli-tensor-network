@@ -145,7 +145,7 @@ This section introduces the wavemap observables following the progression:
        \;\xrightarrow{\text{minimize}}\; \min_\alpha \mathcal{L}
   \label{eq:progression}
 \end{equation}
-\subsection{Autocorrelation as observable}
+\subsection{Autocorrelation as Observable}
 
 The standard observable in tensor network simulation of quantum lattice
 models is the autocorrelation $C(t) = \langle Z_c(t) Z_c(0)\rangle$,
@@ -157,7 +157,7 @@ equally; furthermore, the computation is dominated by the interior of
 the lightcone, where bond dimension $\chi$ is large and the tensor
 network truncation is least faithful.
 
-\subsection{The Pauli weight $n(v,t)$ as a spatial observable}
+\subsection{The Pauli Weight $n(v,t)$ as a Spatial Observable}
 
 Any operator $O_c(t)$ initialized at the center and expanded in the
 $n$-qubit Pauli basis $\{I,X,Y,Z\}^{\otimes n}$ as
@@ -172,7 +172,7 @@ additional cost, retaining the full spatial distribution of operator
 support across the lattice at every cycle.
 
 
-\subsection{The $n(v,t)$ as a probability}
+\subsection{The $n(v,t)$ as a Probability}
 
 By normalization, $n(v,t) \in [0,1]$ is the probability that a Pauli
 string sampled from the operator distribution acts non-trivially at
@@ -182,7 +182,7 @@ The field $n(v,t)$ is therefore a probability distribution over the
 lattice, evolving in time as the operator spreads outward from the
 initialization site.
 
-\subsection{Lightcone: velocity and information}
+\subsection{Lightcone: Velocity and Information}
 
 The \emph{frontier} at cycle $t$ is the set of sites first crossing a
 significance threshold $\varepsilon_{\rm th} = 10^{-4}$:
@@ -210,7 +210,7 @@ noise all shape $\mathcal{F}(t)$ without any model assumption, as
 the heavy-hex results demonstrate (near-degenerate $v_{\gamma_2}
 \approx v_{\gamma_3}$, non-monotone delay, Table~\ref{tab:vhop}).
 
-\subsection{Noiseless and noisy waves}
+\subsection{Noiseless and Noisy Waves}
 
 We simulate four variants: noiseless (NL) and three noise amplification
 levels $\gamma=1,2,3$ (chosen from the ZNE literature~\cite{giurgica2020digital}),
@@ -226,7 +226,7 @@ both guaranteed by the Lieb-Robinson bound for pure amplitude damping.
 Together they form the \emph{wavemap}: a spatial portrait of how noise
 deforms the lightcone, site by site and cycle by cycle.
 
-\subsection{Cross-entropy as the information cost}
+\subsection{Cross-Entropy as the Information Cost}
 
 Since $n(v,t)$ is a probability, the natural measure of deviation
 between the noisy and noiseless is by loss of information.  As
@@ -310,7 +310,7 @@ frontier where $\chi\approx1$ and simulation is exact.)}
 \label{tab:ct}
 \end{table*}
 
-\subsection{Stage 2: Frontier velocity from $n(v,t)$}
+\subsection{Stage 2: Frontier Velocity from $n(v,t)$}
 
 The non-identity Pauli weight $n(v,t)$ resolves the spatial structure
 invisible to $C(t)$.
@@ -365,7 +365,7 @@ For pure amplitude damping this never occurs ($l_\gamma(v) \geq 0$
 always); its presence is a fingerprint of rotation-type noise injecting
 Pauli weight independently of the Hamiltonian causal structure.
 
-\subsection{Stage 3: MPF entropy recovery}
+\subsection{Stage 3: MPF Entropy Recovery}
 
 The wavemap cross-entropy loss $\mathcal{L}_\gamma(v)$ is both a
 diagnostic and an objective: minimizing it over MPF coefficients
@@ -412,7 +412,7 @@ MPF entropy reduces loss 44\% on heavy-hex and 24\% on rect $7\times7$.}
 \label{tab:entropy}
 \end{table}
 
-\subsection{Time-adaptive coefficients $\alpha(t)$}
+\subsection{Time-Adaptive Coefficients $\alpha(t)$}
 
 The global MPF entropy fit uses fixed $c$ across all space and time.
 We refine this by fitting one coefficient vector $\alpha(t)\in\mathbb{R}^3$
@@ -475,7 +475,7 @@ eliminate floored entries.}}
 \label{tab:lt}
 \end{table}
 
-\begin{table}[t]
+\begin{table}[htb]
 \centering
 \setlength{\tabcolsep}{3pt}
 \scriptsize
@@ -499,7 +499,7 @@ outer shells (too few sites per shell to constrain the fit).}
 \label{tab:ld}
 \end{table}
 
-\subsection{Connection to hardware: ZNE}
+\subsection{Connection to Hardware: ZNE}
 
 The noise amplification parameter $\gamma$ maps directly to the
 gate-folding factor in zero-noise extrapolation
