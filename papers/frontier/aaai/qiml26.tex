@@ -252,35 +252,7 @@ reference.
 The next section shows how these observables enable MPF error recovery.
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Results}
-\label{sec:results}
-
-Following the progression of Eq.~\ref{eq:progression}, we present
-results in three stages: the autocorrelation $C(t)$, the frontier
-velocity $v_{\rm hop}$ from $n(v,t)$, and the MPF entropy recovery.
-
-\subsection{Stage 1: Autocorrelation $C(t)$}
-
-Existing MPF methods operate at two levels of the same scalar observable.
-The first fits $C(t)$ directly: $\sum_i c_i C_{\gamma_i}(t) \approx C_{\rm nl}(t)$,
-one equation per cycle.
-The second solves the bilinear system $A\alpha = B$~\cite{mpf-ref,robertson2026lindbladmultiproductformulas}, where
-$A_{ij} = \langle\psi_{\gamma_i}|\psi_{\gamma_j}\rangle$ are noisy-noisy
-inner products and $B_i = \langle\psi_{\gamma_i}|\psi_{\rm nl}\rangle$
-are noisy-noiseless inner products: a richer fit, but still a global
-scalar per cycle, still dominated by the interior of the lightcone
-where $\chi$ is large and the approximation is least faithful.
-
-Table~\ref{tab:ct} shows $C(t)$ at each cycle for NL and
-$\gamma=1,2,3$ on both topologies.
-On heavy-hex, $C(t)$ oscillates and the noise levels are nearly
-indistinguishable: the scalar observable is almost blind to noise.
-On rect $7\times7$, $C(t)$ decays monotonically and the $\gamma$
-levels separate, but all spatial structure is lost.
-In both cases, $C(t)$ and $A\alpha=B$ compress the entire
-space-time evolution into one number per cycle.
-
-\begin{table*}[t]
+\begin{table*}[!t]
 \centering
 \setlength{\tabcolsep}{3pt}
 \small
@@ -309,6 +281,34 @@ $\chi$ grows $4\to163$ on heavy-hex; saturates at $\chi=50$ on rect $7\times7$
 frontier where $\chi\approx1$ and simulation is exact.)}
 \label{tab:ct}
 \end{table*}
+
+\section{Results}
+\label{sec:results}
+
+Following the progression of Eq.~\ref{eq:progression}, we present
+results in three stages: the autocorrelation $C(t)$, the frontier
+velocity $v_{\rm hop}$ from $n(v,t)$, and the MPF entropy recovery.
+
+\subsection{Stage 1: Autocorrelation $C(t)$}
+
+Existing MPF methods operate at two levels of the same scalar observable.
+The first fits $C(t)$ directly: $\sum_i c_i C_{\gamma_i}(t) \approx C_{\rm nl}(t)$,
+one equation per cycle.
+The second solves the bilinear system $A\alpha = B$~\cite{mpf-ref,robertson2026lindbladmultiproductformulas}, where
+$A_{ij} = \langle\psi_{\gamma_i}|\psi_{\gamma_j}\rangle$ are noisy-noisy
+inner products and $B_i = \langle\psi_{\gamma_i}|\psi_{\rm nl}\rangle$
+are noisy-noiseless inner products: a richer fit, but still a global
+scalar per cycle, still dominated by the interior of the lightcone
+where $\chi$ is large and the approximation is least faithful.
+
+Table~\ref{tab:ct} shows $C(t)$ at each cycle for NL and
+$\gamma=1,2,3$ on both topologies.
+On heavy-hex, $C(t)$ oscillates and the noise levels are nearly
+indistinguishable: the scalar observable is almost blind to noise.
+On rect $7\times7$, $C(t)$ decays monotonically and the $\gamma$
+levels separate, but all spatial structure is lost.
+In both cases, $C(t)$ and $A\alpha=B$ compress the entire
+space-time evolution into one number per cycle.
 
 \subsection{Stage 2: Frontier Velocity from $n(v,t)$}
 
