@@ -335,6 +335,7 @@ single failure corresponding to two bonds sharing an endpoint whose wavefronts
 cancel (the BLUE-BLUE-RED interference pattern discussed in Section~\ref{sec:multibond}).
 
 \section{Tensor Network Simulation as Quantum Circuit Execution}
+\label{sec:tn}
 
 The Trotter simulation underlying our method is not merely an approximation
 of a quantum circuit; it \emph{is} the quantum circuit, represented in the
@@ -589,28 +590,24 @@ and bond 36 (sites 43$\leftrightarrow$44) consistently score below the top-$k$
 threshold due to weak seismic illumination from the three scan center placements.
 These are not random failures; they reflect the coverage geometry of the 3-scan plan.
 
-These results motivate a natural iterative calibration protocol: run seismic
-MAWGM and declare the top-$k$ broken bonds (above 90\% correct per bond);
-recalibrate those bonds on hardware; re-run MAWGM, where fixed bonds
-disappear from the ranking and remaining faults surface with cleaner signal;
-repeat until $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ everywhere with
-no residual signal.
-
-This iterative approach reduces every multi-bond problem to a sequence of
-single-bond problems. At 8 simultaneous faults, 7 are found in iteration 1;
-fixing those removes their interference from the wavefield and the surviving
-fault becomes easily detectable in iteration 2 at 100\% accuracy.
-The stopping criterion (wavefront convergence) is physical and requires
-no additional measurement overhead beyond the standard protocol.
+The detection naturally supports an iterative calibration loop. One seismic
+pass finds above 90\% of the broken bonds; the hardware is recalibrated for
+those; a second seismic pass then searches the residual, where the remaining
+faults now surface with a cleaner signal unclouded by the bonds already fixed.
+The process repeats until $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$
+everywhere. At 8 simultaneous faults, 7 are found in the first pass; fixing
+those makes the last one detectable at 100\% accuracy in the second.
+The stopping criterion is physical and requires no additional measurement
+overhead.
 
 The iterative structure also justifies the design choices. Short cycles
 (3--5) are sufficient because only the next bond to fix needs to be ranked,
 not all faults simultaneously. A moderate threshold $\varepsilon_{\rm th}
 = 10^{-3}$ maximizes BFS coverage so no bond is in a blind spot. Three
 seismic placements cover all 84 bonds with no geometric dead zones except
-the small set of bonds with weak illumination from all three centers —
+the small set of bonds with weak illumination from all three centers,
 exactly the bonds that surface cleanly in iteration 2 once their neighbors
-have been fixed.
+have been fixed, with no additional simulations required.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Measurability and Detection Thresholds}
@@ -619,61 +616,122 @@ The detection method requires $n(v,t)$ to be measurable both from the
 simulation fidelity standpoint and from the hardware shot budget.
 Two independent conditions must hold simultaneously.
 
-On real hardware, $n(v,t)$ is estimated from $N$ measurement shots as
-$\hat{n}(v,t) = k/N$ where $k \sim \mathrm{Binomial}(N, n(v,t))$.
-The shot noise floor is $\sigma(n) \approx \sqrt{n/N}$, giving a minimum
-measurable $n_{\rm min}^{\rm shot} \approx 1/\sqrt{N}$ (Table~\ref{tab:shots}).
+Recall that $n(v,t) \in [0,1]$ is a probability: the fraction of Pauli basis
+operators that have non-identity support at site $v$ after $t$ Trotter cycles
+(Section~\ref{sec:vocab}). On real hardware the circuit is executed $N$ times.
+A barrier after each Trotter cycle allows a mid-circuit local Pauli weight
+measurement at site $v$; each shot returns either the identity at $v$
+or a non-identity Pauli ($X$, $Y$, or $Z$). The three non-identity outcomes
+are not distinguished — only the binary question ``identity or not'' is asked,
+and the non-identity count $k$ accumulates as a success count. This binary
+nature of each shot makes the Binomial model natural: $k \sim
+\mathrm{Binomial}(N, n(v,t))$, where the physical probability $n(v,t)$ is
+the Bernoulli success probability for each of the $N$ independent shots.
+The empirical estimate $\hat{n}(v,t) = k/N$ is then an unbiased estimator
+of the true $n(v,t)$.
+
+The estimator has variance $\mathrm{Var}(\hat{n}) = n(1-n)/N$, a direct
+consequence of the Binomial distribution. At the frontier, $n(v,t) \ll 1$:
+the total Pauli weight is conserved ($\sum_v n(v,t) = 1$) and spreads over
+a growing shell of sites, so each individual $n(v,t)$ decreases with distance
+from the center. In this small-$n$ regime $1-n \approx 1$ and the variance
+simplifies to $n/N$, giving a shot noise floor $\sigma(n) \approx \sqrt{n/N}$.
+Note also that only sites where $n(v,t) > \varepsilon_{\rm th}$ contribute
+to the detection (Section~\ref{sec:vocab}), so the relevant regime is
+$\varepsilon_{\rm th} \leq n(v,t) \ll 1$.
+The baseline $n_{\rm base}(v,t)$ is provided by simulation and is exact; only
+the perturbed run is measured on hardware. The condition is that
+$\hat{n}_{\rm pert}$ is a reliable estimate of the true $n_{\rm pert}(v,t)$,
+so that the comparison with the theoretical $n_{\rm base}(v,t)$ is meaningful.
+Reliability requires the standard deviation of the estimator $\sigma(\hat{n})
+= \sqrt{n/N}$ to be much smaller than the quantity being estimated: $\sigma(\hat{n}) \ll n$.
+As $N$ grows, $\sigma(\hat{n})$ shrinks and the estimate converges to the true value.
+The minimum observable $n$ is set by the detection threshold $\varepsilon_{\rm th}$.
+For $\hat{n}$ to be a reliable estimate at $n = \varepsilon_{\rm th}$ we require
+$\sigma(\hat{n}) \leq \varepsilon_{\rm th}$, i.e.,
+$\sqrt{\varepsilon_{\rm th}/N} \leq \varepsilon_{\rm th}$, which gives:
+\begin{equation}
+    N \geq \frac{1}{\varepsilon_{\rm th}}
+\end{equation}
+For $\varepsilon_{\rm th} = 10^{-3}$, at least $10^3$ shots are required.
+Table~\ref{tab:shots} shows the statistical floor as a function of shot budget.
 
 \begin{table}[h]
 \centering
 \small
 \begin{tabular}{rrl}
 \toprule
-$N$ shots & $n_{\rm min}^{\rm shot}$ & Status \\
+$N$ shots & $\sigma(\hat{n})$ at $n=\varepsilon_{\rm th}$ & Status \\
 \midrule
-$10^3$   & $3 \times 10^{-2}$ & only strong wavefront \\
-$10^4$   & $1 \times 10^{-2}$ & first-arrival signal \\
-$10^5$   & $3 \times 10^{-3}$ & approaching threshold \\
-$10^6$   & $1 \times 10^{-3}$ & matches simulation floor \\
+$10^2$   & $3 \times 10^{-3}$ & noise exceeds threshold \\
+$10^3$   & $1 \times 10^{-3}$ & noise matches threshold (minimum) \\
+$10^4$   & $3 \times 10^{-4}$ & reliable estimate \\
+$10^6$   & $3 \times 10^{-5}$ & well into reliable regime \\
 \bottomrule
 \end{tabular}
-\caption{Minimum measurable $n(v,t)$ as a function of shot budget $N$.
-At $N=10^6$ the statistical floor matches the simulation cutoff.}
+\caption{Estimator noise $\sigma(\hat{n}) = \sqrt{\varepsilon_{\rm th}/N}$
+at the detection threshold $\varepsilon_{\rm th} = 10^{-3}$.
+Reliable detection requires $N \geq 1/\varepsilon_{\rm th} = 10^3$.}
 \label{tab:shots}
 \end{table}
 
-In the tensor network simulation, bond singular values below the truncation
-cutoff $\delta_{\rm cut}$ are set to zero; any $n(v,t)$ arising from
-truncated components is a TN artifact, not physical operator spreading.
-The effective simulation floor is $\approx \delta_{\rm cut} = 10^{-3}$.
-Belief propagation is also not strictly causal: messages propagate globally
-in each sweep, creating tiny non-zero $n(v,t) \sim 10^{-4}$ at causally
-disconnected sites. These BP leakage values are below $\delta_{\rm cut}$
-and physically unmeasurable on hardware.
+The tensor network simulation introduces two distinct noise sources that set a
+floor on trustworthy $n(v,t)$ values. First, truncation: bond singular values
+below the cutoff $\delta_{\rm cut}$ are set to zero, so any $n(v,t)$ arising
+from truncated components is numerical noise, not physical operator spreading.
+Second, belief propagation is not strictly causal: messages propagate globally
+in each sweep, producing tiny non-zero $n(v,t) \sim 10^{-4}$ at sites outside
+the Lieb-Robinson lightcone. In a real quantum circuit these sites would never
+be activated — only gates within the lightcone fire — so this leakage is a
+simulation artifact with no hardware counterpart. Both effects are below
+$\delta_{\rm cut} = 10^{-3}$, which we therefore adopt as the simulation floor.
 
-The two conditions converge at the same threshold. Setting $\delta_{\rm cut}
-= 10^{-3}$, the simulation requires $n_{\rm min}^{\rm sim} = 10^{-3}$; from
-Table~\ref{tab:shots}, hardware requires $N \geq 10^6$ shots to match this
-floor. The detection threshold $\varepsilon_{\rm th} = 10^{-3}$ used
-throughout this work satisfies both simultaneously:
+Other simulators with tighter cutoffs could in principle trust smaller $n(v,t)$
+values and use a lower $\varepsilon_{\rm th}$. However, a smaller threshold
+demands proportionally more shots at the frontier: to estimate $n \approx
+\delta_{\rm cut}$ reliably one needs $N \geq 1/\delta_{\rm cut}$ shots.
+A simulation floor of $10^{-6}$ would require $10^6$ shots merely to reach
+reliable estimates at the threshold — a cost that must be weighed against
+the physical benefit of the finer resolution.
+
+The two conditions converge at the same threshold $\varepsilon_{\rm th} =
+\delta_{\rm cut} = 10^{-3}$: the simulation floor sets the minimum trustworthy
+signal, and from Table~\ref{tab:shots} reliable hardware estimates at that
+level require $N \geq 1/\varepsilon_{\rm th} = 10^3$ shots. Both conditions
+are satisfied simultaneously by:
 \begin{equation}
-    \varepsilon_{\rm th} \geq \max\!\left(\delta_{\rm cut},\; \frac{1}{\sqrt{N}}\right)
+    \varepsilon_{\rm th} \geq \delta_{\rm cut}, \qquad N \geq \frac{1}{\varepsilon_{\rm th}}
 \end{equation}
-For $N < 10^6$ the hardware floor dominates and a larger $\varepsilon_{\rm th}$
-is required. For tighter cutoffs $\delta_{\rm cut} < 10^{-3}$ the simulation
-floor drops below the hardware floor, enabling more cycles before saturation.
+A tighter simulation cutoff $\delta_{\rm cut} < 10^{-3}$ enables a smaller
+$\varepsilon_{\rm th}$ and finer resolution, but demands proportionally more
+shots at the frontier to maintain reliable estimates.
 
-The signal strength $\delta n(v,t) \approx n_{\rm base}(v,t) \cdot \varepsilon
-\cdot \sin(\varepsilon) \cdot |\delta J|$ gives the minimum detectable coupling
-deviation:
+From Section~\ref{sec:tn}, the bond gate PTM has diagonal entries $\cos(J\varepsilon)$.
+A coupling deviation $\delta J$ shifts the rotation angle and attenuates the diagonal
+entry by $-\sin(J\varepsilon)\cdot\varepsilon\,\delta J$ to first order. At $J=1$
+this means the perturbed weight at site $v$ is simply the baseline attenuated:
+\begin{equation}
+    n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)\,\bigl[1 - \varepsilon\sin(\varepsilon)|\delta J|\bigr]
+\end{equation}
+so the signal $\delta n = n_{\rm base} - n_{\rm pert} \approx n_{\rm base}(v,t)
+\cdot \varepsilon \cdot \sin(\varepsilon) \cdot |\delta J|$ is proportional to the
+baseline weight and scales linearly with the coupling deviation. The attenuation
+factor $\varepsilon\sin(\varepsilon)|\delta J|$ depends only on the Trotter step
+and the perturbation magnitude, not on the site. The minimum detectable coupling
+deviation is then:
 \begin{equation}
     |\delta J|_{\rm min} \approx \frac{\varepsilon_{\rm th}}
         {\varepsilon \cdot \sin(\varepsilon) \cdot \sqrt{N \cdot n_{\rm base}(v,t)}}
 \end{equation}
-For $\varepsilon = 0.10$, $N = 10^6$, $n_{\rm base} \approx 10^{-2}$
-(genuine wavefront at first arrival): $|\delta J|_{\rm min} \approx 0.32$.
-This improves as $1/\sqrt{N}$ with more shots; for $N = 10^7$:
-$|\delta J|_{\rm min} \approx 0.10$.
+For $\varepsilon = 0.10$ and $n_{\rm base} \approx 10^{-2}$ (genuine wavefront
+at first arrival), the detection threshold scales as $|\delta J|_{\rm min}
+\propto 1/\sqrt{N}$: at $N=10^6$ shots $|\delta J|_{\rm min} \approx 1.0$,
+at $N=10^7$ it drops to $0.32$. To detect the experimental coupling
+degradation $|\delta J| = 0.20$ used throughout this work requires
+$N \approx 2.5 \times 10^7$ shots. This is independent of the minimum
+shot budget for reliable estimation ($N \geq 10^3$): the two conditions
+address different questions : can we measure $n(v,t)$ at all, versus can
+we resolve the specific coupling deviation of interest.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
