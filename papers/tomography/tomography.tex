@@ -722,7 +722,12 @@ and the perturbation magnitude, not on the site.
 Note that this is a stronger requirement than simply estimating $\hat{n}_{\rm pert}$
 reliably: we need the signal $\delta n$ to be measurably larger than the estimator
 noise $\sigma(\hat{n}) \approx \sqrt{n_{\rm base}/N}$. Setting $\delta n \geq
-\sigma(\hat{n})$ gives the minimum detectable coupling deviation:
+\sigma(\hat{n})$ gives the minimum detectable coupling deviation.
+We emphasize that the present work performs \emph{detection} — identifying the
+location and existence of a broken bond from wavemap patterns — not
+\emph{estimation} of $\delta J$ from the numerical values of $n(v,t)$.
+Quantitative estimation of the coupling deviation from the measured $\hat{n}_{\rm pert}$
+is a harder and separate problem, left for future work.
 \begin{equation}
     |\delta J|_{\rm min} \approx \frac{\varepsilon_{\rm th}}
         {\varepsilon \cdot \sin(\varepsilon) \cdot \sqrt{N \cdot n_{\rm base}(v,t)}}
