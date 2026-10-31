@@ -76,16 +76,16 @@ def main():
     for t in range(nc):
         ax = axes[t]
         ax.set_facecolor('#1a1a2e')
-        sc = ax.scatter(xs, ys, c=L[t], cmap='RdBu_r', norm=norm, s=400, zorder=3)
+        sc = ax.scatter(xs, ys, c=L[t], cmap='RdBu_r', norm=norm, s=280, zorder=3)
         for s in broken_sites:
-            ax.scatter([pos[s][0]], [pos[s][1]], s=600,
-                      facecolors='none', edgecolors='gold', linewidths=3, zorder=5)
+            ax.scatter([pos[s][0]], [pos[s][1]], s=450,
+                      facecolors='none', edgecolors='gold', linewidths=2.5, zorder=5)
         for c in centers:
             if c in pos:
-                ax.scatter([pos[c][0]], [pos[c][1]], marker='*', s=300, color='white', zorder=6)
+                ax.scatter([pos[c][0]], [pos[c][1]], marker='*', s=200, color='yellow', zorder=7)
                 ax.annotate(str(c), (pos[c][0], pos[c][1]),
                             fontsize=6, color='white', ha='center', va='bottom',
-                            xytext=(0, 8), textcoords='offset points', zorder=7)
+                            xytext=(0, 10), textcoords='offset points', zorder=8)
         plt.colorbar(sc, ax=ax, shrink=0.7)
         ax.set_title(f'Cycle {t+1}', fontsize=10)
         ax.set_aspect('equal'); ax.axis('off')

@@ -221,19 +221,21 @@ between the blue and red sites, identified by the sign change (Figure~\ref{fig:c
 The contrast $|\mathcal{L}(u) - \mathcal{L}(v)|$ is maximum at $t_1$, providing
 the detection signal.
 
-\begin{figure}[h]
+\begin{figure*}[h]
 \centering
-\includegraphics[width=\columnwidth]{fig_ce_bond12.png}
+\includegraphics[width=\textwidth]{fig_ce_bond12.png}
 \caption{Signed cross-entropy $\mathcal{L}(v,t)$ for a single broken bond
-(bond 12, sites 15$\leftrightarrow$16, identity PTM), seismic initialization,
-rect $7\times7$, $\chi=50$.
-\textbf{Cycle 1}: no signal.
-\textbf{Cycle 2}: site 16 red ($\mathcal{L}>0$, shadow), site 15 blue
-($\mathcal{L}<0$, wall face): bond 12 identified by sign flip.
-\textbf{Cycle 3}: signal strengthens before $\chi$ saturation.
-Gold circles: bond endpoints. Stars: seismic centers.}
+(bond 9, sites 11$\leftrightarrow$12, $\delta J=-0.20$),
+rect $7\times7$, $\chi=50$, 3 cycles.
+Rows show the three seismic scans: corners+center, quadrants, mid-edges.
+Columns show cycles 1--3.
+\textbf{Cycle 1}: no signal in any scan.
+\textbf{Cycle 2}: yellow (BLUE) accumulation visible at the wall-face site.
+\textbf{Cycle 3}: red (RED) shadow appears at the downstream site; sign flip
+across the bond identifies it in all three scans independently.
+Gold circles: bond endpoints. Stars: scan centers.}
 \label{fig:ce}
-\end{figure}
+\end{figure*}
 
 Each center $k$ is initialized and evolved \emph{independently}: a separate
 baseline and perturbed simulation pair per center. The signed cross-entropy
