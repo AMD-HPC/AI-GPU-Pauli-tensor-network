@@ -747,28 +747,28 @@ we resolve the specific coupling deviation of interest.
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
 
-We have demonstrated that the operator lightcone wavemap enables
-model-free Hamiltonian tomography via a simple signed cross-entropy
-observable. The broken bond is identified by its causal signature —
-a sign flip in $\mathcal{L}(v)$ at its two endpoints, with an 82-fold
-margin using an ensemble of 6 observation centers on a $7\times7$ lattice.
-The seismic multi-center initialization achieves the same result in a
-single simulation.
+A broken bond leaves a causal signature in the operator wavefront: a
+red-blue sign flip in $\mathcal{L}(v,t)$ at its two endpoints, identifiable
+from the first wavefront crossing and robust across all center placements.
+Three seismic scans, each firing a different set of centers simultaneously,
+cover all 84 bonds of the $7\times7$ lattice in 6 simulations and achieve
+20/20 single-bond detection. The integrated log-ratio $\Lambda(v)$ extends
+this to realistic coupling degradation ($\delta J=-0.20$) and multiple
+simultaneous faults, maintaining a per-bond detection rate above 90\% for
+up to 8 faults in a single pass. The iterative calibration loop then reduces
+any multi-bond problem to a sequence of single-bond problems, each solved at
+100\% accuracy, with wavefront convergence as the natural stopping criterion.
 
-Extending to realistic coupling degradation ($\delta J = -0.20$, $J = 0.80$)
-and multiple simultaneous faults, the integrated log-ratio $\Lambda(v) =
-\ln(\mathcal{B}(v)/\mathcal{N}(v))$ achieves a per-bond detection rate
-above 90\% for up to 8 simultaneous faults in a single seismic pass,
-using only 6 simulations (3 baseline + 3 perturbed). The iterative
-calibration loop (detect, fix, re-run) reduces the multi-bond problem
-to a sequence of single-bond problems, each solved at 100\% accuracy.
+The measurability analysis shows that $N \geq 10^3$ shots suffice for reliable
+estimation of $n(v,t)$ at the detection threshold; resolving the specific
+coupling deviation $|\delta J| = 0.20$ requires $N \sim 2.5 \times 10^7$ shots,
+a stronger condition that governs hardware deployment.
 
-The method requires no model assumptions and no knowledge of the perturbation
-type or magnitude.
-It is a natural sequitur to the Lindblad MPF framework: both use the same
-observable $n(v,t)$ and the same circuits, but in opposite inference
-directions: MPF infers noise from a known Hamiltonian, while MAWGM
-infers coupling geometry from a known noise baseline.
+The method is a direct sequitur to the Lindblad MPF framework. Both use the
+same observable $n(v,t)$, the same circuits, and the same hardware protocol;
+MPF infers noise from a known Hamiltonian, while this work infers coupling
+geometry from a known noise baseline. Two inferences from one measurement,
+in opposite directions.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \bibliographystyle{plain}
