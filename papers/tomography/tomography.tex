@@ -592,48 +592,40 @@ and bond 36 (sites 43$\leftrightarrow$44) consistently score below the top-$k$
 threshold due to weak seismic illumination from the three scan center placements.
 These are not random failures; they reflect the coverage geometry of the 3-scan plan.
 
-\paragraph{Iterative calibration loop.}
-The multi-bond results motivate a natural operating protocol:
-
-\begin{enumerate}
-    \item Run seismic MAWGM $\to$ declare top-$k$ broken bonds (${>}90\%$ correct per bond).
-    \item Recalibrate the declared bonds on hardware.
-    \item Re-run MAWGM. Fixed bonds disappear from the ranking; remaining faults
-          surface with cleaner signal.
-    \item Repeat until $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ everywhere,
-          with no residual signal.
-\end{enumerate}
+These results motivate a natural iterative calibration protocol: run seismic
+MAWGM and declare the top-$k$ broken bonds (above 90\% correct per bond);
+recalibrate those bonds on hardware; re-run MAWGM, where fixed bonds
+disappear from the ranking and remaining faults surface with cleaner signal;
+repeat until $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ everywhere with
+no residual signal.
 
 This iterative approach reduces every multi-bond problem to a sequence of
 single-bond problems. At 8 simultaneous faults, 7 are found in iteration 1;
 fixing those removes their interference from the wavefield and the surviving
-fault becomes easily detectable in iteration 2 (single-bond, 100\% rate).
-
-The iterative loop also justifies the design choices: short cycles (3--5)
-are sufficient because only the next bond to fix needs to be ranked, not all
-faults simultaneously; a moderate threshold $\varepsilon_{\rm th} = 10^{-3}$
-maximizes BFS coverage so the broken bond is never in a blind spot; and
-3 seismic placements cover all 84 bonds with no geometric dead zones
-except the small set of bonds with weak illumination from all three centers.
+fault becomes easily detectable in iteration 2 at 100\% accuracy.
 The stopping criterion (wavefront convergence) is physical and requires
-no additional measurement overhead beyond the standard MAWGM protocol.
+no additional measurement overhead beyond the standard protocol.
+
+The iterative structure also justifies the design choices. Short cycles
+(3--5) are sufficient because only the next bond to fix needs to be ranked,
+not all faults simultaneously. A moderate threshold $\varepsilon_{\rm th}
+= 10^{-3}$ maximizes BFS coverage so no bond is in a blind spot. Three
+seismic placements cover all 84 bonds with no geometric dead zones except
+the small set of bonds with weak illumination from all three centers —
+exactly the bonds that surface cleanly in iteration 2 once their neighbors
+have been fixed.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Measurability and Detection Thresholds}
 
-The detection method requires $n(v,t)$ to be measurable, both from the
+The detection method requires $n(v,t)$ to be measurable both from the
 simulation fidelity standpoint and from the hardware shot budget.
 Two independent conditions must hold simultaneously.
 
-\paragraph{Condition 1: Statistical measurability (hardware shots).}
 On real hardware, $n(v,t)$ is estimated from $N$ measurement shots as
 $\hat{n}(v,t) = k/N$ where $k \sim \mathrm{Binomial}(N, n(v,t))$.
-The shot noise floor is $\sigma(n) \approx \sqrt{n/N}$.
-For reliable detection of a signal $\delta n = n_{\rm pert} - n_{\rm base}$,
-we require $|\delta n| \gg \sigma(n)$, which gives a minimum measurable $n$:
-\begin{equation}
-    n_{\rm min}^{\rm shot} \approx \frac{1}{\sqrt{N}}
-\end{equation}
+The shot noise floor is $\sigma(n) \approx \sqrt{n/N}$, giving a minimum
+measurable $n_{\rm min}^{\rm shot} \approx 1/\sqrt{N}$ (Table~\ref{tab:shots}).
 
 \begin{table}[h]
 \centering
@@ -653,48 +645,38 @@ At $N=10^6$ the statistical floor matches the simulation cutoff.}
 \label{tab:shots}
 \end{table}
 
-\paragraph{Condition 2: Simulation fidelity (TN cutoff).}
-In the tensor network simulation, bond singular values below the
-truncation cutoff $\delta_{\rm cut}$ are set to zero. Any $n(v,t)$
-arising from these truncated components is an artifact of the TN
-approximation, not physical operator spreading. The simulation
-cannot faithfully represent values below $\delta_{\rm cut}^k$,
-where $k$ is the number of bonds on the shortest path from center to site $v$.
-In practice, the effective simulation floor is $\approx \delta_{\rm cut} = 10^{-3}$.
+In the tensor network simulation, bond singular values below the truncation
+cutoff $\delta_{\rm cut}$ are set to zero; any $n(v,t)$ arising from
+truncated components is a TN artifact, not physical operator spreading.
+The effective simulation floor is $\approx \delta_{\rm cut} = 10^{-3}$.
+Belief propagation is also not strictly causal: messages propagate globally
+in each sweep, creating tiny non-zero $n(v,t) \sim 10^{-4}$ at causally
+disconnected sites. These BP leakage values are below $\delta_{\rm cut}$
+and physically unmeasurable on hardware.
 
-Furthermore, the belief propagation used to compute messages is not
-strictly causal: messages propagate globally in each sweep, creating
-tiny non-zero $n(v,t) \sim 10^{-4}$ at causally disconnected sites
-(beyond the Lieb-Robinson cone). These BP leakage values are below
-$\delta_{\rm cut}$ and physically unmeasurable on hardware.
-
-\paragraph{The two conditions converge.}
-Setting $\delta_{\rm cut} = 10^{-3}$ (our default), Condition 2 requires
-$n_{\rm min}^{\rm sim} = 10^{-3}$. From Table~\ref{tab:shots},
-Condition 1 requires $N \geq 10^6$ shots to match this floor.
-The detection threshold $\varepsilon_{\rm th} = 10^{-3}$ used throughout
-this work satisfies both conditions simultaneously at $N = 10^6$.
-
+The two conditions converge at the same threshold. Setting $\delta_{\rm cut}
+= 10^{-3}$, the simulation requires $n_{\rm min}^{\rm sim} = 10^{-3}$; from
+Table~\ref{tab:shots}, hardware requires $N \geq 10^6$ shots to match this
+floor. The detection threshold $\varepsilon_{\rm th} = 10^{-3}$ used
+throughout this work satisfies both simultaneously:
 \begin{equation}
     \varepsilon_{\rm th} \geq \max\!\left(\delta_{\rm cut},\; \frac{1}{\sqrt{N}}\right)
 \end{equation}
+For $N < 10^6$ the hardware floor dominates and a larger $\varepsilon_{\rm th}$
+is required. For tighter cutoffs $\delta_{\rm cut} < 10^{-3}$ the simulation
+floor drops below the hardware floor, enabling more cycles before saturation.
 
-For $N < 10^6$, the hardware floor dominates and a larger $\varepsilon_{\rm th}$
-is required. For tighter cutoffs $\delta_{\rm cut} < 10^{-3}$, the simulation
-floor drops below the hardware floor, enabling more cycles before saturation
-at the cost of longer simulation time.
-
-\paragraph{Minimum detectable coupling deviation.}
-The signal strength $\delta n(v,t) \approx n_{\rm base}(v,t) \cdot \varepsilon \cdot \sin(\varepsilon) \cdot |\delta J|$
-gives the minimum detectable coupling deviation:
+The signal strength $\delta n(v,t) \approx n_{\rm base}(v,t) \cdot \varepsilon
+\cdot \sin(\varepsilon) \cdot |\delta J|$ gives the minimum detectable coupling
+deviation:
 \begin{equation}
     |\delta J|_{\rm min} \approx \frac{\varepsilon_{\rm th}}
         {\varepsilon \cdot \sin(\varepsilon) \cdot \sqrt{N \cdot n_{\rm base}(v,t)}}
 \end{equation}
 For $\varepsilon = 0.10$, $N = 10^6$, $n_{\rm base} \approx 10^{-2}$
-(genuine wavefront at first arrival):
-$|\delta J|_{\rm min} \approx 1/(0.10 \times 0.0998 \times 316) \approx 0.32$.
-This improves as $1/\sqrt{N}$ with more shots. For $N = 10^7$: $|\delta J|_{\rm min} \approx 0.10$.
+(genuine wavefront at first arrival): $|\delta J|_{\rm min} \approx 0.32$.
+This improves as $1/\sqrt{N}$ with more shots; for $N = 10^7$:
+$|\delta J|_{\rm min} \approx 0.10$.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Conclusion}
