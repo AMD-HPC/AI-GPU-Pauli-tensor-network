@@ -717,8 +717,12 @@ so the signal $\delta n = n_{\rm base} - n_{\rm pert} \approx n_{\rm base}(v,t)
 \cdot \varepsilon \cdot \sin(\varepsilon) \cdot |\delta J|$ is proportional to the
 baseline weight and scales linearly with the coupling deviation. The attenuation
 factor $\varepsilon\sin(\varepsilon)|\delta J|$ depends only on the Trotter step
-and the perturbation magnitude, not on the site. The minimum detectable coupling
-deviation is then:
+and the perturbation magnitude, not on the site.
+
+Note that this is a stronger requirement than simply estimating $\hat{n}_{\rm pert}$
+reliably: we need the signal $\delta n$ to be measurably larger than the estimator
+noise $\sigma(\hat{n}) \approx \sqrt{n_{\rm base}/N}$. Setting $\delta n \geq
+\sigma(\hat{n})$ gives the minimum detectable coupling deviation:
 \begin{equation}
     |\delta J|_{\rm min} \approx \frac{\varepsilon_{\rm th}}
         {\varepsilon \cdot \sin(\varepsilon) \cdot \sqrt{N \cdot n_{\rm base}(v,t)}}
