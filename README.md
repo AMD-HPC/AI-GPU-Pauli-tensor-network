@@ -1,5 +1,7 @@
 # AI-GPU-Pauli-tensor-network (agp-tns)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 AI-assisted, GPU-direct tensor network simulator for real-time quantum dynamics
 on AMD GPUs, using the Pauli transfer matrix (PTM) basis throughout.
 Implements operator evolution in the Heisenberg picture with belief propagation (BP)
@@ -22,6 +24,7 @@ edge of quantum entanglement propagation.*
 | TN Simulation on Heavy-Hex Lattices | `papers/heavyhex/` | [![arXiv](https://img.shields.io/badge/arXiv-2607.22827-b31b1b.svg)](https://arxiv.org/abs/2607.22827) |
 | The Pauli Lightcone: Information-Theoretic Error Mitigation | `papers/frontier/` | [![arXiv](https://img.shields.io/badge/arXiv-2608.25254-b31b1b.svg)](https://arxiv.org/abs/2608.25254) |
 | QIML 2026: The Pauli Lightcone Frontier as a Space-Time Observable | `papers/frontier/aaai/` | AAAI QIML 2026 (accepted) |
+| Red-Blue Hamiltonian Tomography via the Operator Lightcone Wavemap | `papers/tomography/` | in preparation (RFP #9433) |
 
 ## Repository Structure
 
@@ -46,22 +49,33 @@ CppSim/
 │   └── ...                               # Legacy variants
 │
 ├── scripts/          # Analysis and plotting
-│   ├── analyze_ip_mpf.py      # MPF extrapolation analysis
-│   ├── analyze_lightcone.py   # Lightcone frontier velocity
-│   ├── make_fig4_qr_sweep.py  # Figure 4 generation
-│   ├── plot_ip_timing.py      # Timing + MPF figure
-│   ├── build_ptm.py           # Build PTMs from graph JSON
-│   ├── run_lightcone_sweep.sh # Parallel lightcone sweep
-│   └── run_dg_sweep.sh        # DG parameter sweep
+│   ├── analyze_ip_mpf.py        # MPF extrapolation analysis
+│   ├── analyze_lightcone.py     # Lightcone frontier velocity
+│   ├── make_fig4_qr_sweep.py    # Figure 4 generation
+│   ├── plot_ip_timing.py        # Timing + MPF figure
+│   ├── build_ptm.py             # Build PTMs from graph JSON
+│   ├── run_lightcone_sweep.sh   # Parallel lightcone sweep
+│   ├── run_dg_sweep.sh          # DG parameter sweep
+│   ├── bfs_detect.py            # BFS + integral bond detection (tomography)
+│   ├── run_full_antenna_grid.py # Full row/col antenna grid scan
+│   ├── run_multibond_sweep.py   # Multi-bond detection sweep (4, 8 bonds)
+│   ├── plot_seismic_3scan.py    # 3-scan × 3-cycle seismic figure
+│   └── integral_detect.py       # Integrated B(v)/N(v) log-ratio detection
 │
 ├── test/             # Unit and validation tests
 ├── data/graphs/      # Graph topologies (heavy_hex_3x3, rect_7x7, rect_8x8)
 ├── logs/             # Simulation output logs
+│   ├── mawgm_f64/        # Single-bond tomography trials (f64, 20 trials)
+│   ├── mawgm_v2/         # Two-bond tomography trials (10 trials)
+│   ├── mawgm_4b/         # Four-bond trials (5 trials)
+│   └── mawgm_8b/         # Eight-bond trials (2 trials)
 ├── archive/          # Legacy code and checkpoints
+├── REVIEW.md         # Reviewer guide for the tomography paper
 └── papers/
     ├── ising_lightcone/  # 2D Ising lightcone (arXiv:2606.30985)
     ├── heavyhex/         # Heavy-hex MPF (arXiv:2607.22827)
-    └── frontier/         # Pauli lightcone frontier (arXiv:2608.25254) + AAAI QIML
+    ├── frontier/         # Pauli lightcone frontier (arXiv:2608.25254) + AAAI QIML
+    └── tomography/       # Red-Blue Hamiltonian Tomography (in preparation)
 ```
 
 ## Build
@@ -105,6 +119,28 @@ python3 scripts/analyze_lightcone.py \
     --graph data/graphs/heavy_hex_3x3.json \
     --center 13 --out lightcone_analysis.png
 ```
+
+### Hamiltonian tomography (bond fault detection)
+
+```bash
+# Run seismic BFS detection on existing logs — no GPU required
+python3 scripts/bfs_detect.py \
+    --logdir logs/mawgm_f64/trial_1 \
+    --broken logs/mawgm_f64/trial_1/broken.json \
+    --top_k 1
+
+# Multi-bond sweep (generates new simulations + evaluates)
+python3 scripts/run_multibond_sweep.py --n_bonds 4 --n_trials 5
+
+# Generate 3-scan × 3-cycle seismic figure
+python3 scripts/plot_seismic_3scan.py \
+    --logdir logs/mawgm_f64/trial_4 \
+    --plan data/scans/rect_7x7_scan_3gpu.json \
+    --graph data/graphs/rect_7x7.json \
+    --out fig_seismic.png
+```
+
+See `REVIEW.md` for a full guide to reproducing the tomography results.
 
 ### Delta sweep (Figure 4)
 
