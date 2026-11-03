@@ -37,13 +37,17 @@ def main():
     ap.add_argument('--graph', default='data/graphs/rect_7x7.json')
     ap.add_argument('--plan',  default='data/scans/rect_7x7_scan_3gpu.json')
     ap.add_argument('--out',   default='/tmp/gram_hardpairs.png')
+    ap.add_argument('--ours',  action='store_true', help='Use our top-10 instead of Muhammad')
     args = ap.parse_args()
 
     g    = json.load(open(args.graph))
     plan = json.load(open(args.plan))
 
-    # Top-10 hard pairs from Muhammad's coherence data
-    hard_pairs = [
+    import argparse as _ap2
+    _mode = 'ours' if args.ours else 'muhammad'
+
+    # Muhammad's top-10 (converged, single center, center=1,7,25,43,49)
+    muhammad_pairs = [
         (39, 81, 0.8668, 47),
         ( 3, 46, 0.8446,  5),
         ( 2, 45, 0.8368,  4),
@@ -55,6 +59,22 @@ def main():
         (30, 77, 0.8053, 36),
         (26, 27, 0.7968, 32),
     ]
+
+    # Our top-10 (non-converged, 13 centers seismic)
+    our_pairs = [
+        (41, 83, 0.9261, 49),
+        (36, 77, 0.9168, 43),
+        ( 0, 42, 0.9127,  1),
+        (26, 27, 0.8448, 32),
+        ( 5, 48, 0.8406,  7),
+        (13, 57, 0.8056, 16),
+        (27, 73, 0.8028, 32),
+        (26, 73, 0.8005, 32),
+        (25, 64, 0.7939, 30),
+        (39, 80, 0.7913, 46),
+    ]
+
+    hard_pairs = our_pairs if args.ours else muhammad_pairs
 
     scan_markers = ['*', 's', '^']
     scan_colors  = ['gold', 'cyan', 'lime']

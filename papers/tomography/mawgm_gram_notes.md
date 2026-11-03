@@ -78,6 +78,20 @@ The hypothesis: a center at the shared vertex v* makes the two vertex-sharing
 bonds distinguishable because it sits between them, creating opposite signs
 in their response vectors.
 
+## Lessons from computing G ourselves
+
+**1. f32 vs f64 — we did not reproduce Muhammad's G**
+
+We ran f32, he ran f64. The top-10 pairs are almost entirely different (only bonds 26,27 in common). Part of this is the multi-center vs single-center difference, part is precision. Before any G-based statement goes in the paper, the two must be reproduced on the same configuration (single-center, f32, convergence-gated). The structure (vertex-sharing = confusable) survives; the specific pairs do not.
+
+**2. Long cycles introduce interference trails**
+
+With 5 cycles and multiple centers, the wavefront has traversed loops and the BP fields are non-converged from step 2 onward. The response vectors at steps 3-5 are contaminated by wave interference — reflections, secondary arrivals — not just the bond perturbation. This inflates coherence artificially and shifts which pairs appear most confusable. For a valid G, use at most 2 cycles (interference-free window).
+
+**3. G is dominated by the highest-weight site in each response vector**
+
+The cosine similarity is dominated by whatever site has the largest L(v,t) values. For our seismic configuration, the scan centers sit ON corners — so corner sites have enormous L values and dominate the response vectors of all adjacent bonds. Two bonds sharing a corner center appear maximally confusable in G (μ=0.93) even though they are physically the easiest to distinguish (center on shared vertex = clean shadow detection). The G metric is wrong for our detection method. The right inner product is the sign-flip contrast |L(u)-L(v)| across bond endpoints — not the cosine of full (site,cycle) response vectors.
+
 ## Connection to the paper
 
 Our paper identifies the hard case empirically: "two orthogonal bonds sharing
