@@ -46,6 +46,7 @@ def main():
     ap.add_argument('--hh_f64', default='/tmp/hh_f64_run1.log')
     ap.add_argument('--ch_f64', default='/tmp/ch_f64_run1.log')
     ap.add_argument('--hh_f32_chi70', default='/tmp/hh_f32_chi70_run1.log')
+    ap.add_argument('--ch_f32_chi70', default='/tmp/ch_f32_chi70_run1.log')
     ap.add_argument('--hh_f64_chi70', default='/tmp/hh_f64_chi70_run1.log')
     args = ap.parse_args()
 
@@ -54,10 +55,12 @@ def main():
     hh64 = extract_pauli(args.hh_f64)
     ch64 = extract_pauli(args.ch_f64)
     hh32_70 = extract_pauli(args.hh_f32_chi70)
+    ch32_70 = extract_pauli(args.ch_f32_chi70)
     hh64_70 = extract_pauli(args.hh_f64_chi70)
 
     print("\n=== QR mode comparison (same precision) ===")
     compare("HH-f32 vs CH-f32 chi=50", hh32, ch32)
+    compare("HH-f32 vs CH-f32 chi=70", hh32_70, ch32_70)
     compare("HH-f64 vs CH-f64 chi=50", hh64, ch64)
 
     print("\n=== Precision comparison (same QR mode) ===")
