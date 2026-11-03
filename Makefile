@@ -83,6 +83,16 @@ main_pauli_sweep_rect7x7: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_7x7 -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
 	@echo "Built $@ (rect_7x7)"
 
+main_pauli_sweep_rect7x7_swapped: $(SRC)/main_pauli_sweep.cpp $(HEADERS) include/scalar_blas.hpp \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/rect_7x7_swapped.hpp \
+	include/rect_7x7_ideal_kick_eps010_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma1_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma2_data.hpp \
+	include/rect_7x7_noisy_eps010_gamma3_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_7x7_swapped -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
+	@echo "Built $@ (rect_7x7, swapped H/V color order)"
+
 main_pauli_sweep_f64_rect7x7: $(SRC)/main_pauli_sweep.cpp $(HEADERS) include/scalar_blas.hpp \
 	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
 	include/rect_7x7.hpp \

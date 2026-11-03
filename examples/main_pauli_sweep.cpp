@@ -56,6 +56,15 @@
   static PtmFn s_ptm_n2 = [](int b)->const float*{ return HEAVY_HEX_3x3_DEP_IDEAL_KICK_EPS010_GAMMA2_0[b]; };
   static PtmFn s_ptm_n3 = [](int b)->const float*{ return HEAVY_HEX_3x3_DEP_IDEAL_KICK_EPS010_GAMMA3_0[b]; };
   static const float* s_site_ptm = HEAVY_HEX_3x3_DEP_IDEAL_KICK_EPS010_SITE_PTM;
+#elif defined(GRAPH_rect_7x7_swapped)
+  #include "rect_7x7_swapped.hpp"
+  #include "rect_7x7_ideal_kick_eps010_data.hpp"
+  #include "rect_7x7_noisy_eps010_gamma1_data.hpp"
+  #include "rect_7x7_noisy_eps010_gamma2_data.hpp"
+  #include "rect_7x7_noisy_eps010_gamma3_data.hpp"
+  #define GRID_TAG   "rect_7x7_swapped"
+  #define GRID_CLASS FlatRect7x7Grid
+  #define N_COLORS   4
 #elif defined(GRAPH_rect_7x7)
   #include "rect_7x7.hpp"
   #include "rect_7x7_ideal_kick_eps010_data.hpp"
