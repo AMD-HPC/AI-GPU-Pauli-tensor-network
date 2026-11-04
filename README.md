@@ -24,7 +24,7 @@ edge of quantum entanglement propagation.*
 | TN Simulation on Heavy-Hex Lattices | `papers/heavyhex/` | [![arXiv](https://img.shields.io/badge/arXiv-2607.22827-b31b1b.svg)](https://arxiv.org/abs/2607.22827) |
 | The Pauli Lightcone: Information-Theoretic Error Mitigation | `papers/frontier/` | [![arXiv](https://img.shields.io/badge/arXiv-2608.25254-b31b1b.svg)](https://arxiv.org/abs/2608.25254) |
 | QIML 2026: The Pauli Lightcone Frontier as a Space-Time Observable | `papers/frontier/aaai/` | AAAI QIML 2026 (accepted) |
-| Red-Blue Hamiltonian Tomography via the Operator Lightcone Wavemap | `papers/tomography/` | in preparation (RFP #9433) |
+| Red-Blue Hamiltonian Tomography via the Operator Lightcone Wavemap | `papers/tomography/` | in preparation |
 
 ## Repository Structure
 
