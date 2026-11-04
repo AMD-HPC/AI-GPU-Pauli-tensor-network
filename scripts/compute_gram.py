@@ -40,10 +40,24 @@ CUTOFF  = '1e-3'
 FLOOR   = 1e-7
 
 
+import threading
+_gpu_local = threading.local()
+_gpu_counter = 0
+_gpu_lock = threading.Lock()
+
+def _get_worker_gpu():
+    if not hasattr(_gpu_local, 'gpu'):
+        global _gpu_counter
+        with _gpu_lock:
+            _gpu_local.gpu = _gpu_counter % N_GPUS
+            _gpu_counter += 1
+    return _gpu_local.gpu
+
 def run_sim(args):
-    cmd, logfile, gpu = args
+    cmd, logfile = args
     if os.path.exists(logfile):
         return
+    gpu = _get_worker_gpu()
     env = os.environ.copy()
     env['ROCR_VISIBLE_DEVICES'] = str(gpu)
     with open(logfile, 'w') as f:
@@ -87,16 +101,16 @@ def main():
         base_log = f'{args.logdir}/scan{sid}_base.log'
         cmd_base = [args.binary, str(CHI), str(STEPS), CUTOFF,
                     f'--center={cstr}', '--state=NL']
-        tasks.append((cmd_base, base_log, (sid-1) % N_GPUS))
+        tasks.append((cmd_base, base_log))
         scan_info.append((sid, cstr, base_log, cmd_base))
 
         for bi in range(n_bonds):
             pert_log = f'{args.logdir}/scan{sid}_pert_b{bi}.log'
             cmd_pert = cmd_base + [f'--perturb-bond={bi},{args.j_pert:.3f}']
-            tasks.append((cmd_pert, pert_log, (sid-1) % N_GPUS))
+            tasks.append((cmd_pert, pert_log))
 
     # Run missing simulations
-    missing = [(c, l, g_) for c, l, g_ in tasks if not os.path.exists(l)]
+    missing = [(c, l) for c, l in tasks if not os.path.exists(l)]
     total = len(tasks)
     print(f"\nTotal simulations: {total}  Missing: {len(missing)}")
     if missing:
