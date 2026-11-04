@@ -144,6 +144,7 @@ int main(int argc, char** argv) {
     bool  active[4] = {true,true,true,true};  // which states to run
     bool  damped_bp = false;   // --bp=damped: use damped BP updates
     float bp_alpha  = 1.0f;    // --alpha=F: damping factor α ∈ (0,1]
+    int   bp_max    = BP_SWEEPS; // --bp-max=N: max BP iterations (default 100)
     int   diagnose_step = -1;  // --diagnose=N: print message diagnostics at step N
     // Bonds to diagnose (site pairs, 0-based) — hardcoded for heavy-hex guilty bonds
     // identified from n(v,t) analysis at step 9 chi=400 δ=1e-4
@@ -193,6 +194,7 @@ int main(int argc, char** argv) {
         if (a.substr(0,11)=="--chol-reg=") chol_reg = atof(argv[i]+11);
         if (a=="--bp=damped")      damped_bp = true;
         if (a.substr(0,8)=="--alpha=") bp_alpha = atof(argv[i]+8);
+        if (a.substr(0,9)=="--bp-max=") bp_max  = atoi(argv[i]+9);
         if (a.substr(0,8) =="--state=") {
             // --state=NL or --state=N1 or --state=NL,N1,N2 etc.
             // Sets which states to run; all others are skipped.
@@ -423,7 +425,7 @@ int main(int argc, char** argv) {
                        &states[g]->messages_v);
             C[g] = meas[g]->autocorrelation_with_bp(
                 static_cast<Grid&>(*grids[g]), states[g]->psi,
-                states[g]->messages, center, BP_SWEEPS,
+                states[g]->messages, center, bp_max,
                 nullptr, nullptr, &bp_sweeps[g], &bp_delta[g],
                 nullptr, &states[g]->messages_v);
         }
