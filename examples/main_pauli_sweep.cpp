@@ -142,6 +142,8 @@ int main(int argc, char** argv) {
     float v_hops[4] = {-1.f,-1.f,-1.f,-1.f};  // per-state: NL,N1,N2,N3
     bool  per_state = false;
     bool  active[4] = {true,true,true,true};  // which states to run
+    bool  damped_bp = false;   // --bp=damped: use damped BP updates
+    float bp_alpha  = 1.0f;    // --alpha=F: damping factor α ∈ (0,1]
     int   diagnose_step = -1;  // --diagnose=N: print message diagnostics at step N
     // Bonds to diagnose (site pairs, 0-based) — hardcoded for heavy-hex guilty bonds
     // identified from n(v,t) analysis at step 9 chi=400 δ=1e-4
@@ -189,6 +191,8 @@ int main(int argc, char** argv) {
         if (a=="--qr=householder") qr_mode = QrMode::Householder;
         if (a=="--qr=adaptive")    qr_mode = QrMode::Adaptive;
         if (a.substr(0,11)=="--chol-reg=") chol_reg = atof(argv[i]+11);
+        if (a=="--bp=damped")      damped_bp = true;
+        if (a.substr(0,8)=="--alpha=") bp_alpha = atof(argv[i]+8);
         if (a.substr(0,8) =="--state=") {
             // --state=NL or --state=N1 or --state=NL,N1,N2 etc.
             // Sets which states to run; all others are skipped.
@@ -288,6 +292,8 @@ int main(int argc, char** argv) {
     for (int g=0; g<4; g++) {
         if (!active[g]) continue;
         states[g] = new HeavyHexState(static_cast<Grid&>(*grids[g]));
+        states[g]->damped_bp = damped_bp;
+        states[g]->bp_alpha  = bp_alpha;
         if (centers.size() > 1)
             states[g]->init_heisenberg(static_cast<Grid&>(*grids[g]), centers);
         else
