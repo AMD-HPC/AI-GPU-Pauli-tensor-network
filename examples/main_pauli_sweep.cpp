@@ -294,8 +294,6 @@ int main(int argc, char** argv) {
     for (int g=0; g<4; g++) {
         if (!active[g]) continue;
         states[g] = new HeavyHexState(static_cast<Grid&>(*grids[g]));
-        states[g]->damped_bp = damped_bp;
-        states[g]->bp_alpha  = bp_alpha;
         if (centers.size() > 1)
             states[g]->init_heisenberg(static_cast<Grid&>(*grids[g]), centers);
         else
@@ -403,8 +401,13 @@ int main(int argc, char** argv) {
 
     // Pre-allocate Measures objects — avoid hipMalloc/hipFree every step.
     Measures* meas[4] = {nullptr,nullptr,nullptr,nullptr};
-    for (int g=0; g<4; g++)
-        if (active[g]) meas[g] = new Measures(handle, *wss[g]);
+    for (int g=0; g<4; g++) {
+        if (active[g]) {
+            meas[g] = new Measures(handle, *wss[g]);
+            meas[g]->damped_bp = damped_bp;
+            meas[g]->bp_alpha  = bp_alpha;
+        }
+    }
 
     for (int step=1; step<=n_steps; step++) {
         double t0 = now_ms();
