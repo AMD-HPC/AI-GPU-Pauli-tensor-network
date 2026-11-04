@@ -116,3 +116,29 @@ strongest (3.80).
   inverse problem is well-posed.
 - The iterative calibration loop still works: fix the easy bonds first,
   then the hard pairs surface more clearly.
+
+## Aperture G — the physically sound G (2026-11-04)
+
+Instead of seismic multi-center runs (non-converged BP), compute G using
+single-center aperture runs — one center per simulation, fully converged BP.
+
+**Structure**: 49 centers × 84 bonds = 4,116 simulations + 49 baselines.
+Each run: single center, small χ, BP converges, more cycles valid.
+
+**Properties**:
+- Sparse response vectors: only ~4-6 centers within d_max=2 hops of any bond
+  contribute non-zero L(v,t). The rest are L=0.
+- Cosine compares only centers near each bond — pure graph property.
+- No Trotter color ordering bias — each center run is independent.
+- No BP non-convergence contamination.
+- Matches the aperture detection method exactly.
+
+**Cost**: ~4,165 simulations, each small (single center, χ grows slowly).
+~2-3 hours on 3 GPUs.
+
+**Limitation**: need enough cycles that every bond is reached by at least
+one center. With v_hop=0.45 and 5 cycles, every bond in rect_7x7 is covered
+by at least 4-6 centers.
+
+This is the physically grounded G — predicts which bonds are hard to detect
+under aperture scanning, without seismic BP artifacts.
