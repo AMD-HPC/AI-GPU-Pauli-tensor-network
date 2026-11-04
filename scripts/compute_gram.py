@@ -73,6 +73,9 @@ def main():
     ap.add_argument('--j_pert',  type=float, default=0.8)
     ap.add_argument('--out',     default='logs/gram_standard/gram.json')
     ap.add_argument('--top_k',   type=int, default=10)
+    ap.add_argument('--centers', default=None,
+                    help='Override centers: comma-separated sites for a single scan. '
+                         'Bypasses the scan plan entirely.')
     args = ap.parse_args()
 
     os.makedirs(args.logdir, exist_ok=True)
@@ -83,21 +86,30 @@ def main():
     n_bonds = len(g['edges'])
     n_sites = len(all_sites)
 
-    print(f"Graph: {n_bonds} bonds, {n_sites} sites")
-    print(f"Binary: {args.binary}")
-    print(f"Perturbation: J={args.j_pert}")
-    print(f"Logdir: {args.logdir}")
-    print(f"Scans: {len(plan['placements'])}")
+    # Build scan list — either from --centers override or from scan plan
+    if args.centers:
+        cstr = args.centers
+        scans_to_run = [{'sid': 1, 'cstr': cstr}]
+        print(f"Graph: {n_bonds} bonds, {n_sites} sites")
+        print(f"Binary: {args.binary}")
+        print(f"Perturbation: J={args.j_pert}")
+        print(f"Logdir: {args.logdir}")
+        print(f"Centers override: {cstr} (single scan)")
+    else:
+        scans_to_run = [{'sid': sc['scan'],
+                         'cstr': ','.join(map(str, sc['centers']))}
+                        for sc in plan['placements']]
+        print(f"Graph: {n_bonds} bonds, {n_sites} sites")
+        print(f"Binary: {args.binary}")
+        print(f"Perturbation: J={args.j_pert}")
+        print(f"Logdir: {args.logdir}")
+        print(f"Scans: {len(scans_to_run)}")
 
-    # Build task list: 3 baselines + 84*3 perturbed
-    # Each scan uses its OWN center set (not the union)
     tasks = []
     scan_info = []
 
-    for sc in plan['placements']:
-        sid = sc['scan']
-        centers = sc['centers']
-        cstr = ','.join(map(str, centers))
+    for sc in scans_to_run:
+        sid = sc['sid']; cstr = sc['cstr']
         base_log = f'{args.logdir}/scan{sid}_base.log'
         cmd_base = [args.binary, str(CHI), str(STEPS), CUTOFF,
                     f'--center={cstr}', '--state=NL']
