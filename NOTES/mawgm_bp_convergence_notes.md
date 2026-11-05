@@ -136,3 +136,46 @@ log: `logs/seismic_baseline_NL_r7.log`
 **Visualization**: `NOTES/acausal_leakage.png` shows the acausal sites at t=1 and t=2
 for the 6-center config. The 1-hop lightcone criterion may over-flag t=2 sites
 (the theoretical lightcone expands with cycle number).
+
+---
+
+## Sub-cycle lightcone and the "acausal" leakage — resolution (2026-11-05)
+
+**The 1-hop lightcone criterion is too conservative.**
+
+The Trotter color ordering within one cycle is:
+- Color 0: horizontal bonds, even columns
+- Color 1: horizontal bonds, odd columns  
+- Color 2: vertical bonds, even rows
+- Color 3: vertical bonds, odd rows
+
+A signal can travel H (color 0) → V (color 2) within ONE cycle, reaching
+a site at Manhattan distance 2 in a single step. The v_hop≈0.45 average
+underestimates this because it averages over all directions and all cycles —
+the true sub-cycle lightcone allows up to 2 hops on favorable H+V paths.
+
+**Site 28 (6,3) is reachable within 1 cycle from center 34 (5,2)**:
+- Color 0: (5,2) → (6,2) horizontally ✓
+- Color 2: (6,2) → (6,3) vertically ✓
+
+The 1.025e-3 at site 28 in the 6-center config is therefore:
+- Mathematically causal under sub-cycle color ordering
+- A summation of small legitimate contributions from multiple centers
+  (each ~3e-4 individually, summing above threshold)
+- Not "acausal leakage" — a lightcone geometry estimation issue
+
+**Why v_hop=0.5 for lightcone pruning**: too aggressive pruning (using the
+average v_hop) would cut off sites that ARE causally reachable via H+V
+sub-cycle paths. v_hop=0.5 is needed precisely because the sub-cycle reach
+is faster than the cycle-averaged estimate.
+
+**Single-center**: same H+V mechanism exists but only one source → ~3e-4
+at distance-2 sites. Below both ε_th=1e-3 and hardware shot budget.
+
+**Multi-center**: each center contributes a small causal signal via its own
+H+V path → they sum at the confluence site → can exceed ε_th. This is
+causal accumulation, not acausal leakage.
+
+**For detection**: even if residual truly-acausal contribution remained,
+L≈0 at those sites because n_base and n_pert have identical leakage patterns
+→ cancels in the ratio → detection unaffected.
