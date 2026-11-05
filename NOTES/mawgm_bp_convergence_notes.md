@@ -93,3 +93,46 @@ identical results.
 ```
 
 Compare PAULI_NL output — identical.
+
+---
+
+## 6-center configuration — acausal leakage experiment (2026-11-05)
+
+**Configuration**: centers {25,10,34,30,6,32} (6 interior centers), 
+log: `logs/seismic_baseline_NL_r7.log`
+
+**Standard BP (100 iterations)**:
+- Site 28 (pos 6,3): n=1.025e-3 at t=1 — **above ε_th=1e-3**
+- 13 of 18 acausal sites survive a 1e-4 cut
+- Maximum acausal weight is a ~1e-3 phenomenon for this center placement
+
+**Damped BP experiments** (α=0.3):
+- bp-max=5000: residual 2.94 at step 1 (not converged), site 28 → 3.6e-4
+- bp-max=50000: residual **9.25** (diverging!), PAULI_NL **byte-for-byte identical** to 5000-iter run
+
+**Key findings**:
+
+1. **No fixed point exists** for 6-interior-center config under any damping — messages
+   diverge regardless of iteration count. Structurally different from 5-corner where
+   convergence is reachable at ~400 iterations.
+
+2. **Marginals are stable despite diverging messages** — PAULI_NL identical between
+   5000 and 50000 iterations even as residual grows from 2.94 to 9.25. The n(v,t)
+   marginal-insensitivity result holds even when BP diverges.
+
+3. **Site 28 acausal weight ambiguous** — standard BP gives 1.025e-3 (above threshold),
+   damped BP gives 3.6e-4 (below threshold), but we cannot determine which is "correct"
+   since the true fixed point is unreachable. The standard value may be inflated by
+   oscillation; the damped value may be a transient.
+
+4. **L ≈ 0 at acausal sites** regardless — both n_base and n_pert use the same
+   multi-center BP structure. Acausal leakage is correlated across baseline and
+   perturbed runs → cancels in the ratio → detection is unaffected.
+
+5. **More interior centers = worse convergence**: 5-corner (peripheral) converges in
+   ~400 iterations; 6-interior diverges at any count. Interior centers create more
+   cross-center routing paths, making the message landscape non-contractive.
+
+**Visualization**: `NOTES/acausal_leakage.png` shows the acausal sites at t=1 and t=2
+for the 6-center config. The 1-hop lightcone criterion may over-flag t=2 sites
+(the theoretical lightcone expands with cycle number).
