@@ -128,3 +128,51 @@ The evolution p(·,t) is a 2D PDF trajectory. Two natural comparisons:
 6. Build a Gram matrix from delta_curl signatures instead of L(v,t)
 
 Script: scripts/compute_vector_field.py (to be written)
+
+---
+
+## First experiments (2026-11-06)
+
+**Script**: `scripts/compute_vector_field.py`
+
+**Key finding — gradient field J_uv = n(v) - n(u)**:
+
+The spatial gradient of n(v,t) across bonds gives a vector field on the graph.
+Computed for baseline and perturbed, then overlaid per bond.
+
+**Cycle 1 (BP converged)**: b = p everywhere — wavefront hasn't reached the
+broken bond yet (distance ~2 hops from nearest center, ~0.45 hops/cycle).
+No signal at cycle 1 for this scan configuration.
+
+**Cycle 2**: the wavefront crosses the broken bond. Clear signal:
+- **Site 11 (wall face)**: incoming arrows increase (b<p), outgoing toward 12 blocked
+  - Bond 10→11: b=5.1e-4, p=5.5e-4 (incoming increases) ✓
+  - Bond 4→11:  b=6.8e-4, p=7.3e-4 (incoming increases) ✓
+  - Bond 11→18: n_base=7.98e-4, n_pert=8.41e-4 (drains downward more) ✓
+- **Site 12 (shadow)**: n_base=2.33e-4 > n_pert=2.06e-4 (less arrives) ✓
+
+**Topological interpretation**:
+- Site 11 transforms from transit node → partial attractor (wall face)
+- Site 12 transforms from transit node → pure repeller (shadow)
+- The broken bond is the separatrix between attractor and repeller
+- This is the RED-BLUE signature expressed as vector field topology
+
+**Why curl = 0**: J = gradient(n) is an irrotational field by construction
+(curl∘grad = 0). The true flux field (from Trotter gates) would have
+non-zero curl at the broken bond, but it's not directly accessible from
+PAULI_NL output. The delta_J field captures the perturbation correctly
+even without the curl.
+
+**Figures**:
+- `NOTES/gradient_field_trial4.png`: full grid, all 3 cycles
+- `NOTES/gradient_field_zoom.png`: zoomed, all 3 cycles
+- `NOTES/gradient_field_cycle1.png`: cycle 1 with values (all identical b=p)
+- `NOTES/gradient_field_cycle2.png`: cycle 2 with values (signal visible)
+
+**Next steps**:
+- Define detection rule from vector field topology (attractor/repeller classification)
+- Compare with L(v,t) scalar detection — does the vector field give the bond
+  location AND orientation more directly?
+- Explore Gram matrix built from delta_J instead of raw L(v,t)
+- Consider KL divergence or Wasserstein on p(v,t) = n(v,t)/sum n as
+  alternative comparison metric
