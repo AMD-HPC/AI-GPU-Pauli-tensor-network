@@ -125,3 +125,46 @@ and reverse directions encodes the bond orientation (which side is source, which
 ## Script
 
 `scripts/compute_vector_field.py` (extend to include δ ln T)
+
+---
+
+## Detection results (2026-11-07)
+
+**Script**: `scripts/detect_delta_logT.py`
+**Parameters**: threshold=0.01, top_k=n_bonds, all 3 scans, all cycles
+
+### Single bond (mawgm_f64, 10 trials)
+**10/10 BOTH** — every bond rank #1. Pure physics, no failures.
+
+### Two bonds (mawgm_v2, 10 trials)
+**9/10 BOTH** — same as BFS. Only trial 4 (bonds 9,51) fails:
+- Bond 8 (10↔11) sits between bonds 9 and 51 — their overlapping
+  diffraction patterns constructively interfere at bond 8
+- Scan-by-scan analysis: bond 51 appears top-3 in ALL scans; bond 9
+  appears top-3 in scans 2 and 3; bond 8 dominates only scan 2
+- Voting across scans would correctly identify both true bonds
+
+### Four bonds (mawgm_4b, 5 trials)
+**1/5 BOTH, avg 3/4** — BFS gets 3/5. Methods fail on different trials.
+
+### Eight bonds (mawgm_8b, 2 trials)
+**avg 6/8** — δ ln T finds 5/8 and 7/8. BFS gets trial 2 (8/8), fails trial 1.
+
+### Comparison
+
+| n_bonds | δ ln T | BFS |
+|---------|--------|-----|
+| 1 | 10/10 | 10/10 |
+| 2 | 9/10 | 9/10 |
+| 4 | 1/5 BOTH, avg 3/4 | 3/5 BOTH |
+| 8 | avg 6/8 | mixed |
+
+### Failure mode
+Both methods fail when broken bonds are **adjacent** — their signals
+overlap and boost a neighbor bond's score. The methods fail on
+**different** trials, making them complementary.
+
+**Conclusion**: the iterative calibration loop is the right architecture.
+Fix the bonds found in one pass, re-run, and the remaining bonds surface
+cleanly without interference. Static centers will always have corner cases
+when broken bonds cluster together.
