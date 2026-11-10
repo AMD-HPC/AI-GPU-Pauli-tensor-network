@@ -275,31 +275,24 @@ Since $n(v,t)$ is a scalar field on the graph, its discrete spatial gradient
 at site $v$ in the direction of neighbor $u$ is $(\nabla n)_{v\to u}(t) =
 n(u,t) - n(v,t)$. Since $n(v,t)$ is a probability, weight flows \emph{multiplicatively}
 through bonds: $n(u,t+1) = n(v,t)\cdot T_{v\to u}$, so the natural
-gradient is in log-space. Working with $\ln n$, the \emph{spatio-temporal gradient} at directed
-bond $(v \to u)$ from time $t$ to $t+1$ is:
-\begin{equation}
-    (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
-    \;=\; \mathcal{L}(u,\,t+1) - \mathcal{L}(v,\,t)
-    \;=\; \bigl[\ln n_{\rm base}(u,t+1) - \ln n_{\rm base}(v,t)\bigr]
-        - \bigl[\ln n_{\rm pert}(u,t+1) - \ln n_{\rm pert}(v,t)\bigr]
-\end{equation}
-Each bracket is the log bond transfer for one run: $\ln T^{\rm
-base}_{v\to u}(t) = \ln(n_{\rm base}(u,t+1)/n_{\rm base}(v,t))$ and
-similarly for the perturbed run. Their difference is exactly the
-\emph{delta log-transfer}:
+gradient is in log-space. The \emph{spatio-temporal gradient} of
+$\mathcal{L}$ at directed bond $(v \to u)$ from cycle $t$ to $t+1$ is
+then directly the \emph{delta log-transfer}:
 \begin{equation}
     \delta\!\ln T_{v \to u}(t)
-    \;=\; \ln T^{\rm base}_{v \to u}(t) - \ln T^{\rm pert}_{v \to u}(t)
+    \;\equiv\; (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
+    \;=\; \mathcal{L}(u,\,t+1) - \mathcal{L}(v,\,t)
+    \;=\; \ln\frac{n_{\rm base}(u,t+1)}{n_{\rm base}(v,t)}
+         -\ln\frac{n_{\rm pert}(u,t+1)}{n_{\rm pert}(v,t)}
     \;=\; \ln\frac{T^{\rm base}}{T^{\rm pert}}
-    \;=\; (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
+    \label{eq:dlogT}
 \end{equation}
-The delta log-transfer is therefore the spatio-temporal gradient of the
-cross-entropy scalar field $\mathcal{L}$. It is a log-likelihood ratio at
-each directed bond transition: positive when the baseline transfers more than
-the perturbed run, negative when the perturbed transfers more. At each site
-$v$, the collection $\{\delta\!\ln T_{v \to u}(t)\}_{u \sim v}$ over all
-neighbors $u$ is a \emph{vector} — the gradient of $\mathcal{L}$ evaluated
-at site $v$ in the spatio-temporal sense.
+It is a log-likelihood ratio at each directed bond transition: positive
+when the baseline transfers more than the perturbed run, negative when
+the perturbed transfers more. At each site $v$, the collection
+$\{\delta\!\ln T_{v \to u}(t)\}_{u \sim v}$ over all neighbors $u$ is
+a \emph{vector} — the gradient of $\mathcal{L}$ at $v$ in the
+spatio-temporal sense.
 
 A broken bond $(u,v)$ is a \emph{singularity} in this gradient field.
 At the first wavefront crossing (cycle $t$), the baseline flows through
