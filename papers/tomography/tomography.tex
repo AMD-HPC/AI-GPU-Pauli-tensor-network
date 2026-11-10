@@ -345,6 +345,35 @@ whether $n_{\rm base}$ and $n_{\rm pert}$ come from two simulations or
 from a simulation and hardware shots.
 
 % ─────────────────────────────────────────────────────────────────────────────
+\section{Seismic Multi-Center Scanning}
+
+Rather than running each center independently, we initialize all $p$ centers
+simultaneously in a single seismic scan: the initial operator is
+$O(0) = \sum_k Z_{c_k}$, firing all centers at once. At each site $v$,
+the first-arrival signal is dominated by the nearest center, automatically
+selecting the strongest directional component. The sign flip at the broken bond
+endpoints emerges without any explicit path tracing or per-center bookkeeping,
+and the cost drops from $2p$ simulations to just 2 (one baseline, one perturbed).
+
+To achieve broad coverage with no geometric blind spots, we use three
+complementary center placements on the $7\times7$ lattice: corners and center
+($\{1,7,25,43,49\}$), quadrant centers ($\{11,13,37,39\}$), and mid-edge
+sites ($\{4,22,28,46\}$). Each placement covers a different region of the
+grid; together the three scans ensure every bond is within $d_{\rm max}=2$
+hops of at least one center in at least one scan. At $v_{\rm hop}\approx0.45$
+hops/cycle, 2 hops requires 5 simulation cycles. The total cost is 6 simulations
+(3 baselines + 3 perturbed), run in parallel on 3 GPUs.
+
+Bond scores are computed using the integrated log-ratio $\Lambda(v)$ across
+all three scans. For each bond $b$ connecting sites $v_a$ and $v_b$, the
+score is the maximum contrast $|\Lambda(v_a) - \Lambda(v_b)|$ over all scans.
+The top-$k$ bonds by score are declared broken, where $k$ is the number of
+expected faults. On 20 single-bond trials ($\delta J = -0.20$,
+two independent datasets), this procedure achieves \textbf{20/20} correct
+identifications. On 10 two-bond trials it achieves \textbf{9/10}, with the
+single failure corresponding to two bonds sharing an endpoint whose wavefronts
+cancel (the BLUE-BLUE-RED interference pattern discussed in Section~\ref{sec:multibond}).
+% ─────────────────────────────────────────────────────────────────────────────
 \section{Bond Detection}
 
 For each bond $b$ connecting sites $v_a$ and $v_b$ we define a {\em
@@ -420,35 +449,6 @@ Both achieve 20/20 single-bond and 9/10 two-bond. They fail on
 \label{tab:comparison}
 \end{table}
 
-% ─────────────────────────────────────────────────────────────────────────────
-\section{Seismic Multi-Center Scanning}
-
-Rather than running each center independently, we initialize all $p$ centers
-simultaneously in a single seismic scan: the initial operator is
-$O(0) = \sum_k Z_{c_k}$, firing all centers at once. At each site $v$,
-the first-arrival signal is dominated by the nearest center, automatically
-selecting the strongest directional component. The sign flip at the broken bond
-endpoints emerges without any explicit path tracing or per-center bookkeeping,
-and the cost drops from $2p$ simulations to just 2 (one baseline, one perturbed).
-
-To achieve broad coverage with no geometric blind spots, we use three
-complementary center placements on the $7\times7$ lattice: corners and center
-($\{1,7,25,43,49\}$), quadrant centers ($\{11,13,37,39\}$), and mid-edge
-sites ($\{4,22,28,46\}$). Each placement covers a different region of the
-grid; together the three scans ensure every bond is within $d_{\rm max}=2$
-hops of at least one center in at least one scan. At $v_{\rm hop}\approx0.45$
-hops/cycle, 2 hops requires 5 simulation cycles. The total cost is 6 simulations
-(3 baselines + 3 perturbed), run in parallel on 3 GPUs.
-
-Bond scores are computed using the integrated log-ratio $\Lambda(v)$ across
-all three scans. For each bond $b$ connecting sites $v_a$ and $v_b$, the
-score is the maximum contrast $|\Lambda(v_a) - \Lambda(v_b)|$ over all scans.
-The top-$k$ bonds by score are declared broken, where $k$ is the number of
-expected faults. On 20 single-bond trials ($\delta J = -0.20$,
-two independent datasets), this procedure achieves \textbf{20/20} correct
-identifications. On 10 two-bond trials it achieves \textbf{9/10}, with the
-single failure corresponding to two bonds sharing an endpoint whose wavefronts
-cancel (the BLUE-BLUE-RED interference pattern discussed in Section~\ref{sec:multibond}).
 
 \section{Tensor Network Simulation as Quantum Circuit Execution}
 \label{sec:tn}
