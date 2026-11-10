@@ -7,6 +7,7 @@
 \DeclareMathOperator*{\argmax}{arg\,max}
 \usepackage{graphicx}
 \usepackage{booktabs}
+\usepackage{float}
 \usepackage{hyperref}
 \usepackage{xcolor}
 
@@ -305,38 +306,31 @@ At the first wavefront crossing (cycle $t$), the baseline flows through
 the bond freely while the perturbed run is impeded:
 $\delta\!\ln T_{u \to v}(t) > 0$ (red, baseline transfers more through
 the broken bond). One cycle later, weight has accumulated at the wall-face
-site $u$ in the perturbed run — $n_{\rm pert}(u)$ grows, making the
+site $u$ in the perturbed run; $n_{\rm pert}(u)$ grows, making the
 reverse ratio $n(v,t+1)/n_{\rm pert}(u,t)$ larger:
 $\delta\!\ln T_{v \to u}(t) < 0$ (blue, perturbed transfers more in
 reverse because the shadow site $v$ is depleted). The two directed
-components of the same bond have \emph{opposite signs} — the gradient
+components of the same bond have \emph{opposite signs}: the gradient
 field has a discontinuity exactly at the broken bond.
 
 By subsequent cycles the perturbation diffracts: the wall-face
 accumulation radiates excess weight along alternative paths, enriching
 bonds that would normally receive less, while the shadow deepens. The
 gradient field develops a characteristic \emph{diffraction pattern}
-centered on the broken bond — two diagonal fringes whose orientation
+centered on the broken bond, with two diagonal fringes whose orientation
 encodes the bond direction directly (Figure~\ref{fig:dlogT}).
 
+\clearpage
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=0.52\textwidth]{fig_delta_logT.png}
-\caption{Spatio-temporal gradient field $(\nabla_{\!\rm st}\,\mathcal{L})_{v\to u}(t)$
-for broken bond 9 (sites 11$\leftrightarrow$12, horizontal),
-rect $7\times7$, $\chi=50$, scan 1 (corners+center).
-Each row shows one cycle transition.
-Red arrows: $\delta\!\ln T > 0$ (baseline transfers more through the bond).
-Blue arrows: $\delta\!\ln T < 0$ (perturbed transfers more in reverse).
-Gold bar: broken bond. Gold circles: bond endpoints. Gold stars: scan centers.
-\textbf{Top} ($t=1\to2$): the wavefront first crosses the broken bond;
-large red arrow at bond 11$\to$12 is the primary signal.
-\textbf{Middle} ($t=2\to3$): wall-face accumulation at site 11 reverses
-the dominant direction; blue arrows appear as the perturbed run now
-transfers more from the enriched wall face.
-\textbf{Bottom} ($t=3\to4$): the diffraction pattern is fully developed —
-a blue diagonal (shadow path) and a red diagonal (rerouted path) emerge,
-pointing at the broken bond and encoding its orientation.}
+\includegraphics[width=\textwidth]{fig_delta_logT.png}
+\caption{Spatio-temporal gradient field $(\nabla_{\!\rm st}\,\mathcal{L})_{v\to u}(t)$,
+broken bond 9 (sites 11$\leftrightarrow$12, horizontal), $\chi=50$.
+Red: $\delta\!\ln T>0$ (baseline transfers more).
+Blue: $\delta\!\ln T<0$ (perturbed transfers more).
+Top: $t=1\to2$ and $t=2\to3$ zoomed on the bond neighborhood.
+Bottom: full grid at $t=3\to4$ showing the diffraction pattern —
+shadow diagonal (blue) and rerouted diagonal (red).}
 \label{fig:dlogT}
 \end{figure*}
 
@@ -344,13 +338,13 @@ The gradient field $\nabla_{\!\rm st}\,\mathcal{L}$ has several properties
 that distinguish it from the scalar $\mathcal{L}(v,t)$. It is defined on
 \emph{bonds} rather than sites, so the broken bond appears directly as a
 gradient discontinuity rather than through its effect on neighboring sites.
-It carries \emph{directional} information — the sign asymmetry between
+It carries \emph{directional} information: the sign asymmetry between
 forward and reverse components identifies which side is the wall face and
 which is the shadow, and the diffraction pattern orientation encodes the
 bond direction. The normalization by $n(v,t)$ suppresses the dominant-site
 bias that affects site-based metrics. Systematic artifacts from the
-simulation — Trotter color ordering, BP approximation, or any other
-effect present in both runs — cancel in the ratio $T_{\rm base}/T_{\rm pert}$,
+simulation (Trotter color ordering, BP approximation, or any other
+effect present in both runs) cancel in the ratio $T_{\rm base}/T_{\rm pert}$,
 whether $n_{\rm base}$ and $n_{\rm pert}$ come from two simulations or
 from a simulation and hardware shots.
 
