@@ -266,79 +266,90 @@ detection signal.
 \section{The Log-Transfer Vector Field}
 \label{sec:logtransfer}
 
-The cross-entropy $\mathcal{L}(v,t)$ is a scalar field on sites — it measures
-the perturbation at each site but carries no directional information about which
-bond caused it. We introduce a complementary observable defined on bonds that
-makes this information explicit.
+The cross-entropy $\mathcal{L}(v,t) = \ln(n_{\rm base}/n_{\rm pert})$ is a
+\emph{scalar field} on sites. We now show that its natural spatio-temporal
+gradient is a \emph{vector field} defined on bonds, and that this gradient
+field directly reveals the broken bond as a physical singularity.
 
-For each directed bond $(v \to u)$ and each cycle $t$, define the
-\emph{log bond transfer}:
+Since $n(v,t)$ is a scalar field on the graph, its discrete spatial gradient
+at site $v$ in the direction of neighbor $u$ is $(\nabla n)_{v\to u}(t) =
+n(u,t) - n(v,t)$. Working instead with $\ln n$ — to match the log-ratio
+structure of $\mathcal{L}$ — the \emph{spatio-temporal gradient} at directed
+bond $(v \to u)$ from time $t$ to $t+1$ is:
 \begin{equation}
-    \ln T_{v \to u}(t) = \ln \frac{n(u,\, t+1)}{n(v,\, t)}
+    (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
+    \;=\; \mathcal{L}(u,\,t+1) - \mathcal{L}(v,\,t)
+    \;=\; \bigl[\ln n_{\rm base}(u,t+1) - \ln n_{\rm base}(v,t)\bigr]
+        - \bigl[\ln n_{\rm pert}(u,t+1) - \ln n_{\rm pert}(v,t)\bigr]
 \end{equation}
-This is the log-probability of weight moving from site $v$ at time $t$ to
-neighbor $u$ at time $t+1$ — the natural log form of the bond transfer
-coefficient introduced in Section~\ref{sec:vocab}. Computed separately for
-the baseline and perturbed runs, their difference defines the
+Each bracket is the log bond transfer for one run: $\ln T^{\rm
+base}_{v\to u}(t) = \ln(n_{\rm base}(u,t+1)/n_{\rm base}(v,t))$ and
+similarly for the perturbed run. Their difference is exactly the
 \emph{delta log-transfer}:
 \begin{equation}
-    \delta\!\ln T_{v \to u}(t) = \ln T^{\rm base}_{v \to u}(t) -
-                                  \ln T^{\rm pert}_{v \to u}(t)
-                                = \ln \frac{T^{\rm base}}{T^{\rm pert}}
+    \delta\!\ln T_{v \to u}(t)
+    \;=\; \ln T^{\rm base}_{v \to u}(t) - \ln T^{\rm pert}_{v \to u}(t)
+    \;=\; \ln\frac{T^{\rm base}}{T^{\rm pert}}
+    \;=\; (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
 \end{equation}
-This is a log-likelihood ratio at each directed bond transition: positive
-when the baseline transfers more than the perturbed run, negative when the
-perturbed transfers more. At each site $v$, the collection of values
-$\{\delta\!\ln T_{v \to u}(t)\}$ over all neighbors $u$ forms a
-\emph{vector field} — one component per bond direction, one per cycle.
+The delta log-transfer is therefore the spatio-temporal gradient of the
+cross-entropy scalar field $\mathcal{L}$. It is a log-likelihood ratio at
+each directed bond transition: positive when the baseline transfers more than
+the perturbed run, negative when the perturbed transfers more. At each site
+$v$, the collection $\{\delta\!\ln T_{v \to u}(t)\}_{u \sim v}$ over all
+neighbors $u$ is a \emph{vector} — the gradient of $\mathcal{L}$ evaluated
+at site $v$ in the spatio-temporal sense.
 
-A broken bond $(u,v)$ creates a characteristic pattern in this field.
+A broken bond $(u,v)$ is a \emph{singularity} in this gradient field.
 At the first wavefront crossing (cycle $t$), the baseline flows through
 the bond freely while the perturbed run is impeded:
-$\delta\!\ln T_{u \to v}(t) > 0$ (red, baseline transfers more through the
-broken bond). One cycle later, weight has accumulated at the wall-face site
-$u$ in the perturbed run — $n_{\rm pert}(u)$ grows, making the reverse
-ratio $n(v,t+1)/n_{\rm pert}(u,t)$ larger:
-$\delta\!\ln T_{v \to u}(t) < 0$ (blue, perturbed transfers more in reverse
-because the shadow site $v$ is depleted). The two directed components of
-the same bond have \emph{opposite signs} — an asymmetry that is unique to
-the broken bond.
+$\delta\!\ln T_{u \to v}(t) > 0$ (red, baseline transfers more through
+the broken bond). One cycle later, weight has accumulated at the wall-face
+site $u$ in the perturbed run — $n_{\rm pert}(u)$ grows, making the
+reverse ratio $n(v,t+1)/n_{\rm pert}(u,t)$ larger:
+$\delta\!\ln T_{v \to u}(t) < 0$ (blue, perturbed transfers more in
+reverse because the shadow site $v$ is depleted). The two directed
+components of the same bond have \emph{opposite signs} — the gradient
+field has a discontinuity exactly at the broken bond.
 
-By subsequent cycles the perturbation diffracts: the wall-face accumulation
-radiates excess weight along alternative paths, enriching bonds that would
-normally receive less, while the shadow grows deeper. The delta log-transfer
-field develops a characteristic \emph{diffraction pattern} centered on the
-broken bond — two diagonal fringes whose orientation encodes the bond
-direction directly (Figure~\ref{fig:dlogT}).
+By subsequent cycles the perturbation diffracts: the wall-face
+accumulation radiates excess weight along alternative paths, enriching
+bonds that would normally receive less, while the shadow deepens. The
+gradient field develops a characteristic \emph{diffraction pattern}
+centered on the broken bond — two diagonal fringes whose orientation
+encodes the bond direction directly (Figure~\ref{fig:dlogT}).
 
 \begin{figure*}[!t]
 \centering
 \includegraphics[width=\textwidth]{fig_delta_logT.png}
-\caption{Delta log-transfer field $\delta\!\ln T_{v \to u}(t)$ for broken bond 9
-(sites 11$\leftrightarrow$12, horizontal) and broken bond 52
-(sites 11$\leftrightarrow$18, vertical), rect $7\times7$, $\chi=50$.
-Each row shows one broken bond across cycles $t=1\to2$, $t=2\to3$, $t=3\to4$.
-Red arrows: baseline transfers more ($\delta\!\ln T > 0$).
-Blue arrows: perturbed transfers more ($\delta\!\ln T < 0$).
-Gold bar: broken bond. Gold circles: bond endpoints.
-By cycle $t=3\to4$ the diffraction pattern is fully developed: the shadow
-diagonal (blue) and rerouted diagonal (red) point directly at the broken bond
+\caption{Spatio-temporal gradient field $\delta\!\ln T_{v \to u}(t) =
+(\nabla_{\!\rm st}\,\mathcal{L})_{v\to u}(t)$ for a horizontal broken bond
+(bond 9, sites 11$\leftrightarrow$12, top row) and a vertical broken bond
+(bond 52, sites 11$\leftrightarrow$18, bottom row),
+rect $7\times7$, $\chi=50$.
+Each column shows one cycle transition: $t=1\to2$, $t=2\to3$, $t=3\to4$.
+Red arrows: $\delta\!\ln T > 0$ (baseline transfers more).
+Blue arrows: $\delta\!\ln T < 0$ (perturbed transfers more).
+Gold bar: broken bond.
+By $t=3\to4$ the diffraction pattern is fully developed: the shadow
+diagonal (blue) and rerouted diagonal (red) point at the broken bond
 and encode its orientation. The horizontal and vertical bonds produce
-perpendicular diagonal patterns.}
+perpendicular diagonal patterns, demonstrating that the gradient field
+carries directional information absent from the scalar $\mathcal{L}$.}
 \label{fig:dlogT}
 \end{figure*}
 
-The delta log-transfer field has several properties that distinguish it from
-$\mathcal{L}(v,t)$. It is defined on \emph{bonds} rather than sites, so the
-broken bond appears directly in the field rather than through its effect on
-neighboring sites. It carries \emph{directional} information — the asymmetry
-between forward and reverse components identifies which side is the wall face
-and which is the shadow. It is normalized by the source-site weight $n(v,t)$,
-suppressing the dominant-site bias that affects site-based metrics. And it
-combines spatial (bond direction) and temporal ($t \to t+1$) information in
-a single quantity that is free of Trotter color-ordering artifacts, since
-$n(v,t)$ and $n(v,t+1)$ are physical observables independent of the gate
-execution order.
+The gradient field $\delta\!\ln T$ has several properties that distinguish
+it from $\mathcal{L}(v,t)$. It is defined on \emph{bonds} rather than sites,
+so the broken bond appears directly as a gradient discontinuity rather than
+through its effect on neighboring sites. It carries \emph{directional}
+information — the sign asymmetry between forward and reverse components
+identifies which side is the wall face and which is the shadow, and the
+diffraction pattern orientation encodes the bond direction. The normalization
+by $n(v,t)$ suppresses the dominant-site bias that affects site-based
+metrics. And the gradient is free of Trotter color-ordering artifacts:
+$n(v,t)$ and $n(v,t+1)$ are physical observables independent of gate
+execution order, so their log-ratio inherits no Trotter artifact.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Bond Detection}
