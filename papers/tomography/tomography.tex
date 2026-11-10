@@ -99,8 +99,7 @@ we use $\delta J = -0.20$ ($J = 0.80$, a 20\% degradation) as a representative
 choice; the detection method does not depend on knowing $\delta J$ in advance
 and works for any coupling deviation. The Pauli transfer matrix entries scale as
 $\cos(J\varepsilon)$, attenuating operator propagation without blocking it entirely.
-For the multi-bond experiments in Section~\ref{sec:multibond}, $k$ bonds are selected
-uniformly at random and perturbed simultaneously.
+For the multi-bond experiments, $k$ bonds are selected uniformly at random and perturbed simultaneously.
 
 We place $p=6$ observation centers using a greedy geodesic bond cover: the
 minimum set of sites such that every bond is within $d_{\rm max}=2$ hops of
@@ -372,7 +371,7 @@ expected faults. On 20 single-bond trials ($\delta J = -0.20$,
 two independent datasets), this procedure achieves \textbf{20/20} correct
 identifications. On 10 two-bond trials it achieves \textbf{9/10}, with the
 single failure corresponding to two bonds sharing an endpoint whose wavefronts
-cancel (the BLUE-BLUE-RED interference pattern discussed in Section~\ref{sec:multibond}).
+cancel (the BLUE-BLUE-RED interference pattern discussed in Section~\ref{sec:logtransfer}).
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Bond Detection}
 
@@ -449,6 +448,12 @@ Both achieve 20/20 single-bond and 9/10 two-bond. They fail on
 \label{tab:comparison}
 \end{table}
 
+Both methods support an iterative calibration strategy: declare the
+top-$k$ broken bonds, recalibrate the hardware, then re-run the scan.
+In each pass the already-fixed bonds no longer contaminate the signal,
+so the remaining faults surface more clearly. The process stops when
+$n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ everywhere: a physical
+criterion that requires no additional measurement overhead.
 
 \section{Tensor Network Simulation as Quantum Circuit Execution}
 \label{sec:tn}
@@ -493,18 +498,47 @@ Since $|\cos(\theta)| \leq 1$ for all $\theta$ (unitary gate), any coupling
 deviation attenuates the wave relative to baseline, guaranteeing $n_{\rm pert}(v^*) < n_{\rm base}(v^*)$
 at the shadow endpoint $v^*$, so $\mathcal{L}(v^*) > 0$ (red) regardless of
 the sign of $\delta J = J - 1$. The detection method is robust: the red site
-is always the shadow endpoint, never inverted.
+is always the shadow endpoint, never inverted. The gradient field
+$\nabla_{\!\rm st}\,\mathcal{L}$ of Section~\ref{sec:logtransfer} reveals
+the complementary effect: while the bond attenuates the wave on the shadow
+side, it simultaneously causes accumulation on the wall-face side and,
+by subsequent cycles, amplification along rerouted paths that would
+otherwise receive less weight.
+
+Belief propagation is exact on trees: messages from disjoint subtrees
+are independent and the fixed point is unique. The seismic initialization
+fires multiple centers simultaneously, creating wavefronts that meet and
+interfere inside the graph. This interference violates the tree assumption
+structurally: circular message dependencies prevent convergence regardless
+of iteration count. It is a property of the multi-center initialization,
+not of the solver.
+
+The detection observable $\mathcal{L}(v,t) = \ln(n_{\rm base}/n_{\rm pert})$
+is a ratio of two runs that share the same centers, the same graph, and
+the same BP schedule. Whatever interference pattern the multi-center
+initialization creates is therefore structurally identical in both runs.
+It is not an approximation error to be corrected; it is a shared
+background that cancels exactly in the ratio. Only the bond-specific
+perturbation survives. This was verified empirically: running with up to
+30,000 damped BP iterations (which achieve convergence for small center
+sets) gives PAULI\_NL values identical to standard 100-iteration BP.
+The residual BP non-convergence leaves $n(v,t)$ unchanged.
+
+A complete theoretical characterization of multi-center BP on loopy graphs
+remains open and will ultimately be resolved by hardware experiments where
+$\hat{n}(v,t)$ is measured directly, with no BP involved.
 
 This frames our tomography as \emph{quantum ATPG} (Automatic Test Pattern
 Generation)~\cite{roth1966diagnosis}, the classical circuit testing methodology
 generalized to quantum gates. In classical ATPG: fault activation (excite the
 stuck-at gate), path sensitization (find an observable path from fault to output),
-backward implication (infer the faulty gate). Here: perturbation (change $J$),
-wavefront propagation (operator spreading from center to shadow site), and
-cross-entropy inversion (red site + center position → bond identity).
+backward implication (infer the faulty gate). The quantum analog is:
+perturbation (change $J$), wavefront propagation (operator spreading from
+center to shadow site), and cross-entropy inversion (red site + center
+position $\to$ bond identity).
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{Discussion}
+\section{Causal Structure, Hardware Path, and Detection Algorithm}
 
 The observable $n(v,t)$ is accessible on real quantum hardware via local
 Pauli measurements after ZNE gate-folding circuits~\cite{giurgica2020digital}.
@@ -512,7 +546,7 @@ The cross-entropy $\mathcal{L}(v)$ requires only the ratio of two measurements,
 with no absolute calibration. The center placement is determined by the graph
 topology alone, independent of the Hamiltonian.
 
-The method exploits the Lieb-Robinson bound: information cannot propagate
+Our method exploits the Lieb-Robinson bound: information cannot propagate
 faster than $v_{\rm hop}$ hops/cycle. A broken bond creates a causal anomaly;
 the wavefront on one side cannot inform the other. The first-arrival time
 $t_{\rm first}(v)$ is observed directly, without knowing $v_{\rm hop}$ in advance.
@@ -546,16 +580,15 @@ This mirrors standard practice in other imaging domains: a wide-field scout scan
 hardware, Phase 1 maps directly to a single quantum experiment; Phase 2 selects
 the minimum number of additional experiments to confirm the bond identity.
 
-The seismic phase is the most natural starting point: it requires only one
-circuit (all centers in a single initialization) and one set of hardware shots
-for the perturbed device. The baseline $n_{\rm base}(v,t)$ is provided by
+The seismic phase requires only one circuit (all centers in a single
+initialization) and one set of hardware shots for the perturbed device. The baseline $n_{\rm base}(v,t)$ is provided by
 simulation and reused across all candidate perturbations at no additional
 hardware cost. The aperture phase then tests the hypothesis with directional
 projections; perturbation signals that survive across independent projections
 with geometry-consistent timing are physical, while chi-truncation artifacts
 and shot noise are uncorrelated across runs and average out.
 
-\paragraph{Wavefront triangulation across scans.}
+The following describes wavefront triangulation across scans.
 When multiple independent scans are available, the temporal order in which
 each scan detects the broken bond carries geometric information beyond the
 sign flip alone. This enables a triangulation strategy analogous to GPS:
@@ -646,84 +679,6 @@ identifiable. \textbf{BLUE-BLUE-RED} occurs when two orthogonal broken bonds
 share an endpoint: the shared site accumulates from two directions, the outer
 RED identifies one bond, and the adjacent BLUEs identify the second.
 
-\paragraph{Experimental results.}
-On a $7\times7$ lattice with 3 scans (13 centers, 3 GPUs parallel, $d_{\rm max}=2$),
-testing 10 random trials with 2 simultaneous broken bonds ($\delta J = -0.20$):
-the BFS algorithm with sub-cycle color-class ordering finds \textbf{both bonds correctly
-in 9/10 trials} (90\%), with 1 partial case and 0 complete failures.
-The single partial failure (trial 5) corresponds to two orthogonal bonds sharing an
-endpoint where both centers' waves are simultaneously blocked: the BLUE$-$BLUE$-$RED
-pattern, representing the hardest geometric configuration.
-
-\paragraph{Failure taxonomy.}
-We characterize five failure modes of increasing complexity:
-\begin{enumerate}
-    \item \textbf{Multiple random bonds}: shadows may overlap, making the $\mathcal{L}$ field ambiguous
-    \item \textbf{Collinear bonds}: a line of failures looks like a thick wall; bond resolution degrades
-    \item \textbf{Hexagonal cluster}: a faulty qubit touches 2--3 bonds simultaneously, producing a RED cluster with BLUE halo
-    \item \textbf{Graduated failure} ($\delta J$ smooth variation): weak signal approaching the sensitivity limit
-\end{enumerate}
-These represent the primary open experimental questions.
-
-\paragraph{Limitations.}
-The current experiment uses the identity PTM, a maximally disruptive
-perturbation that is deliberately clean. Cases 2-5 above are designed to
-stress-test the method: case 2 tests whether overlapping shadows can be
-resolved, case 3 tests spatial resolution limits, case 4 tests cluster
-detection on irregular topologies, and case 5 tests the sensitivity
-threshold for realistic coupling deviations.
-
-% ─────────────────────────────────────────────────────────────────────────────
-\section{Multi-Bond Detection and Iterative Calibration}
-\label{sec:multibond}
-
-We extend the seismic BFS algorithm to detect $k$ simultaneously broken bonds
-by declaring the top-$k$ candidates from the bond score ranking
-(Table~\ref{tab:multibond}).
-
-\begin{table}[h]
-\centering
-\small
-\begin{tabular}{rrrr}
-\toprule
-$k$ bonds & Trials & Bonds found & Per-bond rate \\
-\midrule
-1 & 20 & 20/20 & 100\% \\
-2 & 10 & 19/20 & 95\%  \\
-4 &  5 & 18/20 & 90\%  \\
-8 &  2 & 15/16 & 94\%  \\
-\bottomrule
-\end{tabular}
-\caption{Per-bond detection rate (single seismic iteration, top-$k$ declaration,
-$\delta J = -0.20$, $7\times7$ lattice, $\chi=50$, 5 cycles). The per-bond
-detection rate remains above 90\% even at 8 simultaneous faults.}
-\label{tab:multibond}
-\end{table}
-
-The per-bond detection rate remains above 90\% even at 8 simultaneous faults.
-Systematic failures are geometrically localized: bond 8 (sites 10$\leftrightarrow$11)
-and bond 36 (sites 43$\leftrightarrow$44) consistently score below the top-$k$
-threshold due to weak seismic illumination from the three scan center placements.
-These are not random failures; they reflect the coverage geometry of the 3-scan plan.
-
-The detection naturally supports an iterative calibration loop. One seismic
-pass finds above 90\% of the broken bonds; the hardware is recalibrated for
-those; a second seismic pass then searches the residual, where the remaining
-faults now surface with a cleaner signal unclouded by the bonds already fixed.
-The process repeats until $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$
-everywhere. At 8 simultaneous faults, 7 are found in the first pass; fixing
-those makes the last one detectable at 100\% accuracy in the second.
-The stopping criterion is physical and requires no additional measurement
-overhead.
-
-The iterative structure also justifies the design choices. Short cycles
-(3--5) are sufficient because only the next bond to fix needs to be ranked,
-not all faults simultaneously. A moderate threshold $\varepsilon_{\rm th}
-= 10^{-3}$ maximizes BFS coverage so no bond is in a blind spot. Three
-seismic placements cover all 84 bonds with no geometric dead zones except
-the small set of bonds with weak illumination from all three centers,
-exactly the bonds that surface cleanly in iteration 2 once their neighbors
-have been fixed, with no additional simulations required.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Measurability and Detection Thresholds}
@@ -738,7 +693,7 @@ operators that have non-identity support at site $v$ after $t$ Trotter cycles
 A barrier after each Trotter cycle allows a mid-circuit local Pauli weight
 measurement at site $v$; each shot returns either the identity at $v$
 or a non-identity Pauli ($X$, $Y$, or $Z$). The three non-identity outcomes
-are not distinguished — only the binary question ``identity or not'' is asked,
+are not distinguished: only the binary question ``identity or not'' is asked,
 and the non-identity count $k$ accumulates as a success count. This binary
 nature of each shot makes the Binomial model natural: $k \sim
 \mathrm{Binomial}(N, n(v,t))$, where the physical probability $n(v,t)$ is
@@ -798,7 +753,7 @@ from truncated components is numerical noise, not physical operator spreading.
 Second, belief propagation is not strictly causal: messages propagate globally
 in each sweep, producing tiny non-zero $n(v,t) \sim 10^{-4}$ at sites outside
 the Lieb-Robinson lightcone. In a real quantum circuit these sites would never
-be activated — only gates within the lightcone fire — so this leakage is a
+be activated (only gates within the lightcone fire), so this leakage is a
 simulation artifact with no hardware counterpart. Both effects are below
 $\delta_{\rm cut} = 10^{-3}$, which we therefore adopt as the simulation floor.
 
@@ -807,7 +762,7 @@ values and use a lower $\varepsilon_{\rm th}$. However, a smaller threshold
 demands proportionally more shots at the frontier: to estimate $n \approx
 \delta_{\rm cut}$ reliably one needs $N \geq 1/\delta_{\rm cut}$ shots.
 A simulation floor of $10^{-6}$ would require $10^6$ shots merely to reach
-reliable estimates at the threshold — a cost that must be weighed against
+reliable estimates at the threshold, a cost that must be weighed against
 the physical benefit of the finer resolution.
 
 The two conditions converge at the same threshold $\varepsilon_{\rm th} =
@@ -864,14 +819,16 @@ we resolve the specific coupling deviation of interest.
 A broken bond leaves a causal signature in the operator wavefront: a
 red-blue sign flip in $\mathcal{L}(v,t)$ at its two endpoints, identifiable
 from the first wavefront crossing and robust across all center placements.
+Its spatio-temporal gradient $\nabla_{\!\rm st}\,\mathcal{L}$ reveals the same
+bond as a physical singularity — a gradient discontinuity with a characteristic
+diffraction pattern whose orientation encodes the bond direction.
 Three seismic scans, each firing a different set of centers simultaneously,
-cover all 84 bonds of the $7\times7$ lattice in 6 simulations and achieve
-20/20 single-bond detection. The integrated log-ratio $\Lambda(v)$ extends
-this to realistic coupling degradation ($\delta J=-0.20$) and multiple
-simultaneous faults, maintaining a per-bond detection rate above 90\% for
-up to 8 faults in a single pass. The iterative calibration loop then reduces
-any multi-bond problem to a sequence of single-bond problems, each solved at
-100\% accuracy, with wavefront convergence as the natural stopping criterion.
+cover all 84 bonds of the $7\times7$ lattice in 6 simulations. Both detection
+methods achieve 20/20 single-bond and 9/10 two-bond identification, with
+failures on complementary trials. The per-bond detection rate remains above
+90\% for up to 8 simultaneous faults in a single pass. An iterative protocol
+— declare, recalibrate, re-scan — progressively resolves multi-bond cases,
+with $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ as the natural stopping criterion.
 
 The measurability analysis shows that $N \geq 10^3$ shots suffice for reliable
 estimation of $n(v,t)$ at the detection threshold; resolving the specific
