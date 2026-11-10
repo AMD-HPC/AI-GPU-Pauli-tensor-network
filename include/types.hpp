@@ -84,7 +84,9 @@ static constexpr int D = PHYS_DIM;
  * Corner sites only have 2, edge sites have 3, interior have 4.
  * This constant sizes arrays — not all entries will be used.
  * ========================================================= */
-static constexpr int MAX_DEGREE = 4;
+#ifndef MAX_DEGREE
+#define MAX_DEGREE 4
+#endif
 
 /* =========================================================
  * Error-check macros
