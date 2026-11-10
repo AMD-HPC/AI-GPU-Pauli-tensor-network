@@ -323,7 +323,7 @@ encodes the bond direction directly (Figure~\ref{fig:dlogT}).
 \clearpage
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=\textwidth]{fig_delta_logT.png}
+\includegraphics[width=0.8\textwidth]{fig_delta_logT.png}
 \caption{$(\nabla_{\!\rm st}\,\mathcal{L})_{v\to u}(t)$,
 broken bond 9 (sites 11$\leftrightarrow$12), $\chi=50$.
 Red: baseline transfers more. Blue: perturbed transfers more.}
@@ -387,6 +387,38 @@ candidate, despite only 2 of 6 individual centers giving the correct answer.
 The wrong individual answers: centers 25 and 32 both correctly identify
 site 16 as a bond endpoint; their error is only in declaring the wrong
 adjacent bond. The ensemble product cancels these partial errors.
+
+The gradient field of Section~\ref{sec:logtransfer} provides a complementary
+bond score. For each directed bond $(v\to u)$, summing $|\delta\!\ln T_{v\to u}(t)|$
+above a threshold over all scans and cycles gives:
+\begin{equation}
+    \sigma(b) = \sum_{\rm scans} \sum_t
+    \bigl(|\delta\!\ln T_{v\to u}(t)| + |\delta\!\ln T_{u\to v}(t)|\bigr)
+    \cdot \mathbf{1}[|\delta\!\ln T| > \tau]
+    \label{eq:dlogT_score}
+\end{equation}
+with threshold $\tau=0.01$. The broken bond is the one with the largest
+asymmetry between forward and reverse directions. Table~\ref{tab:comparison}
+compares the two methods across bond counts.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{rcc}
+\toprule
+$k$ bonds & $S(b)$ from $\mathcal{L}$ & $\sigma(b)$ from $\nabla_{\rm st}\mathcal{L}$ \\
+\midrule
+1  & \textbf{20/20} & \textbf{20/20} \\
+2  & \textbf{9/10}  & \textbf{9/10}  \\
+4  & 3/5 ALL        & 1/5 ALL        \\
+8  & mixed          & avg 6/8        \\
+\bottomrule
+\end{tabular}
+\caption{Detection rate (ALL bonds correct) for the two bond scores.
+Both achieve 20/20 single-bond and 9/10 two-bond. They fail on
+\emph{different} trials at higher bond counts, making them complementary.}
+\label{tab:comparison}
+\end{table}
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Seismic Multi-Center Scanning}
