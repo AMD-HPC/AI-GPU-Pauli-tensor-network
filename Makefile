@@ -73,6 +73,13 @@ main_pauli_sweep_f64: $(SRC)/main_pauli_sweep.cpp $(HEADERS) include/scalar_blas
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DSCALAR_DOUBLE -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
 	@echo "Built $@ (heavy_hex_3x3, Scalar=double)"
 
+main_pauli_sweep_cubic3x3x3: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/cubic_3x3x3.hpp \
+	include/cubic_3x3x3_ideal_kick_eps010_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_cubic_3x3x3 -DMAX_DEGREE=6 -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
+	@echo "Built $@ (cubic_3x3x3, 3D, MAX_DEGREE=6)"
+
 main_pauli_sweep_cubic4x4x4: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
 	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
 	include/cubic_4x4x4.hpp \
