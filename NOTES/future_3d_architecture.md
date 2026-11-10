@@ -108,3 +108,37 @@ Step 2+ likely needs rank-3 to 5 as the wavefront spreads and more modes activat
 | 3D 5×5×5, rank-1 BP | 7×χ×D + 7×χ = tiny | ~1GB | ✓ GPU |
 
 The rank-k BP direction is the key to fitting 3D on GPU.
+
+---
+
+## Information-theoretic perspective
+
+The rank-k BP experiment is not just an engineering optimization — it probes
+the **information-theoretic lower bound** on what the simulation needs to
+represent for detection to succeed.
+
+The sign flip L(v,t) > 0 requires knowing n_pert(v) < n_base(v) — a binary
+comparison, not the full value. The dominant eigenvalue of the BP message
+encodes the strongest correlation in the environment. If the broken bond
+perturbation projects onto the dominant mode, rank-1 BP captures it.
+
+**The key question**: which eigenvalue of the BP message carries the broken
+bond signal? This becomes a spectral analysis of the detection observable:
+
+- If the signal is always in the top-1 eigenvalue: rank-1 BP is sufficient,
+  detection is a low-rank phenomenon, and 3D is feasible at minimal memory
+- If the signal is in top-3: rank-3 suffices, still 10-50× compression
+- If scattered: full BP needed, detection requires high-rank environment
+
+**The experiment design**:
+1. Run rank-k BP for k=1,2,5,10 on rect_7x7
+2. For each k: measure detection rate on mawgm_f64 trials
+3. For failing bonds at each k: compare which eigenvalue carries their signal
+4. Result: a spectral curve — detection rate vs rank-k
+
+This is potentially a small paper of its own:
+*"Minimum information for Hamiltonian fault detection: a rank-k BP analysis"*
+
+The question is not "does it work?" but "why does it work, and what is the
+minimum information required for it to work?" — connecting the empirical
+detection results to the information geometry of the tensor network.
