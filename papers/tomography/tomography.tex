@@ -273,8 +273,9 @@ field directly reveals the broken bond as a physical singularity.
 
 Since $n(v,t)$ is a scalar field on the graph, its discrete spatial gradient
 at site $v$ in the direction of neighbor $u$ is $(\nabla n)_{v\to u}(t) =
-n(u,t) - n(v,t)$. Working instead with $\ln n$ — to match the log-ratio
-structure of $\mathcal{L}$ — the \emph{spatio-temporal gradient} at directed
+n(u,t) - n(v,t)$. Since $n(v,t)$ is a probability, weight flows \emph{multiplicatively}
+through bonds: $n(u,t+1) = n(v,t)\cdot T_{v\to u}$, so the natural
+gradient is in log-space. Working with $\ln n$, the \emph{spatio-temporal gradient} at directed
 bond $(v \to u)$ from time $t$ to $t+1$ is:
 \begin{equation}
     (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
