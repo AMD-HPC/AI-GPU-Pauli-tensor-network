@@ -276,23 +276,29 @@ at site $v$ in the direction of neighbor $u$ is $(\nabla n)_{v\to u}(t) =
 n(u,t) - n(v,t)$. Since $n(v,t)$ is a probability, weight flows \emph{multiplicatively}
 through bonds: $n(u,t+1) = n(v,t)\cdot T_{v\to u}$, so the natural
 gradient is in log-space. The \emph{spatio-temporal gradient} of
-$\mathcal{L}$ at directed bond $(v \to u)$ from cycle $t$ to $t+1$ is
-then directly the \emph{delta log-transfer}:
-\begin{equation}
-    \delta\!\ln T_{v \to u}(t)
-    \;\equiv\; (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
-    \;=\; \mathcal{L}(u,\,t+1) - \mathcal{L}(v,\,t)
-    \;=\; \ln\frac{n_{\rm base}(u,t+1)}{n_{\rm base}(v,t)}
+$\mathcal{L}$ at directed bond $(v \to u)$ from cycle $t$ to $t+1$ is:
+\begin{align}
+    (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u}(t)
+    &\;=\; \mathcal{L}(u,\,t+1) - \mathcal{L}(v,\,t) \nonumber\\
+    &\;=\; \ln\frac{n_{\rm base}(u,t+1)}{n_{\rm base}(v,t)}
          -\ln\frac{n_{\rm pert}(u,t+1)}{n_{\rm pert}(v,t)}
     \;=\; \ln\frac{T^{\rm base}}{T^{\rm pert}}
+    \;\equiv\; \delta\!\ln T_{v \to u}(t)
     \label{eq:dlogT}
+\end{align}
+At each site $v$, collecting this quantity over all neighbors
+$u_1, u_2, \ldots$ (up to 4 for a rectangular lattice) gives a
+\emph{vector field}:
+\begin{equation}
+    (\nabla_{\!\rm st}\,\mathcal{L})_v(t)
+    \;=\; \bigl[\,(\nabla_{\!\rm st}\,\mathcal{L})_{v \to u_1}(t),\;
+                  (\nabla_{\!\rm st}\,\mathcal{L})_{v \to u_2}(t),\;
+                  \ldots\,\bigr]
+    \label{eq:gradvec}
 \end{equation}
-It is a log-likelihood ratio at each directed bond transition: positive
-when the baseline transfers more than the perturbed run, negative when
-the perturbed transfers more. At each site $v$, the collection
-$\{\delta\!\ln T_{v \to u}(t)\}_{u \sim v}$ over all neighbors $u$ is
-a \emph{vector} — the gradient of $\mathcal{L}$ at $v$ in the
-spatio-temporal sense.
+one component per bond direction. Each component is a log-likelihood
+ratio: positive when the baseline transfers more than the perturbed run
+along that bond, negative when the perturbed transfers more.
 
 A broken bond $(u,v)$ is a \emph{singularity} in this gradient field.
 At the first wavefront crossing (cycle $t$), the baseline flows through
@@ -315,35 +321,38 @@ encodes the bond direction directly (Figure~\ref{fig:dlogT}).
 
 \begin{figure*}[!t]
 \centering
-\includegraphics[width=\textwidth]{fig_delta_logT.png}
-\caption{Spatio-temporal gradient field $\delta\!\ln T_{v \to u}(t) =
-(\nabla_{\!\rm st}\,\mathcal{L})_{v\to u}(t)$ for a horizontal broken bond
-(bond 9, sites 11$\leftrightarrow$12, top row) and a vertical broken bond
-(bond 52, sites 11$\leftrightarrow$18, bottom row),
-rect $7\times7$, $\chi=50$.
-Each column shows one cycle transition: $t=1\to2$, $t=2\to3$, $t=3\to4$.
-Red arrows: $\delta\!\ln T > 0$ (baseline transfers more).
-Blue arrows: $\delta\!\ln T < 0$ (perturbed transfers more).
-Gold bar: broken bond.
-By $t=3\to4$ the diffraction pattern is fully developed: the shadow
-diagonal (blue) and rerouted diagonal (red) point at the broken bond
-and encode its orientation. The horizontal and vertical bonds produce
-perpendicular diagonal patterns, demonstrating that the gradient field
-carries directional information absent from the scalar $\mathcal{L}$.}
+\includegraphics[width=0.52\textwidth]{fig_delta_logT.png}
+\caption{Spatio-temporal gradient field $(\nabla_{\!\rm st}\,\mathcal{L})_{v\to u}(t)$
+for broken bond 9 (sites 11$\leftrightarrow$12, horizontal),
+rect $7\times7$, $\chi=50$, scan 1 (corners+center).
+Each row shows one cycle transition.
+Red arrows: $\delta\!\ln T > 0$ (baseline transfers more through the bond).
+Blue arrows: $\delta\!\ln T < 0$ (perturbed transfers more in reverse).
+Gold bar: broken bond. Gold circles: bond endpoints. Gold stars: scan centers.
+\textbf{Top} ($t=1\to2$): the wavefront first crosses the broken bond;
+large red arrow at bond 11$\to$12 is the primary signal.
+\textbf{Middle} ($t=2\to3$): wall-face accumulation at site 11 reverses
+the dominant direction; blue arrows appear as the perturbed run now
+transfers more from the enriched wall face.
+\textbf{Bottom} ($t=3\to4$): the diffraction pattern is fully developed —
+a blue diagonal (shadow path) and a red diagonal (rerouted path) emerge,
+pointing at the broken bond and encoding its orientation.}
 \label{fig:dlogT}
 \end{figure*}
 
-The gradient field $\delta\!\ln T$ has several properties that distinguish
-it from $\mathcal{L}(v,t)$. It is defined on \emph{bonds} rather than sites,
-so the broken bond appears directly as a gradient discontinuity rather than
-through its effect on neighboring sites. It carries \emph{directional}
-information — the sign asymmetry between forward and reverse components
-identifies which side is the wall face and which is the shadow, and the
-diffraction pattern orientation encodes the bond direction. The normalization
-by $n(v,t)$ suppresses the dominant-site bias that affects site-based
-metrics. And the gradient is free of Trotter color-ordering artifacts:
-$n(v,t)$ and $n(v,t+1)$ are physical observables independent of gate
-execution order, so their log-ratio inherits no Trotter artifact.
+The gradient field $\nabla_{\!\rm st}\,\mathcal{L}$ has several properties
+that distinguish it from the scalar $\mathcal{L}(v,t)$. It is defined on
+\emph{bonds} rather than sites, so the broken bond appears directly as a
+gradient discontinuity rather than through its effect on neighboring sites.
+It carries \emph{directional} information — the sign asymmetry between
+forward and reverse components identifies which side is the wall face and
+which is the shadow, and the diffraction pattern orientation encodes the
+bond direction. The normalization by $n(v,t)$ suppresses the dominant-site
+bias that affects site-based metrics. Systematic artifacts from the
+simulation — Trotter color ordering, BP approximation, or any other
+effect present in both runs — cancel in the ratio $T_{\rm base}/T_{\rm pert}$,
+whether $n_{\rm base}$ and $n_{\rm pert}$ come from two simulations or
+from a simulation and hardware shots.
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{Bond Detection}
