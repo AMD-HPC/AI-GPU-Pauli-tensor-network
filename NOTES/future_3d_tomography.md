@@ -110,3 +110,50 @@ Estimate ~2-4GB per state → fits on MI100 32GB.
 ## Multi-GPU simulation (future)
 
 See separate note: `future_multigpu_simulation.md`
+
+---
+
+## First experiments (2026-11-10)
+
+### What we built
+- `include/cubic_3x3x3.hpp` and `cubic_4x4x4.hpp`: grid classes
+- PTM data files for both
+- `data/graphs/cubic_3x3x3.json` and `cubic_4x4x4.json`
+- Makefile targets with `-DMAX_DEGREE=6`
+
+### Key findings
+
+**χ^6 is brutal**: Interior degree-6 sites have tensors of size χ^6×D.
+- χ=20, 3×3×3: workspace 4GB → fits but step 3 gate_err=0.11
+- χ=50, 3×3×3: OOM
+- χ=50, 4×4×4: OOM
+
+**Boundary reflection at step 2 for 3×3×3**: 
+The 3×3×3 lattice is too small — wavefront from center (1,1,1) reaches
+all 6 boundary walls at cycle 2 and reflects. The interference is physical,
+not a BP artifact. BP=100/0.67 at step 2 is both BP loops AND physical
+reflection compounding.
+
+**Only step 1 is clean for 3×3×3**: bp=4, gate_err=0 at step 1.
+The wavefront correctly shows asymmetry between z-neighbors due to
+color-class ordering (colors 4,5 fire last in cycle 1).
+
+**4×4×4 step 1**: also clean (bp=5, gate_err=0 at χ=20, center=(1,1,1)).
+One more hop before boundary → step 2 may still be usable.
+
+**Practical operating point**: χ=20, 1-2 cycles, single interior center.
+Step 1 gives converged physics in 3D — sufficient for detection if the
+broken bond is 1 hop from the center.
+
+### This is exploratory
+- 5×5×5 would be symmetric but doesn't fit in one GPU at any useful χ
+- χ^6 fundamentally limits 3D — for serious 3D work need multi-GPU or
+  lighter tensor network (e.g., tree TN or MPS along one axis)
+- The key question to explore: can a single broken bond be detected
+  from step-1 data alone in 3D?
+
+### Next steps
+1. Visualize 3D fields (layer-by-layer: z=0,1,2 panels)
+2. Inject a single broken bond, run with χ=20, 2 cycles
+3. Check if δlnT score identifies the bond at step 1
+4. If yes: 3D tomography works in principle, just limited by χ
