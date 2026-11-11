@@ -25,8 +25,8 @@
 
 \begin{abstract}
 We introduce a model-free method for Hamiltonian tomography based on the
-operator spreading wavefront. Given two tensor network simulations of the same quantum lattice (one with
-the nominal Hamiltonian and one with one or more perturbed bonds), the signed
+operator spreading wavefront. Given two tensor network simulations of the same quantum lattice
+(one with the nominal Hamiltonian and one with one or more perturbed bonds), the signed
 cross-entropy of the non-identity Pauli weight field
 $\mathcal{L}(v,t) = -\ln(n_{\rm pert}/n_{\rm base})$ identifies each perturbed
 bond by its causal signature: a red-blue sign flip at the two endpoints, visible
@@ -37,8 +37,8 @@ margin over the next candidate on a $7\times7$ lattice. Extending to realistic
 coupling degradation ($\delta J = -0.20$) and up to 8 simultaneous faults, the
 integrated log-ratio $\Lambda(v) = \ln(\mathcal{B}(v)/\mathcal{N}(v))$ achieves
 a per-bond detection rate above 90\% in a single seismic pass using only 6
-simulations. An iterative calibration loop reduces multi-bond detection to a
-sequence of single-bond problems, each solved at 100\% accuracy.
+simulations. An iterative re-scan strategy progressively resolves multi-bond cases
+as the signal clears with each recalibration pass.
 The method requires no model assumptions and no knowledge of the perturbation
 type or magnitude; the detection is deliberately blind.
 \end{abstract}
@@ -794,8 +794,7 @@ Note that this is a stronger requirement than simply estimating $\hat{n}_{\rm pe
 reliably: we need the signal $\delta n$ to be measurably larger than the estimator
 noise $\sigma(\hat{n}) \approx \sqrt{n_{\rm base}/N}$. Setting $\delta n \geq
 \sigma(\hat{n})$ gives the minimum detectable coupling deviation.
-We emphasize that the present work performs \emph{detection} — identifying the
-location and existence of a broken bond from wavemap patterns — not
+We emphasize that the present work performs \emph{detection}: identifying the location and existence of a broken bond from wavemap patterns, not
 \emph{estimation} of $\delta J$ from the numerical values of $n(v,t)$.
 Quantitative estimation of the coupling deviation from the measured $\hat{n}_{\rm pert}$
 is a harder and separate problem, left for future work.
@@ -820,14 +819,14 @@ A broken bond leaves a causal signature in the operator wavefront: a
 red-blue sign flip in $\mathcal{L}(v,t)$ at its two endpoints, identifiable
 from the first wavefront crossing and robust across all center placements.
 Its spatio-temporal gradient $\nabla_{\!\rm st}\,\mathcal{L}$ reveals the same
-bond as a physical singularity — a gradient discontinuity with a characteristic
+bond as a physical singularity: a gradient discontinuity with a characteristic
 diffraction pattern whose orientation encodes the bond direction.
 Three seismic scans, each firing a different set of centers simultaneously,
 cover all 84 bonds of the $7\times7$ lattice in 6 simulations. Both detection
 methods achieve 20/20 single-bond and 9/10 two-bond identification, with
 failures on complementary trials. The per-bond detection rate remains above
 90\% for up to 8 simultaneous faults in a single pass. An iterative protocol
-— declare, recalibrate, re-scan — progressively resolves multi-bond cases,
+(declare, recalibrate, re-scan) progressively resolves multi-bond cases,
 with $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ as the natural stopping criterion.
 
 The measurability analysis shows that $N \geq 10^3$ shots suffice for reliable
