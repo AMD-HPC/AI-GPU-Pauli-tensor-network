@@ -159,3 +159,51 @@ interior for detection purposes.
 The onion peel is not a heuristic approximation — it is the **natural
 computational structure** for wavefront detection: advance the boundary,
 read the signal, discard what's behind.
+
+---
+
+## Implementation details (to resolve before coding)
+
+### 1. Peel thickness
+
+Not necessarily 1 layer. BP message from layer i-1 to layer i depends on
+messages from layer i-2 — a minimum thickness of 2 may be required for
+correct BP sweeps. The peel thickness τ should satisfy:
+- τ ≥ 1 (minimum: one active layer)
+- τ ≥ correlation length of BP messages (physics-dependent)
+- τ = 2-3 is a safe conservative choice
+
+Practically: keep layers [i-τ, i-τ+1, ..., i] active, discard [0, ..., i-τ-1].
+The v_hop parameter already encodes the physics of this — the peel thickness
+should be calibrated to match the BP message correlation length.
+
+### 2. Site attribute for gate/BP computation
+
+Currently: `chi_alloc` in `Grid::Bond` controls buffer size (set by `apply_lightcone()`).
+
+Extension: add an `active_mode` attribute to sites:
+- `ACTIVE_FULL` (chi_alloc = chi_max): full tensors, full Trotter gates, full BP
+- `ACTIVE_MESSAGE` (chi_alloc = chi_message): store only outward BP messages,
+  no Trotter gate application, only BP message updates from inner → outer direction
+- `ACTIVE_NONE` (chi_alloc = 0): completely discarded, zero memory
+
+The `apply_lightcone()` function in `grid.hpp` is the natural place to implement
+this — extend it to accept a `peel_thickness` parameter and assign modes accordingly.
+
+The binary would add `--mode=onion --peel=2` flags to control this.
+
+### 3. Trotter gate application rule
+
+A gate on bond (u,v) is applied only if at least one of u,v is `ACTIVE_FULL`.
+If both are `ACTIVE_MESSAGE` or `ACTIVE_NONE`, skip the gate — the effect has
+already been encoded in the outward BP messages.
+
+### 4. BP sweep rule
+
+BP messages flow in both directions. In onion peel mode:
+- Inner → outer messages: computed from ACTIVE_MESSAGE sites, used to initialize
+  the next peel layer
+- Outer → inner messages: not computed (interior is discarded)
+
+This breaks the standard bidirectional BP convergence, but at the boundary
+where we measure n(v,t), only the inward-to-outward messages matter.
