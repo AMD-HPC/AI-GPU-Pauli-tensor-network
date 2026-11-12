@@ -16,6 +16,34 @@ four lattice sizes (4×4 → 7×7 → 10×10 → 11×11), simulated on AMD MI100
 Color encodes log₁₀ n(v,t); white = below threshold. The wavefront is the leading
 edge of quantum entanglement propagation.*
 
+## Why n(v,t)?
+
+The non-identity Pauli weight $n(v,t)$ is the central observable of this repository.
+The choice is not arbitrary — it is the **only computationally tractable observable
+for large quantum lattices** in any dimension.
+
+**Global observables** such as the autocorrelation $C(t) = \langle Z_c(t) Z_c(0) \rangle$
+require contracting the full tensor network — a cost of O(χ^(2×degree)) per site.
+In 2D (degree 4): O(χ^8). In 3D (degree 6): O(χ^12). At χ=50 this is intractable.
+
+**Local observables** such as $n(v,t) = \sum_{P: P_v \neq I} c_P(t)^2$ are computed
+via belief propagation as a product of incoming messages — cost O(χ^degree) per site.
+In 2D: O(χ^4). In 3D: O(χ^6). Both tractable at useful χ.
+
+This is not a limitation — it is the right physics. The wavefront propagates
+locally, correlations are local, and detection is local (frontier crossing at each site).
+$n(v,t)$ is the natural observable because it respects the locality that makes
+belief propagation feasible and accurate.
+
+**Two inferences from one measurement:**
+- **Noise characterization** (MPF papers): known Hamiltonian → infer noise γ from n(v,t)
+- **Hamiltonian tomography** (this paper): known noise baseline → infer δJ from n(v,t)
+
+Both use the same circuits, the same hardware protocol, and the same observable.
+In 3D, $n(v,t)$ via local BP contraction is not just the best path — it is the
+only computationally tractable path to error mitigation and fault detection
+at any useful bond dimension.
+
 ## Papers
 
 | Paper | Directory | arXiv |
