@@ -30,10 +30,10 @@ In 2D (degree 4): O(χ^8). In 3D (degree 6): O(χ^12). At χ=50 this is intracta
 via belief propagation as a product of incoming messages — cost O(χ^degree) per site.
 In 2D: O(χ^4). In 3D: O(χ^6). Both tractable at useful χ.
 
-This is not a limitation — it is the right physics. The wavefront propagates
-locally, correlations are local, and detection is local (frontier crossing at each site).
-$n(v,t)$ is the natural observable because it respects the locality that makes
-belief propagation feasible and accurate.
+The wavefront propagates locally, correlations are local, and detection is local
+(frontier crossing at each site). $n(v,t)$ is the natural observable for quantum
+lattices precisely because it respects the locality that makes belief propagation
+feasible and accurate.
 
 **Two inferences from one measurement:**
 - **Noise characterization** (MPF papers): known Hamiltonian → infer noise γ from n(v,t)
