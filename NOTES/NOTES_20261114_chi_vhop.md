@@ -59,3 +59,30 @@ as why δlnT is scale-invariant across grid sizes.
 **Production operating point**: chi=40 + v_hop=0.9 + period-6
 - 20% VRAM, 63s/scan, score 5.86, 94% single-bond detection
 - Higher chi wastes memory and time with no detection benefit
+
+## Full comparison table (period-6, scan 1, bond 200, step 3)
+
+| chi | v_hop | VRAM | Step 3 | BP iters/residual | gate_err | δlnT score | Detection |
+|-----|-------|------|--------|-------------------|----------|------------|---------|
+| 40  | none  | 53%  | 81s    | 100 / 3.72e+02    | 6.45e-05 | 5.49       | ✓ |
+| 40  | 0.9   | 20%  | 63s    | 100 / 1.35e+02    | 6.46e-05 | 5.86       | ✓ |
+| 60  | 0.9   | 98%  | 84s    | 100 / 4.30e+02    | 1.60e-05 | 5.84       | ✓ |
+
+## gate_err as chi quality indicator
+
+gate_err drops from 6.5e-05 (chi=40) to 1.6e-05 (chi=60) — chi=60 represents
+the internal dynamics 4× more accurately. This matters for C(t) and deep interior
+physics, but NOT for detection.
+
+**Why**: detection reads L(v,t) at the frontier where chi≈1 by definition.
+The frontier is the first-arrival wavefront — Pauli weight is just crossing the
+threshold, the state is barely entangled. BP messages at the frontier are rank-1.
+Higher chi improves the interior (gate_err) but the frontier is chi-free.
+
+This is the fundamental reason δlnT is chi-invariant for detection:
+the signal lives at the frontier, the frontier lives at chi=1,
+chi is irrelevant to anything measured at chi=1.
+
+**Practical implication**: use chi just large enough to faithfully propagate
+the wavefront to the frontier (chi=40 suffices). Save the chi budget for
+other uses (larger grid, more steps, more centers).
