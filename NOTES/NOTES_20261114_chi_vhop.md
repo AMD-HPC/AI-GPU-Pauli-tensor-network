@@ -47,3 +47,15 @@ Parameterized for chi sweeps. Same 2-scan period-6 layout, 2-GPU parallel.
 1. Check if chi=60 improves detection score vs chi=40
 2. Run full 63-trial scaling study at chi=60 — does 94% become 97%+?
 3. 2-GPU simulation for 1024 qubits (32x32): same period-6, 2 GPUs split grid
+
+## Chi=60 result (2026-11-14)
+
+Score: 5.84 at chi=60 vs 5.86 at chi=40 — essentially identical.
+
+**Conclusion**: δlnT is insensitive to chi once the wavefront is faithfully
+represented. The ratio n_base/n_pert cancels the absolute scale — same argument
+as why δlnT is scale-invariant across grid sizes.
+
+**Production operating point**: chi=40 + v_hop=0.9 + period-6
+- 20% VRAM, 63s/scan, score 5.86, 94% single-bond detection
+- Higher chi wastes memory and time with no detection benefit
