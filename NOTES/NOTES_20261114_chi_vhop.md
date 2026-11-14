@@ -1,0 +1,49 @@
+# Chi + v_hop Budget Optimization (2026-11-14)
+
+## Key insight
+
+chi saturates at step 3 even at chi=40 with 20% VRAM (period-6 + v_hop=0.9).
+This means the chi budget is not fully used — we can push chi higher at the
+same sparsity to get better accuracy.
+
+## Multi-center lightcone union (new feature)
+
+`include/grid.hpp`: new overload `apply_lightcone(const std::vector<int>& centers, ...)`
+
+Algorithm:
+1. Deactivate all bonds: `chi_alloc = 1`
+2. For each center: BFS, activate bonds in cone (OR rule)
+3. Union is monotonic — never deactivate once activated
+
+Wired in `examples/main_pauli_sweep.cpp`: when `centers.size() > 1`,
+calls multi-center overload automatically.
+
+## Chi sweep results (period-6, v_hop=0.9, bond 200)
+
+| chi | VRAM | Step 3 time | BP residual | δlnT score | Detection |
+|-----|------|-------------|-------------|------------|---------|
+| 40  | 20%  | 63s         | 135         | 5.86       | ✓ |
+| 60  | 98%  | TBD         | TBD         | TBD        | TBD |
+| 70  | OOM  | —           | —           | —          | — |
+
+chi=60 is the maximum at chi=70 OOM. 98% VRAM is tight but runs.
+
+## Operating points for 16x32 period-6 seismic
+
+| chi | v_hop | VRAM | Use case |
+|-----|-------|------|---------|
+| 40  | none  | 53%  | fast seismic, no savings |
+| 40  | 0.9   | 20%  | production: good BP, good detection |
+| 60  | 0.9   | 98%  | max chi: best accuracy, tight memory |
+
+## Script
+
+`scripts/run_seismic_period6_chi_16x32.sh <bond> <J_pert> [trial] [chi] [v_hop]`
+
+Parameterized for chi sweeps. Same 2-scan period-6 layout, 2-GPU parallel.
+
+## Next
+
+1. Check if chi=60 improves detection score vs chi=40
+2. Run full 63-trial scaling study at chi=60 — does 94% become 97%+?
+3. 2-GPU simulation for 1024 qubits (32x32): same period-6, 2 GPUs split grid
