@@ -264,9 +264,10 @@ def bfs_detect(logdir, plan, g, adj, all_sites, site_idx, v_hop,
         # No Voronoi filter — pass ALL bonds to each scan
         all_bonds = set(range(len(g['edges'])))
 
+        prefix = sc.get('log_prefix', f'scan{sid}')
         try:
-            _, _, db = parse_pauli_log(f'{logdir}/scan{sid}_base.log', 'NL')
-            _, _, dp = parse_pauli_log(f'{logdir}/scan{sid}_pert.log', 'NL')
+            _, _, db = parse_pauli_log(f'{logdir}/{prefix}_base.log', 'NL')
+            _, _, dp = parse_pauli_log(f'{logdir}/{prefix}_pert.log', 'NL')
         except Exception as e:
             if verbose: print(f"  Scan {sid}: ERROR {e}")
             continue

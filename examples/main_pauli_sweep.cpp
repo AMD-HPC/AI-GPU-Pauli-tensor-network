@@ -287,7 +287,10 @@ int main(int argc, char** argv) {
             printf("#   %s: v_hop=%.4f  %.1f MB  (%.0f%% saving)\n",
                    state_names[g], v_hops[g], lc_mb,
                    100.0f*(1.0f - lc_mb/full_mb));
-            grids[g]->apply_lightcone(center, n_steps, v_hops[g]);
+            if (centers.size() > 1)
+                grids[g]->apply_lightcone(centers, n_steps, v_hops[g]);
+            else
+                grids[g]->apply_lightcone(center, n_steps, v_hops[g]);
         }
     }
 

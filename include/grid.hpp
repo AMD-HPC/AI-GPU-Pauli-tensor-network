@@ -367,6 +367,35 @@ public:
         }
     }
 
+    // Multi-center lightcone: union of per-center cones.
+    // Step 1: deactivate all bonds (chi_alloc=1).
+    // Step 2: for each center, activate bonds where either endpoint is in cone.
+    // Result: only bonds in the union of all cones get chi_max.
+    void apply_lightcone(const std::vector<int>& centers, int n_steps, float v_hop,
+                         bool verbose=false) {
+        if (centers.empty() || v_hop <= 0.0f) return;
+        // Step 1: deactivate all
+        for (auto& b : bonds) b.chi_alloc = 1;
+        // Step 2: union — activate bonds in each center's cone
+        for (int center : centers) {
+            auto dist = bfs(center);
+            for (auto& b : bonds) {
+                if (b.chi_alloc == chi_max) continue;  // already active
+                bool a_in = in_lightcone(dist[b.site_a], n_steps, v_hop);
+                bool b_in = in_lightcone(dist[b.site_b], n_steps, v_hop);
+                if (a_in || b_in) b.chi_alloc = chi_max;
+            }
+        }
+        if (verbose) {
+            int n_full = 0;
+            for (auto& b : bonds) if (b.chi_alloc == chi_max) n_full++;
+            printf("[Lightcone] %d centers n_steps=%d v_hop=%.4f: "
+                   "%d/%d bonds at chi_max=%d, %d at chi_alloc=1\n",
+                   (int)centers.size(), n_steps, v_hop,
+                   n_full, n_bonds, chi_max, n_bonds - n_full);
+        }
+    }
+
     // Memory estimate with lightcone allocation (MB)
     // Uses BFS distances already computed, or recomputes from center.
     float lightcone_memory_mb(int center, int n_steps, float v_hop) const {

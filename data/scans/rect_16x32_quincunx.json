@@ -1,0 +1,67 @@
+{
+  "graph": "data/graphs/rect_16x32.json",
+  "note": "Sparse quincunx: 3 horizontal lines staggered, Roman cohort style",
+  "placements": [
+    {
+      "scan": 1,
+      "centers": [
+        1,
+        9,
+        17,
+        25,
+        161,
+        169,
+        177,
+        185,
+        321,
+        329,
+        337,
+        345,
+        481,
+        489,
+        497,
+        505
+      ],
+      "log_prefix": "scan1",
+      "label": "line1"
+    },
+    {
+      "scan": 2,
+      "centers": [
+        69,
+        77,
+        85,
+        93,
+        229,
+        237,
+        245,
+        253,
+        389,
+        397,
+        405,
+        413
+      ],
+      "log_prefix": "scan2",
+      "label": "line2"
+    },
+    {
+      "scan": 3,
+      "centers": [
+        131,
+        139,
+        147,
+        155,
+        291,
+        299,
+        307,
+        315,
+        451,
+        459,
+        467,
+        475
+      ],
+      "log_prefix": "scan3",
+      "label": "line3"
+    }
+  ]
+}

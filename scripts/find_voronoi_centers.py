@@ -54,10 +54,10 @@ def detect_grid_shape(g):
         a, b = get_bond_sites(e)
         adj.setdefault(a, []).append(b)
         adj.setdefault(b, []).append(a)
-    # ncols = max number of sites in a consecutive horizontal run
-    # Heuristic: ncols = sqrt(max_s) rounded
-    import math
-    ncols = int(round(math.sqrt(max_s)))
+    # ncols = length of first row: walk from site 1 along step-1 bonds
+    ncols = 1
+    while (ncols + 1) in adj.get(ncols, []):
+        ncols += 1
     nrows = (max_s + ncols - 1) // ncols
     return nrows, ncols
 

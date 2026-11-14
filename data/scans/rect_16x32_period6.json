@@ -1,0 +1,53 @@
+{
+  "graph": "data/graphs/rect_16x32.json",
+  "note": "2-scan period-6: 18+15 centers, opposing wavefronts meet in 2 steps",
+  "placements": [
+    {
+      "scan": 1,
+      "centers": [
+        1,
+        7,
+        13,
+        19,
+        25,
+        31,
+        193,
+        199,
+        205,
+        211,
+        217,
+        223,
+        385,
+        391,
+        397,
+        403,
+        409,
+        415
+      ],
+      "log_prefix": "scan1",
+      "label": "period6_A"
+    },
+    {
+      "scan": 2,
+      "centers": [
+        100,
+        106,
+        112,
+        118,
+        124,
+        292,
+        298,
+        304,
+        310,
+        316,
+        484,
+        490,
+        496,
+        502,
+        508
+      ],
+      "log_prefix": "scan2",
+      "label": "period6_B"
+    }
+  ]
+}

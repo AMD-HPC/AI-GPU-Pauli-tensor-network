@@ -24,8 +24,10 @@ Usage:
 """
 
 import argparse
+import glob
 import json
 import numpy as np
+import os
 import sys
 sys.path.insert(0, 'scripts')
 from searcher import load_graph, build_adj, get_bond_sites, parse_pauli_log
@@ -33,17 +35,35 @@ from searcher import load_graph, build_adj, get_bond_sites, parse_pauli_log
 FLOOR = 1e-7
 
 
-def compute_scores(logdir, plan, g, site_idx, thr_signal):
-    """Compute δlnT bond scores from all scans."""
+def collect_log_pairs(logdir, plan=None):
+    """Return list of (base_log, pert_log) pairs from either a plan or a directory glob."""
+    pairs = []
+    if plan is not None:
+        for sc in plan['placements']:
+            sid = sc['scan']
+            b = f'{logdir}/scan{sid}_base.log'
+            p = f'{logdir}/scan{sid}_pert.log'
+            if os.path.exists(b) and os.path.exists(p):
+                pairs.append((b, p))
+    else:
+        for b in sorted(glob.glob(f'{logdir}/**/*_base.log', recursive=True) +
+                        glob.glob(f'{logdir}/*_base.log')):
+            p = b.replace('_base.log', '_pert.log')
+            if os.path.exists(p):
+                pairs.append((b, p))
+    return pairs
+
+
+def compute_scores(pairs, g, site_idx, thr_signal):
+    """Compute δlnT bond scores from any list of (base, pert) log pairs."""
     n_bonds = len(g['edges'])
     scores = np.zeros(n_bonds)
 
-    for sc in plan['placements']:
-        sid = sc['scan']
+    for base_log, pert_log in pairs:
         try:
-            _, _, db = parse_pauli_log(f'{logdir}/scan{sid}_base.log', 'NL')
-            _, _, dp = parse_pauli_log(f'{logdir}/scan{sid}_pert.log', 'NL')
-        except Exception as e:
+            _, _, db = parse_pauli_log(base_log, 'NL')
+            _, _, dp = parse_pauli_log(pert_log, 'NL')
+        except Exception:
             continue
 
         n_steps = min(db.shape[0], dp.shape[0]) - 1
@@ -55,7 +75,6 @@ def compute_scores(logdir, plan, g, site_idx, thr_signal):
                 u, v = get_bond_sites(g['edges'][bi])
                 su = site_idx[u]; sv = site_idx[v]
 
-                # Both directed versions: u→v and v→u
                 for src, dst in [(su, sv), (sv, su)]:
                     if (nb_t[src] > FLOOR and np_t[src] > FLOOR and
                             nb_t1[dst] > FLOOR and np_t1[dst] > FLOOR):
@@ -70,7 +89,8 @@ def compute_scores(logdir, plan, g, site_idx, thr_signal):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--logdir',  required=True)
-    ap.add_argument('--plan',    default='data/scans/rect_7x7_scan_3gpu.json')
+    ap.add_argument('--plan',    default=None,
+                    help='Scan plan JSON (optional); if omitted, all *_base/pert.log under --logdir are used')
     ap.add_argument('--graph',   default='data/graphs/rect_7x7.json')
     ap.add_argument('--broken',  default=None)
     ap.add_argument('--top_k',   type=int,   default=1)
@@ -79,7 +99,7 @@ def main():
     args = ap.parse_args()
 
     g    = load_graph(args.graph)
-    plan = json.load(open(args.plan))
+    plan = json.load(open(args.plan)) if args.plan else None
     adj, bond_map, all_sites = build_adj(g)
     site_idx = {s: i for i, s in enumerate(all_sites)}
 
@@ -88,7 +108,9 @@ def main():
         br = json.load(open(args.broken))
         true_bonds = set(br.get('bonds', [br.get('bond', -1)]))
 
-    scores  = compute_scores(args.logdir, plan, g, site_idx, args.thr)
+    pairs   = collect_log_pairs(args.logdir, plan)
+    print(f"Log pairs found: {len(pairs)}")
+    scores  = compute_scores(pairs, g, site_idx, args.thr)
     ranked  = np.argsort(-scores)
     declared = set(int(ranked[i]) for i in range(args.top_k))
 
