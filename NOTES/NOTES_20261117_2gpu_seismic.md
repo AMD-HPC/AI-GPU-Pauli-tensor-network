@@ -75,3 +75,55 @@ The 2-GPU pipeline is validated. Steps to 32×32:
 3. Extend main_pauli_sweep_2gpu to use two 17×32 grids
 4. Run period-6 seismic on 32×32
 5. Validate detection
+
+## Pre-requisite for 32×32: Parallel BP with full convergence
+
+### Current protocol (incorrect order)
+```
+BP(GPU0) → BP(GPU1)     ← sequential, independent
+P2P exchange
+one extra sweep each    ← sequential, only 1 sweep
+```
+
+### Correct protocol
+```
+BP(GPU0) || BP(GPU1)    ← parallel (needs rocBLAS handle-per-thread)
+P2P exchange
+BP(GPU0) || BP(GPU1)    ← parallel, full convergence with boundary info
+```
+
+### Why this matters
+- Current: boundary sites get only 1 sweep after exchange → not converged
+- Correct: full re-convergence after exchange → approaches global BP fixed point
+- Score difference (1.45 vs 5.49) is mostly from this — BP quality, not Trotter
+- Trotter is exact (max_diff=0 validated)
+- δlnT cancels common BP errors in ratio, so detection works despite degraded BP
+- But higher BP quality → higher score → more robust detection
+
+### rocBLAS handle-per-thread fix
+Each GPU needs its own rocBLAS handle created on the thread that uses it:
+```cpp
+std::thread t0([chi_max, ...](){
+    hipSetDevice(0);
+    rocblas_handle h; rocblas_create_handle(&h);
+    // run BP(GPU0) with handle h
+    rocblas_destroy_handle(h);
+});
+std::thread t1([chi_max, ...](){
+    hipSetDevice(1);
+    rocblas_handle h; rocblas_create_handle(&h);
+    // run BP(GPU1) with handle h
+    rocblas_destroy_handle(h);
+});
+t0.join(); t1.join();
+```
+Creating/destroying handles per BP call is acceptable (BP is expensive, handle
+creation is cheap). For production: persistent handle pool per thread.
+
+### Implementation plan (next session, before 32×32)
+1. Add rocBLAS handle-per-thread to BP section of 2-GPU binary
+2. Run BP(GPU0) || BP(GPU1) in parallel threads
+3. P2P exchange boundary messages
+4. Run full bp_converge(GPU0) || bp_converge(GPU1) in parallel threads
+5. Validate: score should approach single-GPU 5.49 for bond 200
+6. Only then proceed to 32×32
