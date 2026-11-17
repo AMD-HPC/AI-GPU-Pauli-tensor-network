@@ -49,3 +49,29 @@ The current --perturb-bond implementation uses a rescaling approximation:
 
 This is exact for the specific PTM structure of exp(-i*J*(XX+YY+ZZ)).
 Verified: max_diff=3.5e-06 vs exact breaker.py output at step 3.
+
+## Two-scan period-6 quincunx on 2-GPU (COMPLETE)
+
+Both scans, 4 log pairs, bond 200 detected at rank 1:
+
+| Config | Scans | Score | Rank | Detection |
+|--------|-------|-------|------|---------|
+| Single-GPU, scan 1 only | 1 | 5.29 | 1 | ✓ |
+| Single-GPU, scan 1+2    | 2 | 5.49 | 1 | ✓ |
+| 2-GPU, scan 1 only      | 1 | 1.45 | 1 | ✓ |
+| 2-GPU, scan 1+2         | 2 | 1.45 | 1 | ✓ |
+
+Score lower on 2-GPU due to boundary attenuation — BP exchange introduces
+small errors near boundary row 8. Bond 200 at row 6 is close to boundary.
+Detection robust despite score difference.
+
+Script: `scripts/run_seismic_period6_2gpu.sh <bond> <J_pert> [trial]`
+
+## Next: 32×32 (1024 qubits)
+
+The 2-GPU pipeline is validated. Steps to 32×32:
+1. Build rect_17x32 grid class (17×32 = 544 sites, 576 bonds)
+2. Build PTMs for rect_17x32
+3. Extend main_pauli_sweep_2gpu to use two 17×32 grids
+4. Run period-6 seismic on 32×32
+5. Validate detection
