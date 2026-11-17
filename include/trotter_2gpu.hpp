@@ -92,21 +92,24 @@ inline void do_trotter_one_color(
     Workspace&              ws,
     int                     chi_max,
     float                   cutoff,
+    hipStream_t             stream = nullptr,  // async stream (nullptr = default)
     LayerMetrics*           lm = nullptr)
 {
-    // Snapshot messages for this color
+    // Snapshot messages for this color (async on stream)
     for (auto& b : grid.bonds) ctx.frozen_chi[b.id] = b.chi;
     for (auto& bond : grid.bonds) {
         int chi = bond.chi;
         size_t sz = (size_t)chi * chi * sizeof(Scalar);
         for (int d = 0; d < 2; d++) {
             int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
-            HIP_CHECK(hipMemcpy(ctx.frozen_msg[idx], messages[idx],
-                sz, hipMemcpyDeviceToDevice));
-            HIP_CHECK(hipMemcpy(ctx.new_msg[idx], messages[idx],
-                sz, hipMemcpyDeviceToDevice));
+            HIP_CHECK(hipMemcpyAsync(ctx.frozen_msg[idx], messages[idx],
+                sz, hipMemcpyDeviceToDevice, stream));
+            HIP_CHECK(hipMemcpyAsync(ctx.new_msg[idx], messages[idx],
+                sz, hipMemcpyDeviceToDevice, stream));
         }
     }
+    // Ensure snapshots complete before gates fire
+    if (stream) HIP_CHECK(hipStreamSynchronize(stream));
 
     // Apply bond gates for this color
     for (auto& gate : grid.colors[color_id]) {
@@ -121,7 +124,7 @@ inline void do_trotter_one_color(
             chi_max, cutoff, lm, nullptr, nullptr);
     }
 
-    // Commit updated messages
+    // Commit updated messages (async on stream)
     for (auto& gate : grid.colors[color_id]) {
         const Bond& bond = grid.bonds[gate.bond_id];
         if (bond.chi_alloc == 1) continue;
@@ -129,10 +132,11 @@ inline void do_trotter_one_color(
         size_t sz = (size_t)chi * chi * sizeof(Scalar);
         for (int d = 0; d < 2; d++) {
             int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
-            HIP_CHECK(hipMemcpy(messages[idx], ctx.new_msg[idx],
-                sz, hipMemcpyDeviceToDevice));
+            HIP_CHECK(hipMemcpyAsync(messages[idx], ctx.new_msg[idx],
+                sz, hipMemcpyDeviceToDevice, stream));
         }
     }
+    if (stream) HIP_CHECK(hipStreamSynchronize(stream));
 }
 
 // ── do_trotter_2gpu ───────────────────────────────────────────────────────────
@@ -174,10 +178,10 @@ inline void do_trotter_2gpu(
         // GPU 0 and GPU 1 run independently (no dependency)
         hipSetDevice(gpu0_id);
         do_trotter_one_color(ctx0, c, psi0, messages0, grid0,
-                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, lm0);
+                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, nullptr, lm0);
         hipSetDevice(gpu1_id);
         do_trotter_one_color(ctx1, c, psi1, messages1, grid1,
-                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, lm1);
+                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, nullptr, lm1);
     }
 
     // ── Bidirectional P2P boundary site exchange ───────────────────────────────
@@ -213,19 +217,19 @@ inline void do_trotter_2gpu(
     // ── Cut color: both GPUs compute, each keeps own site ─────────────────────
     hipSetDevice(gpu0_id);
     do_trotter_one_color(ctx0, cut_color, psi0, messages0, grid0,
-                         bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, lm0);
+                         bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, nullptr, lm0);
     hipSetDevice(gpu1_id);
     do_trotter_one_color(ctx1, cut_color, psi1, messages1, grid1,
-                         bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, lm1);
+                         bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, nullptr, lm1);
 
     // ── Colors after cut: fully parallel ──────────────────────────────────────
     for (int c = cut_color + 1; c < n_colors; c++) {
         hipSetDevice(gpu0_id);
         do_trotter_one_color(ctx0, c, psi0, messages0, grid0,
-                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, lm0);
+                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, nullptr, lm0);
         hipSetDevice(gpu1_id);
         do_trotter_one_color(ctx1, c, psi1, messages1, grid1,
-                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, lm1);
+                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, nullptr, lm1);
     }
 
     // ── Site kick (once per site, end of step) ─────────────────────────────────

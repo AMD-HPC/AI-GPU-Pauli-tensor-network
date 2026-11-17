@@ -26,6 +26,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <thread>
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -107,12 +108,15 @@ int main(int argc, char** argv) {
     GateOps gops1(handle1);
     auto meas1 = std::make_unique<Measures>(handle1, *ws1);
 
-    // Map 16×32 center to GPU 1 (if center is in rows 8-15)
+    // Map 16×32 center to GPU 1 coordinate system
+    // GPU1 rows 0-8 = 16×32 rows 8-15 (row 0 of GPU1 = row 8 of 16×32 = ghost)
+    // If center in rows 8-15: map to GPU1 rows 0-7
+    // If center in rows 0-7:  GPU1 is silent (center=-1, no wavefront)
     int center1 = -1;
     {
         int r = center / 32, c = center % 32;
-        if (r >= 8) center1 = (r - 8) * 32 + c;  // row offset by 8 in GPU1 grid
-        else center1 = 4 * 32 + 16;                // fallback: middle of grid1
+        if (r >= 8) center1 = (r - 8) * 32 + c;
+        // else: center is in GPU0's domain, GPU1 stays silent
     }
 
     // ── Allocate states ───────────────────────────────────────────────────────
@@ -122,13 +126,19 @@ int main(int argc, char** argv) {
 
     HIP_CHECK(hipSetDevice(1));
     auto state1 = std::make_unique<HeavyHexState>(static_cast<Grid&>(*grid1));
-    state1->init_heisenberg(static_cast<Grid&>(*grid1), std::vector<int>{center1});
+    if (center1 >= 0)
+        state1->init_heisenberg(static_cast<Grid&>(*grid1), std::vector<int>{center1});
+    else
+        state1->init_heisenberg(static_cast<Grid&>(*grid1), std::vector<int>{});  // silent: all identity
 
-    // ── TrotterColorCtx for do_trotter_one_color ──────────────────────────────
+    // ── TrotterColorCtx + streams for parallel execution ─────────────────────
     HIP_CHECK(hipSetDevice(0));
     auto ctx0 = std::make_unique<TrotterColorCtx>(*grid0, chi_max);
+    hipStream_t stream0; HIP_CHECK(hipStreamCreate(&stream0));
+
     HIP_CHECK(hipSetDevice(1));
     auto ctx1 = std::make_unique<TrotterColorCtx>(*grid1, chi_max);
+    hipStream_t stream1; HIP_CHECK(hipStreamCreate(&stream1));
 
     // ── Cut color: color 2 (vertical even, row 0→1 in Grid 1) ────────────────
     // Grid 1's row 0 = ghost of GPU 0's row 8. Must sync before color 2 fires.
@@ -151,16 +161,23 @@ int main(int argc, char** argv) {
     for (int step = 1; step <= n_steps; step++) {
         double t0 = now_ms();
 
-        // Colors before cut: parallel on both GPUs
+        // Colors before cut: both GPUs run in parallel threads
         for (int c = 0; c < cut_color; c++) {
-            HIP_CHECK(hipSetDevice(0));
-            do_trotter_one_color(*ctx0, c,
-                state0->psi, state0->messages, *grid0,
-                ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
-            HIP_CHECK(hipSetDevice(1));
-            do_trotter_one_color(*ctx1, c,
-                state1->psi, state1->messages, *grid1,
-                ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
+            std::thread t0([&,c](){
+                hipSetDevice(0);
+                do_trotter_one_color(*ctx0, c,
+                    state0->psi, state0->messages, *grid0,
+                    ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff, stream0);
+                hipStreamSynchronize(stream0);
+            });
+            std::thread t1([&,c](){
+                hipSetDevice(1);
+                do_trotter_one_color(*ctx1, c,
+                    state1->psi, state1->messages, *grid1,
+                    ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff, stream1);
+                hipStreamSynchronize(stream1);
+            });
+            t0.join(); t1.join();
         }
 
         // P2P sync: GPU 0 row 8 → GPU 1 row 0 (UNIDIRECTIONAL — one way only)
@@ -187,26 +204,42 @@ int main(int argc, char** argv) {
             HIP_CHECK(hipDeviceSynchronize());
         }
 
-        // Cut color: both GPUs compute
-        HIP_CHECK(hipSetDevice(0));
-        do_trotter_one_color(*ctx0, cut_color,
-            state0->psi, state0->messages, *grid0,
-            ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
-        HIP_CHECK(hipSetDevice(1));
-        do_trotter_one_color(*ctx1, cut_color,
-            state1->psi, state1->messages, *grid1,
-            ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
+        // Cut color: both GPUs compute simultaneously in parallel threads
+        {
+            std::thread t0([&](){
+                hipSetDevice(0);
+                do_trotter_one_color(*ctx0, cut_color,
+                    state0->psi, state0->messages, *grid0,
+                    ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff, stream0);
+                hipStreamSynchronize(stream0);
+            });
+            std::thread t1([&](){
+                hipSetDevice(1);
+                do_trotter_one_color(*ctx1, cut_color,
+                    state1->psi, state1->messages, *grid1,
+                    ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff, stream1);
+                hipStreamSynchronize(stream1);
+            });
+            t0.join(); t1.join();
+        }
 
-        // Colors after cut: parallel
+        // Colors after cut: both GPUs run in parallel threads
         for (int c = cut_color + 1; c < (int)grid0->colors.size(); c++) {
-            HIP_CHECK(hipSetDevice(0));
-            do_trotter_one_color(*ctx0, c,
-                state0->psi, state0->messages, *grid0,
-                ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
-            HIP_CHECK(hipSetDevice(1));
-            do_trotter_one_color(*ctx1, c,
-                state1->psi, state1->messages, *grid1,
-                ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
+            std::thread t0([&,c](){
+                hipSetDevice(0);
+                do_trotter_one_color(*ctx0, c,
+                    state0->psi, state0->messages, *grid0,
+                    ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff, stream0);
+                hipStreamSynchronize(stream0);
+            });
+            std::thread t1([&,c](){
+                hipSetDevice(1);
+                do_trotter_one_color(*ctx1, c,
+                    state1->psi, state1->messages, *grid1,
+                    ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff, stream1);
+                hipStreamSynchronize(stream1);
+            });
+            t0.join(); t1.join();
         }
 
         // Site kick
