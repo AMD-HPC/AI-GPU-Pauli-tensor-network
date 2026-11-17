@@ -322,7 +322,7 @@ int main(int argc, char** argv) {
         // Each thread creates its own rocBLAS handle (thread-safety requirement)
         {
             std::thread t0([&](){
-                hipSetDevice(0);
+                HIP_CHECK(hipSetDevice(0));
                 rocblas_handle h; rocblas_create_handle(&h);
                 Measures m(h, *ws0);
                 m.autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
@@ -331,7 +331,7 @@ int main(int argc, char** argv) {
                 rocblas_destroy_handle(h);
             });
             std::thread t1([&](){
-                hipSetDevice(1);
+                HIP_CHECK(hipSetDevice(1));
                 rocblas_handle h; rocblas_create_handle(&h);
                 Measures m(h, *ws1);
                 m.autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
@@ -387,7 +387,7 @@ int main(int argc, char** argv) {
             if (gpu1_needs || gpu0_needs) {
                 std::thread t0([&](){
                     if (!gpu0_needs) return;
-                    hipSetDevice(0);
+                    HIP_CHECK(hipSetDevice(0));
                     rocblas_handle h; rocblas_create_handle(&h);
                     Measures m(h, *ws0);
                     m.bp_converge(*grid0, state0->psi, state0->messages, bp_max, center0);
@@ -395,7 +395,7 @@ int main(int argc, char** argv) {
                 });
                 std::thread t1([&](){
                     if (!gpu1_needs) return;
-                    hipSetDevice(1);
+                    HIP_CHECK(hipSetDevice(1));
                     rocblas_handle h; rocblas_create_handle(&h);
                     Measures m(h, *ws1);
                     m.bp_converge(*grid1, state1->psi, state1->messages,
