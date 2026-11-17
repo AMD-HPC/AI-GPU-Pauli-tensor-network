@@ -265,17 +265,60 @@ int main(int argc, char** argv) {
             do_kick(1, *grid1, state1->psi, gops1);
         }
 
-        // BP convergence (local, no cross-GPU exchange yet)
+        // ── BP: local convergence in parallel, then boundary exchange ────────────
         int bp0_sweeps = 0, bp1_sweeps = 0;
         float bp0_delta = 0.f, bp1_delta = 0.f;
-        HIP_CHECK(hipSetDevice(0));
-        meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
-            center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta,
-            nullptr, nullptr);
-        HIP_CHECK(hipSetDevice(1));
-        meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
-            center1, bp_max, nullptr, nullptr, &bp1_sweeps, &bp1_delta,
-            nullptr, nullptr);
+
+        // Step 1: local BP on each GPU in parallel threads
+        {
+            std::thread t0([&](){
+                hipSetDevice(0);
+                meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
+                    center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta,
+                    nullptr, nullptr);
+            });
+            std::thread t1([&](){
+                hipSetDevice(1);
+                meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
+                    center1 >= 0 ? center1 : 0, bp_max,
+                    nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
+            });
+            t0.join(); t1.join();
+        }
+
+        // Step 2: P2P exchange boundary bond messages
+        // Boundary bonds: grid0 vertical bonds at row7→row8 (bond ids 279+7*32..279+7*32+31)
+        // Matching bonds in grid1: row0→row1 (bond ids 279+0*32..279+31)
+        // Exchange: GPU0 msg_from_a (row8→row7 direction) ↔ GPU1 msg_from_b (row1→row0)
+        {
+            const int n_boundary = RECT_9X32_NX;  // 32 boundary bonds
+            const int bond_offset0 = 279 + 7 * RECT_9X32_NX;  // row7→row8 in grid0
+            const int bond_offset1 = 279;                       // row0→row1 in grid1
+
+            HIP_CHECK(hipSetDevice(0));
+            for (int col = 0; col < n_boundary; col++) {
+                const Bond& b0 = grid0->bonds[bond_offset0 + col];
+                const Bond& b1 = grid1->bonds[bond_offset1 + col];
+                if (b0.chi_alloc == 1) continue;  // outside lightcone, skip
+                size_t sz = (size_t)b0.chi * b0.chi * sizeof(Scalar);
+                // GPU0 sends outward msg (row8 side) → GPU1 inward msg (row0 side)
+                HIP_CHECK(hipMemcpyPeer(
+                    state1->messages[b1.msg_from_a()], 1,
+                    state0->messages[b0.msg_from_b()], 0, sz));
+                // GPU1 sends outward msg (row1 side) → GPU0 inward msg (row8 side)
+                HIP_CHECK(hipMemcpyPeer(
+                    state0->messages[b0.msg_from_b()], 0,
+                    state1->messages[b1.msg_from_a()], 1, sz));
+            }
+            HIP_CHECK(hipDeviceSynchronize());
+        }
+
+        // Step 3: one additional BP sweep on each GPU to propagate boundary info
+        {
+            std::thread t0([&](){ hipSetDevice(0); meas0->bp_converge(*grid0, state0->psi, state0->messages, 1, center0); });
+            std::thread t1([&](){ hipSetDevice(1); meas1->bp_converge(*grid1, state1->psi, state1->messages, 1, center1 >= 0 ? center1 : 0); });
+            t0.join(); t1.join();
+        }
 
         // Actual chi
         int chi_actual = 1;
