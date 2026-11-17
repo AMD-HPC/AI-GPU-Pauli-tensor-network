@@ -159,6 +159,7 @@ inline void do_trotter_2gpu(
     int                     chi_max,
     float                   cutoff,
     int                     cut_color,      // color index containing boundary bond
+    int                     cut_bond_id,    // bond id of the boundary bond
     int                     cut_site_top,   // site id of boundary site on GPU 0 (0-based)
     int                     cut_site_bot,   // site id of boundary site on GPU 1 (0-based)
     int                     gpu0_id,
@@ -180,31 +181,33 @@ inline void do_trotter_2gpu(
     }
 
     // ── Bidirectional P2P boundary site exchange ───────────────────────────────
-    // GPU 0 sends cut_site_top → GPU 1 (as ghost for boundary bond)
-    // GPU 1 sends cut_site_bot → GPU 0 (as ghost for boundary bond)
-    // Both happen before the cut color fires.
-    {
-        // Size of boundary site tensor: D * chi^degree
-        // Use chi_alloc of any bond touching cut_site_top as proxy
-        // For simplicity: use chi_max^degree (over-allocate, always safe)
-        // TODO: use actual chi for exact sizing
-        size_t site_sz = (size_t)D;
-        for (int k = 0; k < MAX_DEGREE; k++) {
-            int bid = grid0.sites[cut_site_top].bond_id[k];
-            if (bid >= 0) site_sz *= grid0.bonds[bid].chi_alloc;
-        }
-        // Note: site_sz may be 0 if chi_alloc=1 (outside lightcone) → skip
-        if (site_sz > D) {
-            hipSetDevice(gpu0_id);
-            HIP_CHECK(hipMemcpyPeer(psi1[cut_site_bot], gpu1_id,
-                                    psi0[cut_site_top], gpu0_id,
-                                    site_sz * sizeof(Scalar)));
-            hipSetDevice(gpu1_id);
-            HIP_CHECK(hipMemcpyPeer(psi0[cut_site_top], gpu0_id,
-                                    psi1[cut_site_bot], gpu1_id,
-                                    site_sz * sizeof(Scalar)));
-            hipDeviceSynchronize();
-        }
+    // Only needed if the boundary bond is inside the lightcone (chi_alloc > 1).
+    // If chi_alloc == 1, the gate is skipped anyway — no sync needed.
+    // The lightcone allocation IS the on/off switch — free correctness.
+    if (grid0.bonds[cut_bond_id].chi_alloc > 1) {
+        // Site tensor size: D * product of chi over all incident bonds
+        auto site_tensor_size = [](const Grid& g, int site_id) -> size_t {
+            size_t sz = (size_t)D;
+            for (int k = 0; k < MAX_DEGREE; k++) {
+                int bid = g.sites[site_id].bond_id[k];
+                if (bid >= 0) sz *= g.bonds[bid].chi_alloc;
+            }
+            return sz;
+        };
+        size_t sz_top = site_tensor_size(grid0, cut_site_top);
+        size_t sz_bot = site_tensor_size(grid1, cut_site_bot);
+
+        // GPU 0 → GPU 1: send top boundary site (ghost for V_odd on GPU 1)
+        hipSetDevice(gpu0_id);
+        HIP_CHECK(hipMemcpyPeer(psi1[cut_site_bot], gpu1_id,
+                                psi0[cut_site_top], gpu0_id,
+                                sz_top * sizeof(Scalar)));
+        // GPU 1 → GPU 0: send bottom boundary site (ghost for V_even on GPU 0)
+        hipSetDevice(gpu1_id);
+        HIP_CHECK(hipMemcpyPeer(psi0[cut_site_top], gpu0_id,
+                                psi1[cut_site_bot], gpu1_id,
+                                sz_bot * sizeof(Scalar)));
+        hipDeviceSynchronize();
     }
 
     // ── Cut color: both GPUs compute, each keeps own site ─────────────────────
