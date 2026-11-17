@@ -68,8 +68,8 @@ struct TrotterColorCtx {
     }
 
     ~TrotterColorCtx() {
-        for (auto p : frozen_msg) if (p) hipFree(p);
-        for (auto p : new_msg)    if (p) hipFree(p);
+        for (auto p : frozen_msg) if (p) (void)hipFree(p);
+        for (auto p : new_msg)    if (p) (void)hipFree(p);
     }
 
     // No copy
@@ -92,24 +92,21 @@ inline void do_trotter_one_color(
     Workspace&              ws,
     int                     chi_max,
     float                   cutoff,
-    hipStream_t             stream = nullptr,  // async stream (nullptr = default)
     LayerMetrics*           lm = nullptr)
 {
-    // Snapshot messages for this color (async on stream)
+    // Snapshot messages for this color
     for (auto& b : grid.bonds) ctx.frozen_chi[b.id] = b.chi;
     for (auto& bond : grid.bonds) {
         int chi = bond.chi;
         size_t sz = (size_t)chi * chi * sizeof(Scalar);
         for (int d = 0; d < 2; d++) {
             int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
-            HIP_CHECK(hipMemcpyAsync(ctx.frozen_msg[idx], messages[idx],
-                sz, hipMemcpyDeviceToDevice, stream));
-            HIP_CHECK(hipMemcpyAsync(ctx.new_msg[idx], messages[idx],
-                sz, hipMemcpyDeviceToDevice, stream));
+            HIP_CHECK(hipMemcpy(ctx.frozen_msg[idx], messages[idx],
+                sz, hipMemcpyDeviceToDevice));
+            HIP_CHECK(hipMemcpy(ctx.new_msg[idx], messages[idx],
+                sz, hipMemcpyDeviceToDevice));
         }
     }
-    // Ensure snapshots complete before gates fire
-    if (stream) HIP_CHECK(hipStreamSynchronize(stream));
 
     // Apply bond gates for this color
     for (auto& gate : grid.colors[color_id]) {
@@ -124,7 +121,7 @@ inline void do_trotter_one_color(
             chi_max, cutoff, lm, nullptr, nullptr);
     }
 
-    // Commit updated messages (async on stream)
+    // Commit updated messages
     for (auto& gate : grid.colors[color_id]) {
         const Bond& bond = grid.bonds[gate.bond_id];
         if (bond.chi_alloc == 1) continue;
@@ -132,11 +129,10 @@ inline void do_trotter_one_color(
         size_t sz = (size_t)chi * chi * sizeof(Scalar);
         for (int d = 0; d < 2; d++) {
             int idx = (d==0) ? bond.msg_from_a() : bond.msg_from_b();
-            HIP_CHECK(hipMemcpyAsync(messages[idx], ctx.new_msg[idx],
-                sz, hipMemcpyDeviceToDevice, stream));
+            HIP_CHECK(hipMemcpy(messages[idx], ctx.new_msg[idx],
+                sz, hipMemcpyDeviceToDevice));
         }
     }
-    if (stream) HIP_CHECK(hipStreamSynchronize(stream));
 }
 
 // ── do_trotter_2gpu ───────────────────────────────────────────────────────────
@@ -176,12 +172,12 @@ inline void do_trotter_2gpu(
     // ── Colors before cut: fully parallel ─────────────────────────────────────
     for (int c = 0; c < cut_color; c++) {
         // GPU 0 and GPU 1 run independently (no dependency)
-        hipSetDevice(gpu0_id);
+        HIP_CHECK(hipSetDevice(gpu0_id));
         do_trotter_one_color(ctx0, c, psi0, messages0, grid0,
-                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, nullptr, lm0);
-        hipSetDevice(gpu1_id);
+                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, lm0);
+        HIP_CHECK(hipSetDevice(gpu1_id));
         do_trotter_one_color(ctx1, c, psi1, messages1, grid1,
-                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, nullptr, lm1);
+                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, lm1);
     }
 
     // ── Bidirectional P2P boundary site exchange ───────────────────────────────
@@ -202,41 +198,41 @@ inline void do_trotter_2gpu(
         size_t sz_bot = site_tensor_size(grid1, cut_site_bot);
 
         // GPU 0 → GPU 1: send top boundary site (ghost for V_odd on GPU 1)
-        hipSetDevice(gpu0_id);
+        HIP_CHECK(hipSetDevice(gpu0_id));
         HIP_CHECK(hipMemcpyPeer(psi1[cut_site_bot], gpu1_id,
                                 psi0[cut_site_top], gpu0_id,
                                 sz_top * sizeof(Scalar)));
         // GPU 1 → GPU 0: send bottom boundary site (ghost for V_even on GPU 0)
-        hipSetDevice(gpu1_id);
+        HIP_CHECK(hipSetDevice(gpu1_id));
         HIP_CHECK(hipMemcpyPeer(psi0[cut_site_top], gpu0_id,
                                 psi1[cut_site_bot], gpu1_id,
                                 sz_bot * sizeof(Scalar)));
-        hipDeviceSynchronize();
+        HIP_CHECK(hipDeviceSynchronize());
     }
 
     // ── Cut color: both GPUs compute, each keeps own site ─────────────────────
-    hipSetDevice(gpu0_id);
+    HIP_CHECK(hipSetDevice(gpu0_id));
     do_trotter_one_color(ctx0, cut_color, psi0, messages0, grid0,
-                         bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, nullptr, lm0);
-    hipSetDevice(gpu1_id);
+                         bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, lm0);
+    HIP_CHECK(hipSetDevice(gpu1_id));
     do_trotter_one_color(ctx1, cut_color, psi1, messages1, grid1,
-                         bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, nullptr, lm1);
+                         bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, lm1);
 
     // ── Colors after cut: fully parallel ──────────────────────────────────────
     for (int c = cut_color + 1; c < n_colors; c++) {
-        hipSetDevice(gpu0_id);
+        HIP_CHECK(hipSetDevice(gpu0_id));
         do_trotter_one_color(ctx0, c, psi0, messages0, grid0,
-                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, nullptr, lm0);
-        hipSetDevice(gpu1_id);
+                             bond_ptm, nl_ptm, gate_ops0, ws0, chi_max, cutoff, lm0);
+        HIP_CHECK(hipSetDevice(gpu1_id));
         do_trotter_one_color(ctx1, c, psi1, messages1, grid1,
-                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, nullptr, lm1);
+                             bond_ptm, nl_ptm, gate_ops1, ws1, chi_max, cutoff, lm1);
     }
 
     // ── Site kick (once per site, end of step) ─────────────────────────────────
     if (site_ptm) {
         auto do_kick = [&](int gpu, Grid& grid, std::vector<Scalar*>& psi,
                            GateOps& gops) {
-            hipSetDevice(gpu);
+            HIP_CHECK(hipSetDevice(gpu));
             size_t tmp_sz = 0;
             for (auto& site : grid.sites) {
                 int vol = D;

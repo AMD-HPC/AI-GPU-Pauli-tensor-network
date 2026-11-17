@@ -26,7 +26,6 @@
 #include <vector>
 #include <string>
 #include <memory>
-#include <thread>
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -131,14 +130,11 @@ int main(int argc, char** argv) {
     else
         state1->init_heisenberg(static_cast<Grid&>(*grid1), std::vector<int>{});  // silent: all identity
 
-    // ── TrotterColorCtx + streams for parallel execution ─────────────────────
+    // ── TrotterColorCtx ───────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(0));
     auto ctx0 = std::make_unique<TrotterColorCtx>(*grid0, chi_max);
-    hipStream_t stream0; HIP_CHECK(hipStreamCreate(&stream0));
-
     HIP_CHECK(hipSetDevice(1));
     auto ctx1 = std::make_unique<TrotterColorCtx>(*grid1, chi_max);
-    hipStream_t stream1; HIP_CHECK(hipStreamCreate(&stream1));
 
     // ── Cut color: color 2 (vertical even, row 0→1 in Grid 1) ────────────────
     // Grid 1's row 0 = ghost of GPU 0's row 8. Must sync before color 2 fires.
@@ -161,23 +157,16 @@ int main(int argc, char** argv) {
     for (int step = 1; step <= n_steps; step++) {
         double t0 = now_ms();
 
-        // Colors before cut: both GPUs run in parallel threads
+        // Colors before cut: sequential (rocBLAS handles not thread-safe cross-device)
         for (int c = 0; c < cut_color; c++) {
-            std::thread t0([&,c](){
-                hipSetDevice(0);
-                do_trotter_one_color(*ctx0, c,
-                    state0->psi, state0->messages, *grid0,
-                    ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff, stream0);
-                hipStreamSynchronize(stream0);
-            });
-            std::thread t1([&,c](){
-                hipSetDevice(1);
-                do_trotter_one_color(*ctx1, c,
-                    state1->psi, state1->messages, *grid1,
-                    ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff, stream1);
-                hipStreamSynchronize(stream1);
-            });
-            t0.join(); t1.join();
+            HIP_CHECK(hipSetDevice(0));
+            do_trotter_one_color(*ctx0, c,
+                state0->psi, state0->messages, *grid0,
+                ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
+            HIP_CHECK(hipSetDevice(1));
+            do_trotter_one_color(*ctx1, c,
+                state1->psi, state1->messages, *grid1,
+                ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
         }
 
         // P2P sync: GPU 0 row 8 → GPU 1 row 0 (UNIDIRECTIONAL — one way only)
@@ -204,42 +193,26 @@ int main(int argc, char** argv) {
             HIP_CHECK(hipDeviceSynchronize());
         }
 
-        // Cut color: both GPUs compute simultaneously in parallel threads
-        {
-            std::thread t0([&](){
-                hipSetDevice(0);
-                do_trotter_one_color(*ctx0, cut_color,
-                    state0->psi, state0->messages, *grid0,
-                    ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff, stream0);
-                hipStreamSynchronize(stream0);
-            });
-            std::thread t1([&](){
-                hipSetDevice(1);
-                do_trotter_one_color(*ctx1, cut_color,
-                    state1->psi, state1->messages, *grid1,
-                    ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff, stream1);
-                hipStreamSynchronize(stream1);
-            });
-            t0.join(); t1.join();
-        }
+        // Cut color: both GPUs compute sequentially
+        HIP_CHECK(hipSetDevice(0));
+        do_trotter_one_color(*ctx0, cut_color,
+            state0->psi, state0->messages, *grid0,
+            ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
+        HIP_CHECK(hipSetDevice(1));
+        do_trotter_one_color(*ctx1, cut_color,
+            state1->psi, state1->messages, *grid1,
+            ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
 
-        // Colors after cut: both GPUs run in parallel threads
+        // Colors after cut: sequential
         for (int c = cut_color + 1; c < (int)grid0->colors.size(); c++) {
-            std::thread t0([&,c](){
-                hipSetDevice(0);
-                do_trotter_one_color(*ctx0, c,
-                    state0->psi, state0->messages, *grid0,
-                    ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff, stream0);
-                hipStreamSynchronize(stream0);
-            });
-            std::thread t1([&,c](){
-                hipSetDevice(1);
-                do_trotter_one_color(*ctx1, c,
-                    state1->psi, state1->messages, *grid1,
-                    ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff, stream1);
-                hipStreamSynchronize(stream1);
-            });
-            t0.join(); t1.join();
+            HIP_CHECK(hipSetDevice(0));
+            do_trotter_one_color(*ctx0, c,
+                state0->psi, state0->messages, *grid0,
+                ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
+            HIP_CHECK(hipSetDevice(1));
+            do_trotter_one_color(*ctx1, c,
+                state1->psi, state1->messages, *grid1,
+                ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
         }
 
         // Site kick
@@ -269,55 +242,63 @@ int main(int argc, char** argv) {
         int bp0_sweeps = 0, bp1_sweeps = 0;
         float bp0_delta = 0.f, bp1_delta = 0.f;
 
-        // Step 1: local BP on each GPU in parallel threads
-        {
-            std::thread t0([&](){
-                hipSetDevice(0);
-                meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
-                    center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta,
-                    nullptr, nullptr);
-            });
-            std::thread t1([&](){
-                hipSetDevice(1);
-                meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
-                    center1 >= 0 ? center1 : 0, bp_max,
-                    nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
-            });
-            t0.join(); t1.join();
-        }
+        // Step 1: local BP on each GPU sequentially
+        HIP_CHECK(hipSetDevice(0));
+        meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
+            center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta, nullptr, nullptr);
+        HIP_CHECK(hipSetDevice(1));
+        meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
+            center1 >= 0 ? center1 : 0, bp_max,
+            nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
 
-        // Step 2: P2P exchange boundary bond messages
-        // Boundary bonds: grid0 vertical bonds at row7→row8 (bond ids 279+7*32..279+7*32+31)
-        // Matching bonds in grid1: row0→row1 (bond ids 279+0*32..279+31)
-        // Exchange: GPU0 msg_from_a (row8→row7 direction) ↔ GPU1 msg_from_b (row1→row0)
+        // Step 2: P2P boundary bond messages — bidirectional, general solution
+        // Each side sends its outward message to the other, sized by its own chi.
+        // Only send if source chi > 1 (has non-trivial information).
+        // Receiver updates its inward message — does NOT resize its buffer.
         {
-            const int n_boundary = RECT_9X32_NX;  // 32 boundary bonds
-            const int bond_offset0 = 279 + 7 * RECT_9X32_NX;  // row7→row8 in grid0
-            const int bond_offset1 = 279;                       // row0→row1 in grid1
+            const int n_boundary = RECT_9X32_NX;
+            const int bond_offset0 = 279 + 7 * RECT_9X32_NX;  // row7↔row8 in grid0
+            const int bond_offset1 = 279;                       // row0↔row1 in grid1
 
-            HIP_CHECK(hipSetDevice(0));
             for (int col = 0; col < n_boundary; col++) {
                 const Bond& b0 = grid0->bonds[bond_offset0 + col];
                 const Bond& b1 = grid1->bonds[bond_offset1 + col];
-                if (b0.chi_alloc == 1) continue;  // outside lightcone, skip
-                size_t sz = (size_t)b0.chi * b0.chi * sizeof(Scalar);
-                // GPU0 sends outward msg (row8 side) → GPU1 inward msg (row0 side)
-                HIP_CHECK(hipMemcpyPeer(
-                    state1->messages[b1.msg_from_a()], 1,
-                    state0->messages[b0.msg_from_b()], 0, sz));
-                // GPU1 sends outward msg (row1 side) → GPU0 inward msg (row8 side)
-                HIP_CHECK(hipMemcpyPeer(
-                    state0->messages[b0.msg_from_b()], 0,
-                    state1->messages[b1.msg_from_a()], 1, sz));
+
+                // GPU0 → GPU1: send outward msg at row8 → GPU1's inward at row0
+                // Only if GPU0 has non-trivial messages at this bond
+                if (b0.chi > 1) {
+                    size_t sz0 = (size_t)b0.chi * b0.chi * sizeof(Scalar);
+                    HIP_CHECK(hipMemcpyPeer(
+                        state1->messages[b1.msg_from_a()], 1,
+                        state0->messages[b0.msg_from_b()], 0, sz0));
+                }
+
+                // GPU1 → GPU0: send outward msg at row1 → GPU0's inward at row8
+                // Only if GPU1 has non-trivial messages (center in GPU1's domain)
+                if (b1.chi > 1) {
+                    size_t sz1 = (size_t)b1.chi * b1.chi * sizeof(Scalar);
+                    HIP_CHECK(hipMemcpyPeer(
+                        state0->messages[b0.msg_from_b()], 0,
+                        state1->messages[b1.msg_from_a()], 1, sz1));
+                }
             }
             HIP_CHECK(hipDeviceSynchronize());
         }
 
-        // Step 3: one additional BP sweep on each GPU to propagate boundary info
+        // Step 3: one additional BP sweep to propagate boundary info
+        // Only run on GPUs that received non-trivial messages (chi > 1 at boundary)
         {
-            std::thread t0([&](){ hipSetDevice(0); meas0->bp_converge(*grid0, state0->psi, state0->messages, 1, center0); });
-            std::thread t1([&](){ hipSetDevice(1); meas1->bp_converge(*grid1, state1->psi, state1->messages, 1, center1 >= 0 ? center1 : 0); });
-            t0.join(); t1.join();
+            const Bond& b0 = grid0->bonds[279 + 7 * RECT_9X32_NX];
+            const Bond& b1 = grid1->bonds[279];
+            if (b0.chi > 1) {  // GPU0 sent messages → GPU1 needs sweep
+                HIP_CHECK(hipSetDevice(1));
+                meas1->bp_converge(*grid1, state1->psi, state1->messages,
+                    1, center1 >= 0 ? center1 : 0);
+            }
+            if (b1.chi > 1) {  // GPU1 sent messages → GPU0 needs sweep
+                HIP_CHECK(hipSetDevice(0));
+                meas0->bp_converge(*grid0, state0->psi, state0->messages, 1, center0);
+            }
         }
 
         // Actual chi
