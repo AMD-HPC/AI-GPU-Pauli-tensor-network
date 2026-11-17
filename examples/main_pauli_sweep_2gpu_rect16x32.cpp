@@ -79,14 +79,25 @@ int main(int argc, char** argv) {
     int   chi_max = (argc > 1) ? atoi(argv[1]) : 40;
     int   n_steps = (argc > 2) ? atoi(argv[2]) : 3;
     float cutoff  = (argc > 3) ? atof(argv[3]) : 1e-3f;
-    int   center  = 256;
-    int   perturb_bond16 = -1;   // 16×32 bond index to perturb
-    float perturb_J      = 0.8f; // perturbed coupling
+    int   center  = 256;   // legacy single center (0-based)
+    std::vector<int> centers16;  // multi-center list (0-based, 16x32)
+    int   perturb_bond16 = -1;
+    float perturb_J      = 0.8f;
 
     for (int i = 4; i < argc; i++) {
         std::string a = argv[i];
-        if (a.substr(0,9) == "--center=") center = atoi(argv[i]+9) - 1;
-        if (a.substr(0,16) == "--perturb-bond=") {
+        if (a.substr(0,9) == "--center=") {
+            // parse comma-separated 1-based site list
+            centers16.clear();
+            char* p = argv[i]+9;
+            while (*p) {
+                centers16.push_back(atoi(p) - 1);  // 1-based→0-based
+                while (*p && *p != ',') p++;
+                if (*p == ',') p++;
+            }
+            center = centers16[0];
+        }
+        if (a.substr(0,15) == "--perturb-bond=") {
             // format: bond_id,J_pert  e.g. 200,0.800
             char* p = argv[i]+15;
             perturb_bond16 = atoi(p);
@@ -149,9 +160,8 @@ int main(int argc, char** argv) {
                perturb_bond16, bond9, perturb_J);
     }
 
-    printf("[2GPU] 16×32 split: GPU0=rows0-8, GPU1=rows8-15\n");
-    printf("[2GPU] chi=%d  n_steps=%d  cutoff=%.0e  center=%d (1-based)\n",
-           chi_max, n_steps, (double)cutoff, center+1);
+    printf("[2GPU] chi=%d  n_steps=%d  cutoff=%.0e  total_centers=%zu\n",
+           chi_max, n_steps, (double)cutoff, centers16.size());
 
     // ── GPU 0 setup ───────────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(0));
@@ -162,13 +172,18 @@ int main(int argc, char** argv) {
     GateOps gops0(handle0);
     auto meas0 = std::make_unique<Measures>(handle0, *ws0);
 
-    // Map 16×32 center to GPU 0 center (if center is in rows 0-7)
-    int center0 = -1;
-    {
-        int r = center / 32, c = center % 32;
-        if (r < 8) center0 = r * 32 + c;  // same position in 9×32
-        else center0 = 4 * 32 + 16;        // fallback: middle of grid0
+    // Split centers across GPUs by row
+    // GPU0: rows 0-7, GPU1: rows 8-15 (mapped to rows 0-7 in GPU1 local coords)
+    if (centers16.empty()) centers16.push_back(center);
+    std::vector<int> centers0, centers1;
+    for (int s : centers16) {
+        int r = s / 32, c = s % 32;
+        if (r < 8)       centers0.push_back(r * 32 + c);        // GPU0: same coords
+        else if (r < 16) centers1.push_back((r - 8) * 32 + c);  // GPU1: row offset -8
     }
+    int center0 = centers0.empty() ? 4*32+16 : centers0[0];  // BP reference center
+    printf("[2GPU] GPU0: %zu centers (rows 0-7)  GPU1: %zu centers (rows 8-15)\n",
+           centers0.size(), centers1.size());
 
     // ── GPU 1 setup ───────────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(1));
@@ -179,28 +194,16 @@ int main(int argc, char** argv) {
     GateOps gops1(handle1);
     auto meas1 = std::make_unique<Measures>(handle1, *ws1);
 
-    // Map 16×32 center to GPU 1 coordinate system
-    // GPU1 rows 0-8 = 16×32 rows 8-15 (row 0 of GPU1 = row 8 of 16×32 = ghost)
-    // If center in rows 8-15: map to GPU1 rows 0-7
-    // If center in rows 0-7:  GPU1 is silent (center=-1, no wavefront)
-    int center1 = -1;
-    {
-        int r = center / 32, c = center % 32;
-        if (r >= 8) center1 = (r - 8) * 32 + c;
-        // else: center is in GPU0's domain, GPU1 stays silent
-    }
+    int center1 = centers1.empty() ? 0 : centers1[0];  // BP reference center
 
     // ── Allocate states ───────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(0));
     auto state0 = std::make_unique<HeavyHexState>(static_cast<Grid&>(*grid0));
-    state0->init_heisenberg(static_cast<Grid&>(*grid0), std::vector<int>{center0});
+    state0->init_heisenberg(static_cast<Grid&>(*grid0), centers0);
 
     HIP_CHECK(hipSetDevice(1));
     auto state1 = std::make_unique<HeavyHexState>(static_cast<Grid&>(*grid1));
-    if (center1 >= 0)
-        state1->init_heisenberg(static_cast<Grid&>(*grid1), std::vector<int>{center1});
-    else
-        state1->init_heisenberg(static_cast<Grid&>(*grid1), std::vector<int>{});  // silent: all identity
+    state1->init_heisenberg(static_cast<Grid&>(*grid1), centers1);  // empty = silent
 
     // ── TrotterColorCtx ───────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(0));
@@ -391,13 +394,12 @@ int main(int argc, char** argv) {
         HIP_CHECK(hipSetDevice(1));
         meas1->compute_pauli_profile(*grid1, state1->psi, nid1.data());
 
-        // Merged output: GPU0 owns rows 0-7 (sites 0-255), GPU1 owns rows 1-8 (=16×32 rows 9-15)
-        // GPU0 row 8 (sites 256-287) = overlap = use GPU0's value
+        // Merged output: 512 sites total (16×32)
+        // GPU0 rows 0-7 (sites 0-255) → 16×32 rows 0-7
+        // GPU1 rows 1-8 (sites 32-287) → 16×32 rows 8-15 (skip row 0 = ghost)
         printf("PAULI_NL %d", step);
-        // GPU 0: rows 0-8 (288 sites) → 16×32 sites 0-287
-        for (int i = 0; i < grid0->n_sites; i++) printf(" %.7f", nid0[i]);
-        // GPU 1: rows 1-8 (256 sites) → 16×32 sites 288-511 (skip row 0 = ghost)
-        for (int i = 32; i < grid1->n_sites; i++) printf(" %.7f", nid1[i]);
+        for (int i = 0; i < 256; i++) printf(" %.7f", nid0[i]);       // rows 0-7
+        for (int i = 32; i < grid1->n_sites; i++) printf(" %.7f", nid1[i]); // rows 8-15
         printf("\n");
     }
 
