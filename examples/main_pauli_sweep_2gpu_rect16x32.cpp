@@ -26,6 +26,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <thread>
 #include <chrono>
 #include <hip/hip_runtime.h>
 #include <rocblas/rocblas.h>
@@ -313,18 +314,33 @@ int main(int argc, char** argv) {
             do_kick(1, *grid1, state1->psi, gops1);
         }
 
-        // ── BP: local convergence in parallel, then boundary exchange ────────────
+        // ── BP: parallel local convergence, P2P exchange, parallel re-convergence ──
         int bp0_sweeps = 0, bp1_sweeps = 0;
         float bp0_delta = 0.f, bp1_delta = 0.f;
 
-        // Step 1: local BP on each GPU sequentially
-        HIP_CHECK(hipSetDevice(0));
-        meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
-            center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta, nullptr, nullptr);
-        HIP_CHECK(hipSetDevice(1));
-        meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
-            center1 >= 0 ? center1 : 0, bp_max,
-            nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
+        // Step 1: local BP on each GPU in parallel threads
+        // Each thread creates its own rocBLAS handle (thread-safety requirement)
+        {
+            std::thread t0([&](){
+                hipSetDevice(0);
+                rocblas_handle h; rocblas_create_handle(&h);
+                Measures m(h, *ws0);
+                m.autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
+                    center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta,
+                    nullptr, nullptr);
+                rocblas_destroy_handle(h);
+            });
+            std::thread t1([&](){
+                hipSetDevice(1);
+                rocblas_handle h; rocblas_create_handle(&h);
+                Measures m(h, *ws1);
+                m.autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
+                    center1 >= 0 ? center1 : 0, bp_max,
+                    nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
+                rocblas_destroy_handle(h);
+            });
+            t0.join(); t1.join();
+        }
 
         // Step 2: P2P boundary bond messages — bidirectional, general solution
         // Each side sends its outward message to the other, sized by its own chi.
@@ -360,19 +376,33 @@ int main(int argc, char** argv) {
             HIP_CHECK(hipDeviceSynchronize());
         }
 
-        // Step 3: one additional BP sweep to propagate boundary info
-        // Only run on GPUs that received non-trivial messages (chi > 1 at boundary)
+        // Step 3: full parallel re-convergence after boundary exchange
+        // Both GPUs re-converge with the new boundary information
         {
             const Bond& b0 = grid0->bonds[279 + 7 * RECT_9X32_NX];
             const Bond& b1 = grid1->bonds[279];
-            if (b0.chi > 1) {  // GPU0 sent messages → GPU1 needs sweep
-                HIP_CHECK(hipSetDevice(1));
-                meas1->bp_converge(*grid1, state1->psi, state1->messages,
-                    1, center1 >= 0 ? center1 : 0);
-            }
-            if (b1.chi > 1) {  // GPU1 sent messages → GPU0 needs sweep
-                HIP_CHECK(hipSetDevice(0));
-                meas0->bp_converge(*grid0, state0->psi, state0->messages, 1, center0);
+            bool gpu1_needs = (b0.chi > 1);
+            bool gpu0_needs = (b1.chi > 1);
+
+            if (gpu1_needs || gpu0_needs) {
+                std::thread t0([&](){
+                    if (!gpu0_needs) return;
+                    hipSetDevice(0);
+                    rocblas_handle h; rocblas_create_handle(&h);
+                    Measures m(h, *ws0);
+                    m.bp_converge(*grid0, state0->psi, state0->messages, bp_max, center0);
+                    rocblas_destroy_handle(h);
+                });
+                std::thread t1([&](){
+                    if (!gpu1_needs) return;
+                    hipSetDevice(1);
+                    rocblas_handle h; rocblas_create_handle(&h);
+                    Measures m(h, *ws1);
+                    m.bp_converge(*grid1, state1->psi, state1->messages,
+                        bp_max, center1 >= 0 ? center1 : 0);
+                    rocblas_destroy_handle(h);
+                });
+                t0.join(); t1.join();
             }
         }
 
