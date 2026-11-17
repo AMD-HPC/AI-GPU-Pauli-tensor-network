@@ -361,24 +361,19 @@ int main(int argc, char** argv) {
             HIP_CHECK(hipDeviceSynchronize());
         }
 
-        // Step 3: full parallel re-convergence after boundary exchange
-        // Both GPUs re-converge with the new boundary information
+        // Step 3: one extra BP sweep to propagate boundary info
+        // Full re-convergence causes boundary artifacts — 1 sweep is better
         {
             const Bond& b0 = grid0->bonds[279 + 7 * RECT_9X32_NX];
             const Bond& b1 = grid1->bonds[279];
-            bool gpu1_needs = (b0.chi > 1);
-            bool gpu0_needs = (b1.chi > 1);
-
-            if (gpu1_needs || gpu0_needs) {
-                if (gpu0_needs) {
-                    HIP_CHECK(hipSetDevice(0));
-                    meas0->bp_converge(*grid0, state0->psi, state0->messages, bp_max, center0);
-                }
-                if (gpu1_needs) {
-                    HIP_CHECK(hipSetDevice(1));
-                    meas1->bp_converge(*grid1, state1->psi, state1->messages,
-                        bp_max, center1 >= 0 ? center1 : 0);
-                }
+            if (b0.chi > 1) {
+                HIP_CHECK(hipSetDevice(1));
+                meas1->bp_converge(*grid1, state1->psi, state1->messages,
+                    1, center1 >= 0 ? center1 : 0);
+            }
+            if (b1.chi > 1) {
+                HIP_CHECK(hipSetDevice(0));
+                meas0->bp_converge(*grid0, state0->psi, state0->messages, 1, center0);
             }
         }
 
