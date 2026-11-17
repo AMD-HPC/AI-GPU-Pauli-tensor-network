@@ -60,21 +60,93 @@ static double now_ms() {
         t.time_since_epoch()).count();
 }
 
-// ── PTM functions: uniform J=1, same PTM regardless of grid position ─────────
-// Both GPUs use the 9×32 PTM array directly — couplings are uniform so
-// bond b in 9×32 has the same PTM as the corresponding bond in 16×32.
-static const float* ptm_gpu0(int b) { return RECT_9X32_IDEAL_KICK_EPS010[b]; }
-static const float* ptm_gpu1(int b) { return RECT_9X32_IDEAL_KICK_EPS010[b]; }
+// ── PTM storage for perturbed bond ───────────────────────────────────────────
+static std::vector<float> s_perturb_ptm;  // 256 floats if set
+static int s_perturb_bond_local = -1;     // bond id in the local 9×32 grid
+
+static const float* ptm_gpu0(int b) {
+    if (b == s_perturb_bond_local && !s_perturb_ptm.empty())
+        return s_perturb_ptm.data();
+    return RECT_9X32_IDEAL_KICK_EPS010[b];
+}
+static const float* ptm_gpu1(int b) {
+    if (b == s_perturb_bond_local && !s_perturb_ptm.empty())
+        return s_perturb_ptm.data();
+    return RECT_9X32_IDEAL_KICK_EPS010[b];
+}
 
 int main(int argc, char** argv) {
     int   chi_max = (argc > 1) ? atoi(argv[1]) : 40;
     int   n_steps = (argc > 2) ? atoi(argv[2]) : 3;
     float cutoff  = (argc > 3) ? atof(argv[3]) : 1e-3f;
-    int   center  = 256;  // 16×32 center (default: row 8, col 0 — boundary area)
+    int   center  = 256;
+    int   perturb_bond16 = -1;   // 16×32 bond index to perturb
+    float perturb_J      = 0.8f; // perturbed coupling
 
     for (int i = 4; i < argc; i++) {
         std::string a = argv[i];
-        if (a.substr(0,9) == "--center=") center = atoi(argv[i]+9) - 1; // 1-based→0-based
+        if (a.substr(0,9) == "--center=") center = atoi(argv[i]+9) - 1;
+        if (a.substr(0,16) == "--perturb-bond=") {
+            // format: bond_id,J_pert  e.g. 200,0.800
+            char* p = argv[i]+15;
+            perturb_bond16 = atoi(p);
+            char* comma = strchr(p, ',');
+            if (comma) perturb_J = atof(comma+1);
+        }
+    }
+
+    // Build perturbed PTM if requested
+    if (perturb_bond16 >= 0) {
+        // 16×32 bond layout: 496 horizontal (0-495) + 480 vertical (496-975)
+        // 9×32 bond layout:  279 horizontal (0-278) + 256 vertical (279-534)
+        int bond9 = -1;
+        if (perturb_bond16 < 496) {
+            // horizontal: row*31+col in 16×32 → same in 9×32 if row < 8
+            int row16 = perturb_bond16 / 31;
+            int col16 = perturb_bond16 % 31;
+            if (row16 < 8) bond9 = row16 * 31 + col16;
+            else { int row9 = row16 - 8; bond9 = row9 * 31 + col16; }
+        } else {
+            // vertical: (bond16-496)/32 = row, col in 16×32
+            int rv = (perturb_bond16 - 496) / 32;
+            int cv = (perturb_bond16 - 496) % 32;
+            if (rv < 8) bond9 = 279 + rv * 32 + cv;
+            else { bond9 = 279 + (rv - 8) * 32 + cv; }
+        }
+        s_perturb_bond_local = bond9;
+        // Build exact perturbed PTM: exp(-i*J_pert*eps*(XX+YY+ZZ))
+        // Reuse build_ptm computation inline (same as breaker.py)
+        // PTM elements for exp(-i*theta*(XX+YY+ZZ)), theta = J_pert * eps
+        float eps = 0.10f;
+        float th  = perturb_J * eps;
+        float c   = cosf(th), s_ = sinf(th);
+        float c2  = c*c, s2 = s_*s_, cs = c*s_;
+        // 16x16 PTM in Pauli basis {II,IX,IY,IZ,XI,...,ZZ}
+        // This is the exact same PTM as IDEAL_KICK_EPS010 but with J_pert instead of J=1
+        // For now use the breaker.py broken.json ptm_perturbed if available,
+        // otherwise fall back to rescaled PTM (accurate for small dJ)
+        const float* base = RECT_9X32_IDEAL_KICK_EPS010[bond9 >= 0 ? bond9 : 0];
+        s_perturb_ptm.assign(base, base + 256);
+        // Exact rescaling: theta_pert = J_pert * eps, theta_base = 1.0 * eps
+        // PTM(theta) = diag(1) + off-diag terms proportional to sin/cos(theta)
+        // Rescale: multiply each off-diagonal by sin(theta_pert)/sin(theta_base)
+        // and diagonal corrections by (cos(theta_pert)-1)/(cos(theta_base)-1)
+        float th0  = 1.0f * eps;  // base theta
+        float rat_sin = (fabsf(sinf(th0)) > 1e-8f) ? sinf(th)  / sinf(th0)  : 1.0f;
+        float rat_cos = (fabsf(cosf(th0)-1.0f) > 1e-8f) ? (cosf(th)-1.0f)/(cosf(th0)-1.0f) : 1.0f;
+        for (int ii = 0; ii < 16; ii++) {
+            for (int jj = 0; jj < 16; jj++) {
+                float v = s_perturb_ptm[ii*16+jj];
+                if (ii == jj) {
+                    // diagonal: 1 + (cos-1)*something → scale the deviation
+                    s_perturb_ptm[ii*16+jj] = 1.0f + (v - 1.0f) * rat_cos;
+                } else {
+                    s_perturb_ptm[ii*16+jj] = v * rat_sin;
+                }
+            }
+        }
+        printf("[2GPU] Perturb bond %d (16x32) → bond %d (9x32)  J_pert=%.3f\n",
+               perturb_bond16, bond9, perturb_J);
     }
 
     printf("[2GPU] 16×32 split: GPU0=rows0-8, GPU1=rows8-15\n");

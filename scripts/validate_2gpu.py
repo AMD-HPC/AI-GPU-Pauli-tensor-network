@@ -30,6 +30,8 @@ def main():
     ap.add_argument('--steps',  type=int,   default=3)
     ap.add_argument('--cutoff', default='1e-3')
     ap.add_argument('--center', type=int,   default=257)
+    ap.add_argument('--perturb-bond', type=int, default=-1)
+    ap.add_argument('--J-pert',       type=float, default=0.8)
     args = ap.parse_args()
 
     # Center must be in GPU0's domain (rows 0-7, sites 1-256) for valid comparison.
@@ -43,10 +45,12 @@ def main():
     print(f"Validating 2-GPU vs single-GPU: chi={args.chi} steps={args.steps} center={args.center}")
     print()
 
+    perturb_flag = f"--perturb-bond={args.perturb_bond},{args.J_pert:.3f}" if args.perturb_bond >= 0 else ""
+
     # Single-GPU reference (9x32 — same grid as GPU0)
-    cmd_ref  = f"./main_pauli_sweep_rect9x32 {args.chi} {args.steps} {args.cutoff} --center={args.center} --state=NL"
+    cmd_ref  = f"./main_pauli_sweep_rect9x32 {args.chi} {args.steps} {args.cutoff} --center={args.center} --state=NL {perturb_flag}"
     # 2-GPU split
-    cmd_2gpu = f"./main_pauli_sweep_2gpu_rect16x32 {args.chi} {args.steps} {args.cutoff} --center={args.center}"
+    cmd_2gpu = f"./main_pauli_sweep_2gpu_rect16x32 {args.chi} {args.steps} {args.cutoff} --center={args.center} {perturb_flag}"
 
     print(f"Running: {cmd_ref}")
     out_ref  = run(cmd_ref)
