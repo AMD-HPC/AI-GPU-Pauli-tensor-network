@@ -318,29 +318,14 @@ int main(int argc, char** argv) {
         int bp0_sweeps = 0, bp1_sweeps = 0;
         float bp0_delta = 0.f, bp1_delta = 0.f;
 
-        // Step 1: local BP on each GPU in parallel threads
-        // Each thread creates its own rocBLAS handle (thread-safety requirement)
-        {
-            std::thread t0([&](){
-                HIP_CHECK(hipSetDevice(0));
-                rocblas_handle h; rocblas_create_handle(&h);
-                Measures m(h, *ws0);
-                m.autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
-                    center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta,
-                    nullptr, nullptr);
-                rocblas_destroy_handle(h);
-            });
-            std::thread t1([&](){
-                HIP_CHECK(hipSetDevice(1));
-                rocblas_handle h; rocblas_create_handle(&h);
-                Measures m(h, *ws1);
-                m.autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
-                    center1 >= 0 ? center1 : 0, bp_max,
-                    nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
-                rocblas_destroy_handle(h);
-            });
-            t0.join(); t1.join();
-        }
+        // Step 1: local BP on each GPU sequentially (safe with shared Measures objects)
+        HIP_CHECK(hipSetDevice(0));
+        meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
+            center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta, nullptr, nullptr);
+        HIP_CHECK(hipSetDevice(1));
+        meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
+            center1 >= 0 ? center1 : 0, bp_max,
+            nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
 
         // Step 2: P2P boundary bond messages — bidirectional, general solution
         // Each side sends its outward message to the other, sized by its own chi.
@@ -385,24 +370,15 @@ int main(int argc, char** argv) {
             bool gpu0_needs = (b1.chi > 1);
 
             if (gpu1_needs || gpu0_needs) {
-                std::thread t0([&](){
-                    if (!gpu0_needs) return;
+                if (gpu0_needs) {
                     HIP_CHECK(hipSetDevice(0));
-                    rocblas_handle h; rocblas_create_handle(&h);
-                    Measures m(h, *ws0);
-                    m.bp_converge(*grid0, state0->psi, state0->messages, bp_max, center0);
-                    rocblas_destroy_handle(h);
-                });
-                std::thread t1([&](){
-                    if (!gpu1_needs) return;
+                    meas0->bp_converge(*grid0, state0->psi, state0->messages, bp_max, center0);
+                }
+                if (gpu1_needs) {
                     HIP_CHECK(hipSetDevice(1));
-                    rocblas_handle h; rocblas_create_handle(&h);
-                    Measures m(h, *ws1);
-                    m.bp_converge(*grid1, state1->psi, state1->messages,
+                    meas1->bp_converge(*grid1, state1->psi, state1->messages,
                         bp_max, center1 >= 0 ? center1 : 0);
-                    rocblas_destroy_handle(h);
-                });
-                t0.join(); t1.join();
+                }
             }
         }
 
