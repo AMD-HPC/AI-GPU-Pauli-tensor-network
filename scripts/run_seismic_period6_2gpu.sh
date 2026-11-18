@@ -36,13 +36,11 @@ echo ""
 run_scan() {
     local SID=$1; local CENTERS=$2
     echo "--- Scan $SID ---"
-    ROCR_VISIBLE_DEVICES=0,1 $BINARY $CHI $STEPS $CUTOFF \
+    # 2-GPU binary uses GPUs 0,1,2 internally — no ROCR_VISIBLE_DEVICES restriction
+    $BINARY $CHI $STEPS $CUTOFF \
         --center=$CENTERS \
-        > $LOGDIR/scan${SID}_base.log 2>&1 &
-    PID_BASE=$!
-    # Note: 2-GPU binary uses both GPUs internally, run sequentially
-    wait $PID_BASE
-    ROCR_VISIBLE_DEVICES=0,1 $BINARY $CHI $STEPS $CUTOFF \
+        > $LOGDIR/scan${SID}_base.log 2>&1
+    $BINARY $CHI $STEPS $CUTOFF \
         --center=$CENTERS \
         --perturb-bond=$PERTURB \
         > $LOGDIR/scan${SID}_pert.log 2>&1
