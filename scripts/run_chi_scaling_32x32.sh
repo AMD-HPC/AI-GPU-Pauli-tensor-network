@@ -47,9 +47,9 @@ run_and_detect() {
     # Run base
     ROCR_VISIBLE_DEVICES=0,1,2 $BINARY $CHI $STEPS $CUTOFF \
         --center=$SCAN1 $FLAGS \
-        > $DIR/base.log 2>&1
+        > $DIR/scan1_base.log 2>&1
     # Check OOM
-    if grep -q "OOM\|out of memory" $DIR/base.log; then
+    if grep -q "OOM\|out of memory" $DIR/scan1_base.log; then
         printf "%-6s %-10s %-8s %-8s %-8s %-8s %-8s\n" "$CHI" "$STRATEGY" "OOM" "-" "-" "-" "OOM"
         echo -e "$CHI\t$STRATEGY\tOOM\t-\t-\t-\tOOM" >> $SUMMARY
         return
@@ -59,11 +59,10 @@ run_and_detect() {
     ROCR_VISIBLE_DEVICES=0,1,2 $BINARY $CHI $STEPS $CUTOFF \
         --center=$SCAN1 $FLAGS \
         --perturb-bond=$PERTURB \
-        > $DIR/pert.log 2>&1
+        > $DIR/scan1_pert.log 2>&1
 
-    # Get timing and VRAM
-    T=$(grep "^STEP 3" $DIR/base.log | awk '{print $NF}')
-    VRAM=$(grep -oP 'VRAM%.*?[0-9]+' /proc/self/status 2>/dev/null || echo "?")
+    # Get timing
+    T=$(grep "^STEP 3" $DIR/scan1_base.log | awk '{print $NF}')
 
     # Detect
     RESULT=$(python3 scripts/detect_delta_logT.py \
@@ -73,15 +72,15 @@ run_and_detect() {
     SCORE=$(python3 scripts/detect_delta_logT.py \
         --logdir $DIR --graph $GRAPH \
         --top_k 1 --thr 0.01 2>/dev/null | grep "^\s*1 " | awk '{print $4}')
-    FOUND=$(echo "$RESULT" | grep -c "FOUND\|BOTH" || echo "0")
-    TAG=$([ "$FOUND" -gt 0 ] && echo "✓" || echo "✗")
+    FOUND=$(echo "$RESULT" | grep -c "FOUND\|BOTH")
+    TAG=$([ "$FOUND" -gt "0" ] 2>/dev/null && echo "✓" || echo "✗")
 
     printf "%-6s %-10s %-8s %-8s %-8s %-8s %-8s\n" "$CHI" "$STRATEGY" "?" "$T" "${SCORE:-0}" "${RANK:-?}" "$TAG"
     echo -e "$CHI\t$STRATEGY\t?\t$T\t${SCORE:-0}\t${RANK:-?}\t$TAG" >> $SUMMARY
 }
 
 # Chi sweep
-for CHI in 20 30 40 50 70 100; do
+for CHI in 10 20 30 40 50; do
     run_and_detect $CHI "A_1gpu"    ""             "$BINARY1"
     run_and_detect $CHI "B_vhop09" "--v_hop=0.9"  "$BINARY1"
     run_and_detect $CHI "C_2gpu"   ""             "$BINARY2"
