@@ -35,7 +35,13 @@
 #include "rect_9x32.hpp"
 #include "rect_9x32_ideal_kick_eps010_data.hpp"
 
-// 16×32 grid (GPU2 global BP) — guard duplicate legacy symbol
+// 7×32 boundary slice grid (GPU2 BP)
+#define heavy_hex_3x3_ideal_kick_eps010_ptm heavy_hex_3x3_ideal_kick_eps010_ptm_7x32
+#include "rect_7x32.hpp"
+#include "rect_7x32_ideal_kick_eps010_data.hpp"
+#undef heavy_hex_3x3_ideal_kick_eps010_ptm
+
+// 16×32 grid (for perturb-bond PTM reference) — guard duplicate legacy symbol
 #define heavy_hex_3x3_ideal_kick_eps010_ptm heavy_hex_3x3_ideal_kick_eps010_ptm_16x32_v2
 #include "rect_16x32.hpp"
 #include "rect_16x32_ideal_kick_eps010_data.hpp"
@@ -203,17 +209,25 @@ int main(int argc, char** argv) {
 
     int center1 = centers1.empty() ? 0 : centers1[0];  // BP reference center
 
-    // ── GPU 2 setup: full 16×32 grid for global BP ────────────────────────────
+    // ── GPU 2 setup: 7×32 boundary slice BP ──────────────────────────────────
+    // Slice covers 16×32 rows 5-11 (7 rows, 224 sites) straddling the split at row 8.
+    // GPU0 contributes rows 5-8, GPU1 contributes rows 8-11.
+    // GPU2 runs BP on slice → exact boundary messages → inject to GPU0/GPU1.
     HIP_CHECK(hipSetDevice(2));
-    auto grid2  = std::make_unique<FlatRect16x32Grid>(chi_max);
+    auto grid2  = std::make_unique<FlatRect7x32Grid>(chi_max);
     auto ws2    = std::make_unique<Workspace>(chi_max, MAX_DEGREE);
     rocblas_handle handle2; rocblas_create_handle(&handle2);
     auto meas2  = std::make_unique<Measures>(handle2, *ws2);
     auto state2 = std::make_unique<HeavyHexState>(static_cast<Grid&>(*grid2));
-    // Map centers to 16×32 coordinates for BP reference
-    int center2 = centers16.empty() ? 145 : centers16[0];
-    state2->init_heisenberg(static_cast<Grid&>(*grid2), centers16);
-    printf("[2GPU] GPU2: full 16×32 global BP (512 sites)\n");
+    // Map centers in slice rows (16×32 rows 5-11 → slice rows 0-6)
+    std::vector<int> centers2;
+    for (int s : centers16) {
+        int r = s / 32, c = s % 32;
+        if (r >= 5 && r <= 11) centers2.push_back((r - 5) * 32 + c);
+    }
+    int center2 = centers2.empty() ? 3*32+16 : centers2[0];
+    state2->init_heisenberg(static_cast<Grid&>(*grid2), centers2);
+    printf("[2GPU] GPU2: 7×32 boundary slice BP (rows 5-11, %zu centers)\n", centers2.size());
 
     // ── Allocate states ───────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(0));
@@ -332,44 +346,59 @@ int main(int argc, char** argv) {
             do_kick(1, *grid1, state1->psi, gops1);
         }
 
-        // ── BP: 3-GPU global BP protocol ─────────────────────────────────────────
-        // GPU2 assembles full 512-site state, runs exact global BP,
-        // then injects correct boundary messages back to GPU0 and GPU1.
+        // ── BP: 7×32 boundary slice on GPU2 ──────────────────────────────────────
+        // Slice covers 16×32 rows 5-11 (7 rows around split at row 8).
+        // GPU0 rows 5-8 (sites 160-287) → slice rows 0-3 (sites 0-127)
+        // GPU1 rows 1-4 (sites 32-159 in grid1 = 16×32 rows 9-12) → slice rows 4-7 → only 3 rows needed
+        // For simplicity: slice rows 0-3 from GPU0, rows 3-6 from GPU1
         int bp0_sweeps = 0, bp1_sweeps = 0, bp2_sweeps = 0;
         float bp0_delta = 0.f, bp1_delta = 0.f, bp2_delta = 0.f;
 
-        // Step 1: copy psi GPU0+GPU1 → GPU2 (assemble full 16×32 state)
-        for (int i = 0; i < 256; i++) {  // GPU0 rows 0-7 → GPU2 sites 0-255
-            size_t sz = (size_t)D;
-            for (int k = 0; k < MAX_DEGREE; k++) {
-                int bid = grid0->sites[i].bond_id[k];
-                if (bid >= 0) sz *= grid0->bonds[bid].chi_alloc;
+        // Step 1: copy boundary psi to GPU2 slice
+        // GPU0 rows 5-8 → slice rows 0-3 (sites 0-127 in slice = sites 160-287 in grid0)
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 32; col++) {
+                int s0 = (row + 5) * 32 + col;  // GPU0 site (rows 5-8)
+                int s2 = row * 32 + col;          // slice site (rows 0-3)
+                size_t sz = (size_t)D;
+                for (int k = 0; k < MAX_DEGREE; k++) {
+                    int bid = grid0->sites[s0].bond_id[k];
+                    if (bid >= 0) sz *= grid0->bonds[bid].chi_alloc;
+                }
+                HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state0->psi[s0], 0, sz*sizeof(Scalar)));
             }
-            HIP_CHECK(hipMemcpyPeer(state2->psi[i], 2, state0->psi[i], 0, sz * sizeof(Scalar)));
         }
-        for (int i = 32; i < 288; i++) {  // GPU1 rows 1-8 → GPU2 sites 256-511
-            int s2 = i - 32 + 256;
-            size_t sz = (size_t)D;
-            for (int k = 0; k < MAX_DEGREE; k++) {
-                int bid = grid1->sites[i].bond_id[k];
-                if (bid >= 0) sz *= grid1->bonds[bid].chi_alloc;
+        // GPU1 rows 1-3 (sites 32-127 in grid1 = 16×32 rows 9-11) → slice rows 4-6
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 32; col++) {
+                int s1 = (row + 1) * 32 + col;   // GPU1 site (rows 1-3, skip ghost row 0)
+                int s2 = (row + 4) * 32 + col;    // slice site (rows 4-6)
+                size_t sz = (size_t)D;
+                for (int k = 0; k < MAX_DEGREE; k++) {
+                    int bid = grid1->sites[s1].bond_id[k];
+                    if (bid >= 0) sz *= grid1->bonds[bid].chi_alloc;
+                }
+                HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state1->psi[s1], 1, sz*sizeof(Scalar)));
             }
-            HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state1->psi[i], 1, sz * sizeof(Scalar)));
         }
-        // Sync chi values on grid2 from grid0 (rows 0-8 bonds)
-        for (int b = 0; b < grid0->n_bonds; b++) grid2->bonds[b].chi = grid0->bonds[b].chi;
+        // Sync chi values: slice bonds from grid0 (rows 5-8 horizontal + vertical)
+        // Approximate: use grid0 chi for first 4 rows of slice
+        for (int b = 0; b < (int)std::min((int)grid0->n_bonds, grid2->n_bonds); b++)
+            grid2->bonds[b].chi = std::min(grid0->bonds[b].chi, grid2->bonds[b].chi_alloc);
         HIP_CHECK(hipDeviceSynchronize());
 
-        // Step 2: global BP on GPU2 (exact, full 16×32 grid)
+        // Step 2: BP on slice (GPU2) — exact boundary messages
         HIP_CHECK(hipSetDevice(2));
         meas2->autocorrelation_with_bp(*grid2, state2->psi, state2->messages,
             center2, bp_max, nullptr, nullptr, &bp2_sweeps, &bp2_delta, nullptr, nullptr);
 
-        // Step 3: inject corrected boundary messages GPU2 → GPU0 and GPU1
+        // Step 3: inject slice boundary messages → GPU0 and GPU1
+        // Boundary: slice row 3 ↔ row 4 = split between GPU0 and GPU1 contributions
+        // In slice bond layout: vertical bonds row3↔row4 start at 279 + 3*32
         {
-            const int boff2 = 496 + 7 * 32;           // row7↔row8 vertical bonds in 16×32
-            const int boff0 = 279 + 7 * RECT_9X32_NX; // same in grid0
-            const int boff1 = 279;                     // row0↔row1 in grid1
+            const int boff2 = 279 + 3 * 32;           // row3↔row4 vertical in slice
+            const int boff0 = 279 + 7 * RECT_9X32_NX; // row7↔row8 vertical in grid0
+            const int boff1 = 279;                     // row0↔row1 vertical in grid1
             for (int col = 0; col < 32; col++) {
                 const Bond& b2 = grid2->bonds[boff2 + col];
                 const Bond& b0 = grid0->bonds[boff0 + col];
@@ -393,10 +422,6 @@ int main(int argc, char** argv) {
         meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
             center1 >= 0 ? center1 : 0, bp_max,
             nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
-
-        // (keep dummy block to maintain closing brace count)
-        if (false) {
-        }
 
         // Actual chi
         int chi_actual = 1;

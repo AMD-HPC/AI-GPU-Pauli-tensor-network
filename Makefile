@@ -91,6 +91,7 @@ main_pauli_sweep_2gpu_rect16x32: $(SRC)/main_pauli_sweep_2gpu_rect16x32.cpp $(HE
 	include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/trotter.hpp include/trotter_2gpu.hpp \
 	include/rect_9x32.hpp include/rect_9x32_ideal_kick_eps010_data.hpp \
+	include/rect_7x32.hpp include/rect_7x32_ideal_kick_eps010_data.hpp \
 	include/rect_16x32.hpp include/rect_16x32_ideal_kick_eps010_data.hpp
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -o $@ $(SRC)/main_pauli_sweep_2gpu_rect16x32.cpp $(LIBS)
 	@echo "Built $@ (2-GPU 16x32 split)"
