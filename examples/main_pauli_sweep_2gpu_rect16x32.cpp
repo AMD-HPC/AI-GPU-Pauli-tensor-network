@@ -197,6 +197,18 @@ int main(int argc, char** argv) {
 
     int center1 = centers1.empty() ? 0 : centers1[0];  // BP reference center
 
+    // ── GPU 2 setup: full 16×32 grid for global BP ────────────────────────────
+    HIP_CHECK(hipSetDevice(2));
+    auto grid2  = std::make_unique<FlatRect16x32Grid>(chi_max);
+    auto ws2    = std::make_unique<Workspace>(chi_max, MAX_DEGREE);
+    rocblas_handle handle2; rocblas_create_handle(&handle2);
+    auto meas2  = std::make_unique<Measures>(handle2, *ws2);
+    auto state2 = std::make_unique<HeavyHexState>(static_cast<Grid&>(*grid2));
+    // Map centers to 16×32 coordinates for BP reference
+    int center2 = centers16.empty() ? 145 : centers16[0];
+    state2->init_heisenberg(static_cast<Grid&>(*grid2), centers16);
+    printf("[2GPU] GPU2: full 16×32 global BP (512 sites)\n");
+
     // ── Allocate states ───────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(0));
     auto state0 = std::make_unique<HeavyHexState>(static_cast<Grid&>(*grid0));
@@ -314,11 +326,60 @@ int main(int argc, char** argv) {
             do_kick(1, *grid1, state1->psi, gops1);
         }
 
-        // ── BP: parallel local convergence, P2P exchange, parallel re-convergence ──
-        int bp0_sweeps = 0, bp1_sweeps = 0;
-        float bp0_delta = 0.f, bp1_delta = 0.f;
+        // ── BP: 3-GPU global BP protocol ─────────────────────────────────────────
+        // GPU2 assembles full 512-site state, runs exact global BP,
+        // then injects correct boundary messages back to GPU0 and GPU1.
+        int bp0_sweeps = 0, bp1_sweeps = 0, bp2_sweeps = 0;
+        float bp0_delta = 0.f, bp1_delta = 0.f, bp2_delta = 0.f;
 
-        // Step 1: local BP on each GPU sequentially (safe with shared Measures objects)
+        // Step 1: copy psi GPU0+GPU1 → GPU2 (assemble full 16×32 state)
+        for (int i = 0; i < 256; i++) {  // GPU0 rows 0-7 → GPU2 sites 0-255
+            size_t sz = (size_t)D;
+            for (int k = 0; k < MAX_DEGREE; k++) {
+                int bid = grid0->sites[i].bond_id[k];
+                if (bid >= 0) sz *= grid0->bonds[bid].chi_alloc;
+            }
+            HIP_CHECK(hipMemcpyPeer(state2->psi[i], 2, state0->psi[i], 0, sz * sizeof(Scalar)));
+        }
+        for (int i = 32; i < 288; i++) {  // GPU1 rows 1-8 → GPU2 sites 256-511
+            int s2 = i - 32 + 256;
+            size_t sz = (size_t)D;
+            for (int k = 0; k < MAX_DEGREE; k++) {
+                int bid = grid1->sites[i].bond_id[k];
+                if (bid >= 0) sz *= grid1->bonds[bid].chi_alloc;
+            }
+            HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state1->psi[i], 1, sz * sizeof(Scalar)));
+        }
+        // Sync chi values on grid2 from grid0 (rows 0-8 bonds)
+        for (int b = 0; b < grid0->n_bonds; b++) grid2->bonds[b].chi = grid0->bonds[b].chi;
+        HIP_CHECK(hipDeviceSynchronize());
+
+        // Step 2: global BP on GPU2 (exact, full 16×32 grid)
+        HIP_CHECK(hipSetDevice(2));
+        meas2->autocorrelation_with_bp(*grid2, state2->psi, state2->messages,
+            center2, bp_max, nullptr, nullptr, &bp2_sweeps, &bp2_delta, nullptr, nullptr);
+
+        // Step 3: inject corrected boundary messages GPU2 → GPU0 and GPU1
+        {
+            const int boff2 = 496 + 7 * 32;           // row7↔row8 vertical bonds in 16×32
+            const int boff0 = 279 + 7 * RECT_9X32_NX; // same in grid0
+            const int boff1 = 279;                     // row0↔row1 in grid1
+            for (int col = 0; col < 32; col++) {
+                const Bond& b2 = grid2->bonds[boff2 + col];
+                const Bond& b0 = grid0->bonds[boff0 + col];
+                const Bond& b1 = grid1->bonds[boff1 + col];
+                if (b2.chi > 1) {
+                    size_t sz = (size_t)b2.chi * b2.chi * sizeof(Scalar);
+                    HIP_CHECK(hipMemcpyPeer(state0->messages[b0.msg_from_b()], 0,
+                                            state2->messages[b2.msg_from_b()], 2, sz));
+                    HIP_CHECK(hipMemcpyPeer(state1->messages[b1.msg_from_a()], 1,
+                                            state2->messages[b2.msg_from_a()], 2, sz));
+                }
+            }
+            HIP_CHECK(hipDeviceSynchronize());
+        }
+
+        // Step 4: local BP on GPU0 and GPU1 with corrected boundary messages
         HIP_CHECK(hipSetDevice(0));
         meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
             center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta, nullptr, nullptr);
@@ -327,46 +388,8 @@ int main(int argc, char** argv) {
             center1 >= 0 ? center1 : 0, bp_max,
             nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
 
-        // Steps 2+3: iterated P2P exchange + 1 BP sweep, repeated n_exchanges times.
-        // Each iteration brings boundary messages closer to the global BP fixed point.
-        // n_exchanges=1: original (fast, works for bonds far from boundary)
-        // n_exchanges=2: better for bonds within 2-3 hops of boundary
-        const int n_exchanges = 2;
-        const int bond_offset0 = 279 + 7 * RECT_9X32_NX;
-        const int bond_offset1 = 279;
-
-        for (int ex = 0; ex < n_exchanges; ex++) {
-            // P2P exchange
-            for (int col = 0; col < RECT_9X32_NX; col++) {
-                const Bond& b0 = grid0->bonds[bond_offset0 + col];
-                const Bond& b1 = grid1->bonds[bond_offset1 + col];
-                if (b0.chi > 1) {
-                    size_t sz0 = (size_t)b0.chi * b0.chi * sizeof(Scalar);
-                    HIP_CHECK(hipMemcpyPeer(
-                        state1->messages[b1.msg_from_a()], 1,
-                        state0->messages[b0.msg_from_b()], 0, sz0));
-                }
-                if (b1.chi > 1) {
-                    size_t sz1 = (size_t)b1.chi * b1.chi * sizeof(Scalar);
-                    HIP_CHECK(hipMemcpyPeer(
-                        state0->messages[b0.msg_from_b()], 0,
-                        state1->messages[b1.msg_from_a()], 1, sz1));
-                }
-            }
-            HIP_CHECK(hipDeviceSynchronize());
-
-            // 1 BP sweep each to propagate boundary info
-            const Bond& b0 = grid0->bonds[bond_offset0];
-            const Bond& b1 = grid1->bonds[bond_offset1];
-            if (b0.chi > 1) {
-                HIP_CHECK(hipSetDevice(1));
-                meas1->bp_converge(*grid1, state1->psi, state1->messages,
-                    1, center1 >= 0 ? center1 : 0);
-            }
-            if (b1.chi > 1) {
-                HIP_CHECK(hipSetDevice(0));
-                meas0->bp_converge(*grid0, state0->psi, state0->messages, 1, center0);
-            }
+        // (keep dummy block to maintain closing brace count)
+        if (false) {
         }
 
         // Actual chi
@@ -374,8 +397,9 @@ int main(int argc, char** argv) {
         for (auto& b : grid0->bonds) chi_actual = std::max(chi_actual, b.chi);
 
         double t = (now_ms() - t0) / 1000.0;
-        printf("STEP %d  chi %d  bp0 %d/%.2e  bp1 %d/%.2e  t %.2f\n",
-               step, chi_actual, bp0_sweeps, (double)bp0_delta,
+        printf("STEP %d  chi %d  bp2 %d/%.2e  bp0 %d/%.2e  bp1 %d/%.2e  t %.2f\n",
+               step, chi_actual, bp2_sweeps, (double)bp2_delta,
+               bp0_sweeps, (double)bp0_delta,
                bp1_sweeps, (double)bp1_delta, t);
 
         // Pauli weights — merge both halves
