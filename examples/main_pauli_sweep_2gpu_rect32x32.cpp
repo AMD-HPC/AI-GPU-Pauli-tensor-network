@@ -390,7 +390,7 @@ int main(int argc, char** argv) {
         // Boundary: slice row 3 ↔ row 4 = split between GPU0 and GPU1 contributions
         // In slice bond layout: vertical bonds row3↔row4 start at 279 + 3*32
         {
-            const int boff2 = 527 + 15 * 32;           // row3↔row4 vertical in slice
+            const int boff2 = 279 + 3 * 32;            // row3↔row4 vertical in slice (7x32)
             const int boff0 = 527 + 15 * RECT_17X32_NX; // row7↔row8 vertical in grid0
             const int boff1 = 527;                     // row0↔row1 vertical in grid1
             for (int col = 0; col < 32; col++) {
