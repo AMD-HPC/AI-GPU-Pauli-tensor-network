@@ -35,6 +35,12 @@
 #include "rect_9x32.hpp"
 #include "rect_9x32_ideal_kick_eps010_data.hpp"
 
+// 16×32 grid (GPU2 global BP) — guard duplicate legacy symbol
+#define heavy_hex_3x3_ideal_kick_eps010_ptm heavy_hex_3x3_ideal_kick_eps010_ptm_16x32_v2
+#include "rect_16x32.hpp"
+#include "rect_16x32_ideal_kick_eps010_data.hpp"
+#undef heavy_hex_3x3_ideal_kick_eps010_ptm
+
 // Site kick PTM from 16×32 (same value as 9×32 — uniform J=1)
 // Use 9×32 site PTM directly to avoid duplicate symbol issues
 static const float* s_site_ptm_ptr = RECT_9X32_IDEAL_KICK_EPS010_SITE_PTM;
