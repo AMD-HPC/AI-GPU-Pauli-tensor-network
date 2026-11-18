@@ -219,15 +219,11 @@ int main(int argc, char** argv) {
     rocblas_handle handle2; rocblas_create_handle(&handle2);
     auto meas2  = std::make_unique<Measures>(handle2, *ws2);
     auto state2 = std::make_unique<HeavyHexState>(static_cast<Grid&>(*grid2));
-    // Map centers in slice rows (16×32 rows 5-11 → slice rows 0-6)
-    std::vector<int> centers2;
-    for (int s : centers16) {
-        int r = s / 32, c = s % 32;
-        if (r >= 5 && r <= 11) centers2.push_back((r - 5) * 32 + c);
-    }
-    int center2 = centers2.empty() ? 3*32+16 : centers2[0];
-    state2->init_heisenberg(static_cast<Grid&>(*grid2), centers2);
-    printf("[2GPU] GPU2: 7×32 boundary slice BP (rows 5-11, %zu centers)\n", centers2.size());
+    // GPU2 slice has no independent center — psi is copied from GPU0/GPU1 after Trotter
+    // Use middle of slice as BP reference center (row 3, col 16)
+    int center2 = 3 * 32 + 16;
+    state2->init_heisenberg(static_cast<Grid&>(*grid2), std::vector<int>{});  // silent: all identity
+    printf("[2GPU] GPU2: 7×32 boundary slice BP (rows 5-11, psi from GPU0/GPU1)\n");
 
     // ── Allocate states ───────────────────────────────────────────────────────
     HIP_CHECK(hipSetDevice(0));
