@@ -26,6 +26,8 @@ SCAN1="1,7,13,19,25,31,193,199,205,211,217,223,385,391,397,403,409,415,577,583,5
 
 LOGBASE="logs/chi_scaling_32x32"
 mkdir -p $LOGBASE
+SUMMARY="$LOGBASE/summary.tsv"
+echo -e "chi\tstrategy\tVRAM%\tstep3_t\tscore\trank\tresult" > $SUMMARY
 
 echo "================================================================"
 echo "=== Chi Scaling Study: 32x32 (1024 qubits)  Bond=$BOND ==="
@@ -49,6 +51,7 @@ run_and_detect() {
     # Check OOM
     if grep -q "OOM\|out of memory" $DIR/base.log; then
         printf "%-6s %-10s %-8s %-8s %-8s %-8s %-8s\n" "$CHI" "$STRATEGY" "OOM" "-" "-" "-" "OOM"
+        echo -e "$CHI\t$STRATEGY\tOOM\t-\t-\t-\tOOM" >> $SUMMARY
         return
     fi
 
@@ -74,6 +77,7 @@ run_and_detect() {
     TAG=$([ "$FOUND" -gt 0 ] && echo "✓" || echo "✗")
 
     printf "%-6s %-10s %-8s %-8s %-8s %-8s %-8s\n" "$CHI" "$STRATEGY" "?" "$T" "${SCORE:-0}" "${RANK:-?}" "$TAG"
+    echo -e "$CHI\t$STRATEGY\t?\t$T\t${SCORE:-0}\t${RANK:-?}\t$TAG" >> $SUMMARY
 }
 
 # Chi sweep
