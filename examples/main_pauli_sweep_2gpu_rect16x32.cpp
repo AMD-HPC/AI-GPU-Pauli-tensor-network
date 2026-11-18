@@ -354,31 +354,35 @@ int main(int argc, char** argv) {
         int bp0_sweeps = 0, bp1_sweeps = 0, bp2_sweeps = 0;
         float bp0_delta = 0.f, bp1_delta = 0.f, bp2_delta = 0.f;
 
+        // Helper: compute psi tensor size for a site using chi_alloc
+        auto psi_size = [&](const Grid& g, int site_id) -> size_t {
+            size_t sz = (size_t)D;
+            for (int k = 0; k < MAX_DEGREE; k++) {
+                int bid = g.sites[site_id].bond_id[k];
+                if (bid >= 0) sz *= g.bonds[bid].chi_alloc;
+            }
+            return sz;
+        };
+
         // Step 1: copy boundary psi to GPU2 slice
         // GPU0 rows 5-8 → slice rows 0-3 (sites 0-127 in slice = sites 160-287 in grid0)
         for (int row = 0; row < 4; row++) {
             for (int col = 0; col < 32; col++) {
-                int s0 = (row + 5) * 32 + col;  // GPU0 site (rows 5-8)
-                int s2 = row * 32 + col;          // slice site (rows 0-3)
-                size_t sz = (size_t)D;
-                for (int k = 0; k < MAX_DEGREE; k++) {
-                    int bid = grid0->sites[s0].bond_id[k];
-                    if (bid >= 0) sz *= grid0->bonds[bid].chi_alloc;
-                }
-                HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state0->psi[s0], 0, sz*sizeof(Scalar)));
+                int s0 = (row + 5) * 32 + col;
+                int s2 = row * 32 + col;
+                size_t sz = std::min(psi_size(*grid0, s0), psi_size(*grid2, s2));
+                if (sz > (size_t)D)
+                    HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state0->psi[s0], 0, sz*sizeof(Scalar)));
             }
         }
-        // GPU1 rows 1-3 (sites 32-127 in grid1 = 16×32 rows 9-11) → slice rows 4-6
+        // GPU1 rows 1-3 → slice rows 4-6
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 32; col++) {
-                int s1 = (row + 1) * 32 + col;   // GPU1 site (rows 1-3, skip ghost row 0)
-                int s2 = (row + 4) * 32 + col;    // slice site (rows 4-6)
-                size_t sz = (size_t)D;
-                for (int k = 0; k < MAX_DEGREE; k++) {
-                    int bid = grid1->sites[s1].bond_id[k];
-                    if (bid >= 0) sz *= grid1->bonds[bid].chi_alloc;
-                }
-                HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state1->psi[s1], 1, sz*sizeof(Scalar)));
+                int s1 = (row + 1) * 32 + col;
+                int s2 = (row + 4) * 32 + col;
+                size_t sz = std::min(psi_size(*grid1, s1), psi_size(*grid2, s2));
+                if (sz > (size_t)D)
+                    HIP_CHECK(hipMemcpyPeer(state2->psi[s2], 2, state1->psi[s1], 1, sz*sizeof(Scalar)));
             }
         }
         // Sync chi values: slice bonds from grid0 (rows 5-8 horizontal + vertical)
