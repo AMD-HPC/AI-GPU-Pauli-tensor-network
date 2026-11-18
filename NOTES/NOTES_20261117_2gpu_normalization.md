@@ -100,3 +100,26 @@ purely geometric (center distance to broken bond).
 1. Add normalization factor to PAULI_NL output for physically correct values
 2. Update validate_2gpu_full.py to apply correction before comparison
 3. Proceed to 32×32 (two 17×32 grids, correction = 17/32)
+
+## Final validation result (2026-11-17)
+
+After applying normalization factor 9/16:
+
+| Step | max_diff | status |
+|------|----------|--------|
+| 1 | 3.30e-06 | ✓ PASS |
+| 2 | 3.10e-06 | ✓ PASS |
+| 3 | 2.40e-06 | ✓ PASS |
+
+Residual ~3e-06 is floating point rounding only. 2-GPU 16×32 numerically validated.
+
+## Roadmap to 32×32 (after dinner)
+
+1. Build rect_17x32 grid class (17×32 = 544 sites, 576 bonds) — same as rect_9x32 but NY=17
+2. Build PTMs for rect_17x32
+3. Copy main_pauli_sweep_2gpu_rect16x32.cpp → main_pauli_sweep_2gpu_rect32x32.cpp
+4. Update: NX=32, NY=32, N_half=17, N_full=32, norm=17/32
+5. Update centers split: rows 0-15 → GPU0, rows 16-31 → GPU1
+6. Update boundary: cut at row 16, boundary slice rows 13-19 (rect_7x32 reused)
+7. Build and validate: validate_2gpu_full with rect_32x32 reference
+8. Run period-6 seismic on 32×32 → 1024 qubits!
