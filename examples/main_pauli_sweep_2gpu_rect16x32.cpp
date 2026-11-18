@@ -327,30 +327,25 @@ int main(int argc, char** argv) {
             center1 >= 0 ? center1 : 0, bp_max,
             nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
 
-        // Step 2: P2P boundary bond messages — bidirectional, general solution
-        // Each side sends its outward message to the other, sized by its own chi.
-        // Only send if source chi > 1 (has non-trivial information).
-        // Receiver updates its inward message — does NOT resize its buffer.
-        {
-            const int n_boundary = RECT_9X32_NX;
-            const int bond_offset0 = 279 + 7 * RECT_9X32_NX;  // row7↔row8 in grid0
-            const int bond_offset1 = 279;                       // row0↔row1 in grid1
+        // Steps 2+3: iterated P2P exchange + 1 BP sweep, repeated n_exchanges times.
+        // Each iteration brings boundary messages closer to the global BP fixed point.
+        // n_exchanges=1: original (fast, works for bonds far from boundary)
+        // n_exchanges=2: better for bonds within 2-3 hops of boundary
+        const int n_exchanges = 2;
+        const int bond_offset0 = 279 + 7 * RECT_9X32_NX;
+        const int bond_offset1 = 279;
 
-            for (int col = 0; col < n_boundary; col++) {
+        for (int ex = 0; ex < n_exchanges; ex++) {
+            // P2P exchange
+            for (int col = 0; col < RECT_9X32_NX; col++) {
                 const Bond& b0 = grid0->bonds[bond_offset0 + col];
                 const Bond& b1 = grid1->bonds[bond_offset1 + col];
-
-                // GPU0 → GPU1: send outward msg at row8 → GPU1's inward at row0
-                // Only if GPU0 has non-trivial messages at this bond
                 if (b0.chi > 1) {
                     size_t sz0 = (size_t)b0.chi * b0.chi * sizeof(Scalar);
                     HIP_CHECK(hipMemcpyPeer(
                         state1->messages[b1.msg_from_a()], 1,
                         state0->messages[b0.msg_from_b()], 0, sz0));
                 }
-
-                // GPU1 → GPU0: send outward msg at row1 → GPU0's inward at row8
-                // Only if GPU1 has non-trivial messages (center in GPU1's domain)
                 if (b1.chi > 1) {
                     size_t sz1 = (size_t)b1.chi * b1.chi * sizeof(Scalar);
                     HIP_CHECK(hipMemcpyPeer(
@@ -359,13 +354,10 @@ int main(int argc, char** argv) {
                 }
             }
             HIP_CHECK(hipDeviceSynchronize());
-        }
 
-        // Step 3: one extra BP sweep to propagate boundary info
-        // Full re-convergence causes boundary artifacts — 1 sweep is better
-        {
-            const Bond& b0 = grid0->bonds[279 + 7 * RECT_9X32_NX];
-            const Bond& b1 = grid1->bonds[279];
+            // 1 BP sweep each to propagate boundary info
+            const Bond& b0 = grid0->bonds[bond_offset0];
+            const Bond& b1 = grid1->bonds[bond_offset1];
             if (b0.chi > 1) {
                 HIP_CHECK(hipSetDevice(1));
                 meas1->bp_converge(*grid1, state1->psi, state1->messages,
