@@ -87,6 +87,13 @@ main_pauli_sweep_rect9x32: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
 	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_9x32 -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
 	@echo "Built $@ (rect_9x32, 288 sites)"
 
+main_pauli_sweep_rect32x32: $(SRC)/main_pauli_sweep.cpp $(HEADERS) \
+	include/heavyhex.hpp include/heavyhex_physics.hpp include/trotter.hpp \
+	include/rect_32x32.hpp \
+	include/rect_32x32_ideal_kick_eps010_data.hpp
+	$(HIPCC) $(CXXFLAGS) $(DEFINES) -DGRAPH_rect_32x32 -o $@ $(SRC)/main_pauli_sweep.cpp $(LIBS)
+	@echo "Built $@ (rect_32x32, 1024 sites)"
+
 main_pauli_sweep_2gpu_rect32x32: $(SRC)/main_pauli_sweep_2gpu_rect32x32.cpp $(HEADERS) \
 	include/heavyhex.hpp include/heavyhex_physics.hpp \
 	include/trotter.hpp include/trotter_2gpu.hpp \

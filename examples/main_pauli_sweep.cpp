@@ -67,6 +67,17 @@
   static PtmFn s_ptm_n2 = [](int b)->const float*{ return RECT_16x32_IDEAL_KICK_EPS010[b]; };
   static PtmFn s_ptm_n3 = [](int b)->const float*{ return RECT_16x32_IDEAL_KICK_EPS010[b]; };
   static const float* s_site_ptm = RECT_16x32_IDEAL_KICK_EPS010_SITE_PTM;
+#elif defined(GRAPH_rect_32x32)
+  #include "rect_32x32.hpp"
+  #include "rect_32x32_ideal_kick_eps010_data.hpp"
+  #define GRID_TAG   "rect_32x32"
+  #define GRID_CLASS FlatRect32x32Grid
+  #define N_COLORS   4
+  static PtmFn s_ptm_nl = [](int b)->const float*{ return RECT_32X32_IDEAL_KICK_EPS010[b]; };
+  static PtmFn s_ptm_n1 = [](int b)->const float*{ return RECT_32X32_IDEAL_KICK_EPS010[b]; };
+  static PtmFn s_ptm_n2 = [](int b)->const float*{ return RECT_32X32_IDEAL_KICK_EPS010[b]; };
+  static PtmFn s_ptm_n3 = [](int b)->const float*{ return RECT_32X32_IDEAL_KICK_EPS010[b]; };
+  static const float* s_site_ptm = RECT_32X32_IDEAL_KICK_EPS010_SITE_PTM;
 #elif defined(GRAPH_rect_9x32)
   #include "rect_9x32.hpp"
   #include "rect_9x32_ideal_kick_eps010_data.hpp"
