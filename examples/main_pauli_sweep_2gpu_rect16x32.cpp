@@ -443,11 +443,14 @@ int main(int argc, char** argv) {
         meas1->compute_pauli_profile(*grid1, state1->psi, nid1.data());
 
         // Merged output: 512 sites total (16×32)
-        // GPU0 rows 0-7 (sites 0-255) → 16×32 rows 0-7
-        // GPU1 rows 1-8 (sites 32-287) → 16×32 rows 8-15 (skip row 0 = ghost)
+        // Apply BP normalization correction: each 9×32 half uses N_half/N_full = 9/16
+        // of the full graph's Bethe partition function → values inflated by 16/9.
+        // Multiply by 9/16 to recover physically correct n(v,t).
+        // Note: for δlnT detection this cancels in base/pert ratio — not strictly needed.
+        const float norm = (float)RECT_9X32_NY / (float)RECT_16x32_NY;  // 9/16
         printf("PAULI_NL %d", step);
-        for (int i = 0; i < 256; i++) printf(" %.7f", nid0[i]);       // rows 0-7
-        for (int i = 32; i < grid1->n_sites; i++) printf(" %.7f", nid1[i]); // rows 8-15
+        for (int i = 0; i < 256; i++) printf(" %.7f", nid0[i] * norm);
+        for (int i = 32; i < grid1->n_sites; i++) printf(" %.7f", nid1[i] * norm);
         printf("\n");
     }
 
