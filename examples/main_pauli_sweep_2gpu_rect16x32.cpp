@@ -380,14 +380,28 @@ int main(int argc, char** argv) {
             HIP_CHECK(hipDeviceSynchronize());
         }
 
-        // Step 4: local BP on GPU0 and GPU1 with corrected boundary messages
-        HIP_CHECK(hipSetDevice(0));
-        meas0->autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
-            center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta, nullptr, nullptr);
-        HIP_CHECK(hipSetDevice(1));
-        meas1->autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
-            center1 >= 0 ? center1 : 0, bp_max,
-            nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
+        // Step 4: local BP on GPU0 and GPU1 — fully parallel
+        {
+            std::thread tbp0([&](){
+                HIP_CHECK(hipSetDevice(0));
+                rocblas_handle h; rocblas_create_handle(&h);
+                Measures m(h, *ws0);
+                m.autocorrelation_with_bp(*grid0, state0->psi, state0->messages,
+                    center0, bp_max, nullptr, nullptr, &bp0_sweeps, &bp0_delta,
+                    nullptr, nullptr);
+                rocblas_destroy_handle(h);
+            });
+            std::thread tbp1([&](){
+                HIP_CHECK(hipSetDevice(1));
+                rocblas_handle h; rocblas_create_handle(&h);
+                Measures m(h, *ws1);
+                m.autocorrelation_with_bp(*grid1, state1->psi, state1->messages,
+                    center1 >= 0 ? center1 : 0, bp_max,
+                    nullptr, nullptr, &bp1_sweeps, &bp1_delta, nullptr, nullptr);
+                rocblas_destroy_handle(h);
+            });
+            tbp0.join(); tbp1.join();
+        }
 
         // Actual chi
         int chi_actual = 1;
