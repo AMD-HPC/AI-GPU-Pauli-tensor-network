@@ -255,62 +255,28 @@ int main(int argc, char** argv) {
     for (int step = 1; step <= n_steps; step++) {
         double t0 = now_ms();
 
-        // Colors before cut: sequential (rocBLAS handles not thread-safe cross-device)
-        for (int c = 0; c < cut_color; c++) {
-            HIP_CHECK(hipSetDevice(0));
-            do_trotter_one_color(*ctx0, c,
-                state0->psi, state0->messages, *grid0,
-                ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
-            HIP_CHECK(hipSetDevice(1));
-            do_trotter_one_color(*ctx1, c,
-                state1->psi, state1->messages, *grid1,
-                ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
-        }
-
-        // P2P sync: GPU 0 row 16 → GPU 1 row 0 (UNIDIRECTIONAL — one way only)
-        // GPU1 needs GPU0's row 8 as ghost to compute the cut bond (row0↔row1 in grid1).
-        // GPU0's row 8 is NOT updated by GPU1 — no reverse copy needed.
-        // The cut bond only exists in grid1 (row0↔row1); grid0 has no bond below row 16.
-        if (grid1->bonds[cut_bond_id].chi_alloc > 1) {
-            HIP_CHECK(hipSetDevice(0));
-            for (int col = 0; col < RECT_17X32_NX; col++) {
-                int s_top = cut_site_top + col;   // GPU0 row 16, col
-                int s_bot = cut_site_bot + col;   // GPU1 row 0, col (ghost)
-                size_t sz = (size_t)D;
-                for (int k = 0; k < MAX_DEGREE; k++) {
-                    int bid = grid0->sites[s_top].bond_id[k];
-                    if (bid >= 0) sz *= grid0->bonds[bid].chi_alloc;
+        // ── Parallel Trotter: GPU0 and GPU1 fully independent ────────────────────
+        // No per-color P2P sync. Each GPU runs all colors on its half-grid.
+        // Boundary Trotter error corrected by slice BP at cycle end.
+        // Per-thread rocBLAS handles required for thread safety.
+        {
+            auto run_trotter = [&](int gpu, FlatRect17x32Grid& grid,
+                                   HeavyHexState& state, TrotterColorCtx& ctx,
+                                   Workspace& ws, PtmFn ptm) {
+                HIP_CHECK(hipSetDevice(gpu));
+                rocblas_handle h; rocblas_create_handle(&h);
+                GateOps gops(h);
+                for (int c = 0; c < (int)grid.colors.size(); c++) {
+                    do_trotter_one_color(ctx, c, state.psi, state.messages,
+                        static_cast<Grid&>(grid), ptm, nullptr, gops, ws,
+                        chi_max, cutoff);
                 }
-                if (sz > (size_t)D) {
-                    HIP_CHECK(hipMemcpyPeer(
-                        state1->psi[s_bot], 1,
-                        state0->psi[s_top], 0,
-                        sz * sizeof(Scalar)));
-                }
-            }
-            HIP_CHECK(hipDeviceSynchronize());
-        }
+                rocblas_destroy_handle(h);
+            };
 
-        // Cut color: both GPUs compute sequentially
-        HIP_CHECK(hipSetDevice(0));
-        do_trotter_one_color(*ctx0, cut_color,
-            state0->psi, state0->messages, *grid0,
-            ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
-        HIP_CHECK(hipSetDevice(1));
-        do_trotter_one_color(*ctx1, cut_color,
-            state1->psi, state1->messages, *grid1,
-            ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
-
-        // Colors after cut: sequential
-        for (int c = cut_color + 1; c < (int)grid0->colors.size(); c++) {
-            HIP_CHECK(hipSetDevice(0));
-            do_trotter_one_color(*ctx0, c,
-                state0->psi, state0->messages, *grid0,
-                ptm_gpu0, nullptr, gops0, *ws0, chi_max, cutoff);
-            HIP_CHECK(hipSetDevice(1));
-            do_trotter_one_color(*ctx1, c,
-                state1->psi, state1->messages, *grid1,
-                ptm_gpu1, nullptr, gops1, *ws1, chi_max, cutoff);
+            std::thread t0([&](){ run_trotter(0, *grid0, *state0, *ctx0, *ws0, ptm_gpu0); });
+            std::thread t1([&](){ run_trotter(1, *grid1, *state1, *ctx1, *ws1, ptm_gpu1); });
+            t0.join(); t1.join();
         }
 
         // Site kick
@@ -332,8 +298,9 @@ int main(int argc, char** argv) {
                     gops.apply_unary_gate(psi[site.id], site, grid, site_ptm, tmp);
                 HIP_CHECK(hipFree(tmp));
             };
-            do_kick(0, *grid0, state0->psi, gops0);
-            do_kick(1, *grid1, state1->psi, gops1);
+            std::thread tk0([&](){ do_kick(0, *grid0, state0->psi, gops0); });
+            std::thread tk1([&](){ do_kick(1, *grid1, state1->psi, gops1); });
+            tk0.join(); tk1.join();
         }
 
         // ── BP: 7×32 boundary slice on GPU2 ──────────────────────────────────────
