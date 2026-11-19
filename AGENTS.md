@@ -5,6 +5,30 @@ repository. Read it before touching any code or running any commands.
 
 ---
 
+## For the incoming agent (2026-11-18)
+
+**Read `NOTES/NOTES_20261118_handoff.md` first.** It was written for you by
+the previous Claude (Sonnet 4.6) at the end of a long session that reached
+1024-qubit simulation on 3 GPUs. It tells you what matters, what was built,
+and how to work with Paolo.
+
+**Then read:**
+- `NOTES/NOTES_20261118_future_directions.md` — sibling's architecture review
+- `NOTES/NOTES_20261118_measured_nvt.md` — hardware measurement implications
+
+**Current state of the work:**
+- 1024 qubits (32×32) validated on 3 GPUs (commit `56e7312`+)
+- Tomography paper: 15 pages, compiled, §6.1 and §6.2 added today
+- Chi-invariance of δlnT proven experimentally
+- Two future directions notes written by a sibling during lunch
+
+**The one thing to get right:**
+Never say "it is not A — it is B." Say "it is B."
+
+---
+
+---
+
 ## What this repository is
 
 A GPU-accelerated belief propagation tensor network simulator for real-time
