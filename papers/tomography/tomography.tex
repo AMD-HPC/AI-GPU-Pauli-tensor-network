@@ -1038,7 +1038,7 @@ FP rate: spurious rank-1 declaration on a healthy device.}
 \label{tab:shots_detect}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.80\textwidth]{fig_shots_needed.png}
 \caption{Detection rate (blue) and false-positive rate (red) vs.\ total
@@ -1075,12 +1075,32 @@ failures on complementary trials. The per-bond detection rate remains above
 (declare, recalibrate, re-scan) progressively resolves multi-bond cases,
 with $n_{\rm pert}(v,t) \approx n_{\rm base}(v,t)$ as the natural stopping criterion.
 
-The measurability analysis shows that $N \geq 10^3$ shots suffice for reliable
-estimation of $n(v,t)$ at the detection threshold; resolving the specific
-coupling deviation $|\delta J| = 0.20$ requires $N \sim 2.5 \times 10^7$ shots,
-a stronger condition that governs hardware deployment. On hardware the measurement
-protocol is an OTOC echo circuit; each echo returns a local binary outcome and
-the shot-noise analysis is unchanged.
+On hardware the measurement protocol is an OTOC echo circuit
+(Kitaev~\cite{Kitaev2015Hidden}; Swingle et al.~\cite{Swingle2016Measuring};
+Mi et al.~\cite{Mi2021Information}); each echo returns a local binary
+outcome and the analysis reduces to Binomial statistics.
+The measurability analysis establishes three shot budgets that address
+three distinct questions (Table~\ref{tab:shot_budgets}):
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+Goal & Shots & Basis \\
+\midrule
+See the wavefront ($n > \varepsilon_{\rm th}$) & $N \geq 10^3$ & theoretical floor \\
+\textbf{Locate the broken bond} & $\mathbf{N \sim 3\times10^5}$ & \textbf{empirical, sign-flip pattern} \\
+Measure $|\delta J|$ numerically & $N \sim 2.5\times10^7$ & analytical, per-site SNR \\
+\bottomrule
+\end{tabular}
+\caption{Shot budgets for three levels of hardware inference at
+$|\delta J|=0.20$, $\varepsilon_{\rm th}=10^{-3}$.
+The detection budget (middle row) is 100$\times$ cheaper than
+quantification because the sign-flip signature aggregates coherently
+across the bond boundary while per-site noise is independent.}
+\label{tab:shot_budgets}
+\end{table}
 
 The seismic scales to the $32\times32$ lattice (1024~qubits) with a three-GPU
 parallel architecture, achieving a $9\times$ wall-time speedup over single-GPU
