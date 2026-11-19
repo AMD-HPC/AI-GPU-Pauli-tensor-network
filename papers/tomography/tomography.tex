@@ -862,14 +862,14 @@ Two independent conditions must hold simultaneously.
 Recall that $n(v,t) \in [0,1]$ is a probability: the fraction of Pauli basis
 operators that have non-identity support at site $v$ after $t$ Trotter cycles
 (Section~\ref{sec:vocab}). On real hardware $n(v,t)$ is an out-of-time-order
-correlator (OTOC), not a local expectation value. Specifically,
+correlator (OTOC)~\cite{Kitaev2015Hidden}, not a local expectation value. Specifically,
 \begin{equation}
     n(v,t) = \frac{3 - F_X(v,t) - F_Y(v,t) - F_Z(v,t)}{4},
 \end{equation}
 where $F_\sigma(v,t) = 2^{-N_q}\,\mathrm{Tr}[O(t)\,\sigma_v\,O(t)\,\sigma_v]$
 is an infinite-temperature butterfly correlator with butterfly $\sigma_v$ at
 site~$v$ and $O(t)=U^\dagger Z_c\,U$ the evolved center operator.
-It is measured via the \emph{echo protocol}: prepare a random initial state,
+It is measured via the \emph{echo protocol}~\cite{Swingle2016Measuring}: prepare a random initial state,
 apply the forward circuit~$U$ for $t$ cycles, apply butterfly $\sigma_v$ at
 site~$v$, apply the backward circuit~$U^\dagger$, and measure whether the
 initial state is recovered. The per-site measurement at the end of the echo
