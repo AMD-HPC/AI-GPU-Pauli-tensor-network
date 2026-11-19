@@ -861,25 +861,22 @@ Two independent conditions must hold simultaneously.
 
 Recall that $n(v,t) \in [0,1]$ is a probability: the fraction of Pauli basis
 operators that have non-identity support at site $v$ after $t$ Trotter cycles
-(Section~\ref{sec:vocab}). On real hardware $n(v,t)$ is an out-of-time-order
-correlator (OTOC)~\cite{Kitaev2015Hidden}, not a local expectation value. Specifically,
-\begin{equation}
-    n(v,t) = \frac{3 - F_X(v,t) - F_Y(v,t) - F_Z(v,t)}{4},
-\end{equation}
-where $F_\sigma(v,t) = 2^{-N_q}\,\mathrm{Tr}[O(t)\,\sigma_v\,O(t)\,\sigma_v]$
-is an infinite-temperature butterfly correlator with butterfly $\sigma_v$ at
-site~$v$ and $O(t)=U^\dagger Z_c\,U$ the evolved center operator.
-It is measured via the \emph{echo protocol}~\cite{Swingle2016Measuring,Mi2021Information}: prepare a random initial state,
-apply the forward circuit~$U$ for $t$ cycles, apply butterfly $\sigma_v$ at
-site~$v$, apply the backward circuit~$U^\dagger$, and measure whether the
-initial state is recovered. The per-site measurement at the end of the echo
-is local; the observable itself is an OTOC.
-Each echo circuit returns a binary outcome (initial state recovered, or not),
-and the non-identity count $k$ over $N$ shots accumulates as a success count.
-This binary nature makes the Binomial model natural: $k \sim
-\mathrm{Binomial}(N, n(v,t))$, where $n(v,t)$ is the Bernoulli success
-probability. The empirical estimate $\hat{n}(v,t) = k/N$ is an unbiased
-estimator of the true $n(v,t)$.
+(Section~\ref{sec:vocab}). On real hardware $n(v,t)$ cannot be read off by
+measuring the state at site $v$ alone: it quantifies how much an operator
+initialized at the center $c$ has \emph{spread to} site $v$, which is a
+property of the dynamics, not of any single state. It is therefore an
+out-of-time-order correlator (OTOC)~\cite{Kitaev2015Hidden}, measured via
+the \emph{echo protocol}~\cite{Swingle2016Measuring,Mi2021Information}:
+prepare an initial state, run the circuit $U$ forward for $t$ cycles,
+apply a local single-qubit rotation (butterfly) at site $v$,
+run the circuit $U^\dagger$ backward, and measure how much of the
+initial state is recovered. If the operator has not spread to $v$,
+the butterfly has no effect and the echo succeeds; if it has spread,
+the butterfly disrupts the backward evolution and the echo fails.
+The failure probability is $n(v,t)$. Each echo circuit returns a
+binary outcome (recovered or not), so $k$ failures out of $N$ shots
+give the unbiased estimate $\hat{n}(v,t) = k/N$ via the Binomial model:
+$k \sim \mathrm{Binomial}(N,\,n(v,t))$.
 
 The estimator has variance $\mathrm{Var}(\hat{n}) = n(1-n)/N$, a direct
 consequence of the Binomial distribution. At the frontier, $n(v,t) \ll 1$:
