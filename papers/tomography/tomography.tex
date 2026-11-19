@@ -967,36 +967,41 @@ baseline weight and scales linearly with the coupling deviation. The attenuation
 factor $\varepsilon\sin(\varepsilon)|\delta J|$ depends only on the Trotter step
 and the perturbation magnitude, not on the site.
 
-Note that this is a stronger requirement than simply estimating $\hat{n}_{\rm pert}$
-reliably: we need the signal $\delta n$ to be measurably larger than the estimator
+The signal $\delta n$ must also be measurably larger than the estimator
 noise $\sigma(\hat{n}) \approx \sqrt{n_{\rm base}/N}$. Setting $\delta n \geq
-\sigma(\hat{n})$ gives the minimum detectable coupling deviation.
-We emphasize that the present work performs \emph{detection}: identifying the location and existence of a broken bond from wavemap patterns, not
-\emph{estimation} of $\delta J$ from the numerical values of $n(v,t)$.
-Quantitative estimation of the coupling deviation from the measured $\hat{n}_{\rm pert}$
-is a harder and separate problem, left for future work.
+\sigma(\hat{n})$ gives the minimum \emph{quantifiable} coupling deviation:
 \begin{equation}
     |\delta J|_{\rm min} \approx \frac{\varepsilon_{\rm th}}
         {\varepsilon \cdot \sin(\varepsilon) \cdot \sqrt{N \cdot n_{\rm base}(v,t)}}
 \end{equation}
 For $\varepsilon = 0.10$ and $n_{\rm base} \approx 10^{-2}$ (genuine wavefront
-at first arrival), the detection threshold scales as $|\delta J|_{\rm min}
-\propto 1/\sqrt{N}$: at $N=10^6$ shots $|\delta J|_{\rm min} \approx 1.0$,
-at $N=10^7$ it drops to $0.32$. To detect the experimental coupling
-degradation $|\delta J| = 0.20$ used throughout this work requires
-$N \approx 2.5 \times 10^7$ shots. This is independent of the minimum
-shot budget for reliable estimation ($N \geq 10^3$): the two conditions
-address different questions : can we measure $n(v,t)$ at all, versus can
-we resolve the specific coupling deviation of interest.
+at first arrival), $|\delta J|_{\rm min} \propto 1/\sqrt{N}$: at $N=10^7$
+shots $|\delta J|_{\rm min} \approx 0.32$, so \emph{quantifying}
+$|\delta J| = 0.20$ requires $N \approx 2.5 \times 10^7$ shots.
+
+This is a \emph{quantification} budget, not a \emph{detection} budget.
+Quantification asks: given a site showing a wavemap anomaly, what is the
+numerical value of $\delta J$? It requires the per-site signal $\delta n$
+to exceed the noise floor individually.
+Detection asks: which bond is broken? It answers from the
+\emph{sign-flip pattern} of $\mathcal{L}(v,t)$ aggregated across the
+bond boundary — a qualitative signature that many sites contribute to
+coherently. Per-site noise is independent across sites; the sign-flip
+pattern is not.
+Detection therefore requires far fewer shots than quantification.
+The end-to-end detection budget is established empirically in
+Section~\ref{sec:shot_detect} below.
 
 \subsection{End-to-end detection rate under shot noise}
+\label{sec:shot_detect}
 
-The analytical conditions above are necessary but not sufficient: a site
-could pass both thresholds yet the detection algorithm still fail because
-the noise pattern across all sites collectively misleads the bond-score
-ranking. To measure the actual end-to-end detection rate, we ran a
-shot-noise injection study on the 10 ground-truth single-bond trials
-of Section~\ref{sec:bond_detection}.
+The analytical conditions above give two shot budgets that differ by
+four orders of magnitude: $N \geq 10^3$ to see the wavefront at all,
+and $N \approx 2.5\times10^7$ to quantify $|\delta J|=0.20$ per site.
+Neither directly answers the detection question: at how many shots does
+the sign-flip algorithm reliably locate the broken bond?
+To answer this empirically, we ran a shot-noise injection study on the
+10 ground-truth single-bond trials of Section~\ref{sec:bond_detection}.
 
 For each simulated $n_{\rm pert}(v,t)$ we model the hardware estimate
 using the OTOC echo measurement: $F_\sigma = 1 - (4/3)\,n$ (isotropic
