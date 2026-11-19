@@ -1,0 +1,80 @@
+{
+  "params": {
+    "logbase": "logs/mawgm_f64",
+    "trials": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ],
+    "plan": "data/scans/rect_7x7_scan_3gpu.json",
+    "graph": "data/graphs/rect_7x7.json",
+    "N_list": [
+      1000,
+      10000,
+      100000,
+      1000000
+    ],
+    "K": 100,
+    "seed": 42,
+    "v_hop": 0.448,
+    "thr": 0.001,
+    "thr_L": 0.05,
+    "T_max": 5,
+    "top_k": 1,
+    "out": "logs/shots_needed_results.json",
+    "plot": "logs/shots_needed.png"
+  },
+  "results": {
+    "1000": {
+      "N_per_sigma": 1000,
+      "N_total": 3000,
+      "detection_rate": 0.056,
+      "ci_lo": 0.042975,
+      "ci_hi": 0.071,
+      "fp_rate": 0.021,
+      "n_trials": 10,
+      "K": 100,
+      "n_samples": 1000
+    },
+    "10000": {
+      "N_per_sigma": 10000,
+      "N_total": 30000,
+      "detection_rate": 0.403,
+      "ci_lo": 0.371,
+      "ci_hi": 0.434025,
+      "fp_rate": 0.005,
+      "n_trials": 10,
+      "K": 100,
+      "n_samples": 1000
+    },
+    "100000": {
+      "N_per_sigma": 100000,
+      "N_total": 300000,
+      "detection_rate": 0.835,
+      "ci_lo": 0.811,
+      "ci_hi": 0.8580249999999999,
+      "fp_rate": 0.003,
+      "n_trials": 10,
+      "K": 100,
+      "n_samples": 1000
+    },
+    "1000000": {
+      "N_per_sigma": 1000000,
+      "N_total": 3000000,
+      "detection_rate": 0.991,
+      "ci_lo": 0.985,
+      "ci_hi": 0.996,
+      "fp_rate": 0.0,
+      "n_trials": 10,
+      "K": 100,
+      "n_samples": 1000
+    }
+  }
+}
